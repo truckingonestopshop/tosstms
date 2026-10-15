@@ -31,6 +31,7 @@ import { useStore } from "@/lib/store";
 import { useRoute } from "@/lib/route";
 import { toast } from "@/lib/toast";
 import { buildPacket } from "@/lib/packet";
+import { checklist, problems, type DocTarget } from "@/lib/docs";
 import { STATUS, cn, fmtDay, isCanceled, lane, money, num, rpm, rpmAllIn, totalMiles } from "@/lib/format";
 import type { Load, LoadStatus, LoadStop, StopStatus } from "@/lib/types";
 
@@ -86,6 +87,7 @@ function LoadView({ load }: { load: Load }) {
     drivers,
     trucks,
     documents,
+    docTypes,
     invoices,
     updateLoad,
     setLoadStatus,
@@ -104,12 +106,13 @@ function LoadView({ load }: { load: Load }) {
 
   const setStop = (sid: string, p: Partial<LoadStop>) => updateLoad(load.id, { stops: load.stops.map((s) => (s.id === sid ? { ...s, ...p } : s)) });
 
-  const has = (t: string) => docs.some((d) => d.doc_type === t);
-  const checklist = [
-    { key: "rate_confirmation", label: "Rate con" },
-    { key: "bol", label: "BOL" },
-    { key: "pod", label: "POD" },
-  ];
+  const docTarget = useMemo<DocTarget>(() => ({ scope: "load", id: load.id, companyId: load.company_id, status: load.status }), [load.id, load.company_id, load.status]);
+  // Billing packet: rate con, BOL, POD, receipts… in the order set in document rules.
+  const packetDocs = useMemo(() => {
+    const order = new Map(docTypes.filter((t) => t.in_packet).map((t) => [t.key, t.sort]));
+    return docs.filter((d) => order.has(d.doc_type)).sort((a, b) => order.get(a.doc_type)! - order.get(b.doc_type)! || a.uploaded_at.localeCompare(b.uploaded_at));
+  }, [docs, docTypes]);
+  const missingDocs = useMemo(() => problems(checklist(docTypes, documents, docTarget)).map((i) => i.type.name), [docTypes, documents, docTarget]);
 
   const remove = async () => {
     if (
@@ -441,12 +444,14 @@ function LoadView({ load }: { load: Load }) {
                   size="xs"
                   variant="outline"
                   loading={packing}
-                  disabled={!docs.length}
+                  disabled={!packetDocs.length}
+                  title={missingDocs.length ? `Missing: ${missingDocs.join(", ")}` : "Rate con, BOL, POD and receipts in one PDF"}
                   onClick={async () => {
                     setPacking(true);
                     try {
-                      const r = await buildPacket(docs, `${load.load_number || "load"}-packet.pdf`);
+                      const r = await buildPacket(packetDocs, `${load.load_number || "load"}-packet.pdf`);
                       toast.success(r.skipped.length ? `Packet ready. Skipped: ${r.skipped.join(", ")}` : `Packet ready (${r.added} files)`);
+                      if (missingDocs.length) toast.info(`Packet made without: ${missingDocs.join(", ")}`);
                     } catch (e) {
                       toast.error((e as Error).message);
                     } finally {
@@ -459,21 +464,7 @@ function LoadView({ load }: { load: Load }) {
               }
             />
             <div className="space-y-3 p-4">
-              <div className="flex flex-wrap gap-1.5">
-                {checklist.map((c) => (
-                  <span
-                    key={c.key}
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium",
-                      has(c.key) ? "border-emerald-600/25 text-emerald-700 dark:text-emerald-300" : "border-dashed border-line-strong text-fg-3",
-                    )}
-                  >
-                    {has(c.key) ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-                    {c.label}
-                  </span>
-                ))}
-              </div>
-              <DocumentsPanel companyId={load.company_id} loadId={load.id} scope="load" compact emptyText="Upload the rate con, BOL and POD." />
+              <DocumentsPanel target={docTarget} compact emptyText="No files on this load yet." />
             </div>
           </Card>
         </div>

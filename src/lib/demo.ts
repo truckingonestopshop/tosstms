@@ -1,5 +1,6 @@
 // Sample data for the development-only UI preview (/preview-ui). Never used in production.
 import type { Company, DocType, DocumentItem, Driver, Invoice, Load, LoadStatus, Member, Settings, Truck } from "./types";
+import { BUILT_IN_TYPES } from "./docs";
 import { addDays, today } from "./format";
 
 const t = today();
@@ -86,12 +87,7 @@ export function demoData() {
     lines: [{ id: `${id}-1`, invoice_id: id, load_id: l.id, position: 0, description: `${l.origin_city}, ${l.origin_state} → ${l.destination_city}, ${l.destination_state}`, line_date: l.delivery_date, quantity: 1, unit_price: l.dispatcher_cut, gross_amount: l.gross_amount, amount: l.dispatcher_cut, load_number: l.load_number, rate_con_number: l.rate_con_number, broker_name: l.broker_name, driver_name: null, origin: null, destination: null, pickup_date: l.pickup_date, delivery_date: l.delivery_date }],
   });
   const invoices = [inv("i1", loads[5], "sent", -14), inv("i2", loads[6], "paid", -25)];
-  const docTypes: DocType[] = [
-    ["rate_confirmation", "Rate Confirmation", "load"], ["bol", "Bill of Lading (BOL)", "load"], ["pod", "Proof of Delivery (POD)", "load"],
-    ["insurance", "Certificate of Insurance (COI)", "company"], ["authority", "MC Authority", "company"], ["w9", "W-9", "company"],
-    ["noa", "Notice of Assignment (NOA)", "company"], ["dispatch_agreement", "Dispatch Agreement", "company"], ["cdl", "CDL", "driver"],
-    ["medical_card", "Medical Card", "driver"], ["registration", "Registration", "truck"], ["other", "Other", "any"],
-  ].map(([key, name, scope]) => ({ key, name, scope: scope as DocType["scope"], is_default: true }));
+  const docTypes: DocType[] = BUILT_IN_TYPES.map((t) => ({ ...t }));
   const settings: Settings = {
     id: 1, issuer_name: "Trucking One Stop Shop LLC", issuer_address: "Chicago, IL", issuer_email: "billing@truckingonestopshop.net",
     issuer_phone: "", invoice_prefix: "TOSS", remittance_text: "ACH / Zelle within terms.", footer_text: "Thank you for your business.",

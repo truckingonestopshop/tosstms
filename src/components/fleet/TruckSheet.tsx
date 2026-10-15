@@ -266,7 +266,7 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
 
         <section>
           <Eyebrow className="mb-2">Truck documents</Eyebrow>
-          <DocumentsPanel companyId={truck.company_id} truckId={truck.id} scope="truck" compact emptyText="No registration or inspection on file." />
+          <DocumentsPanel target={{ scope: "truck", id: truck.id, companyId: truck.company_id }} compact emptyText="No truck files yet." />
         </section>
       </div>
     </Drawer>

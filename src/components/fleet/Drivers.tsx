@@ -221,7 +221,7 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
 
         <section>
           <Eyebrow className="mb-2">Driver documents</Eyebrow>
-          <DocumentsPanel companyId={driver.company_id} driverId={driver.id} scope="driver" compact emptyText="No CDL or medical card on file." />
+          <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId: driver.company_id }} compact emptyText="No driver files yet." />
         </section>
       </div>
     </Drawer>

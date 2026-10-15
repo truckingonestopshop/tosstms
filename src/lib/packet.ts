@@ -3,23 +3,16 @@
 import { fetchFileBytes } from "./db";
 import type { DocumentItem } from "./types";
 
-const ORDER = ["rate_confirmation", "bol", "pod", "lumper_receipt", "scale_ticket"];
-
 /**
  * Merges a load's paperwork (rate con, BOL, POD, receipts…) into one PDF for the
- * factoring company or the broker. Images are placed on letter-size pages.
+ * factoring company or the broker, in the order given. Images are placed on letter-size pages.
  */
 export async function buildPacket(docs: DocumentItem[], fileName: string) {
   const { PDFDocument } = await import("pdf-lib");
   const out = await PDFDocument.create();
-  const sorted = [...docs].sort((a, b) => {
-    const ia = ORDER.indexOf(a.doc_type);
-    const ib = ORDER.indexOf(b.doc_type);
-    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-  });
   let added = 0;
   const skipped: string[] = [];
-  for (const d of sorted) {
+  for (const d of docs) {
     try {
       const { bytes, type } = await fetchFileBytes(d.file_path);
       const mime = d.mime_type || type || "";

@@ -12,6 +12,7 @@ import { series } from "@/lib/analytics";
 import { payState } from "@/lib/invoice";
 import { availability } from "@/lib/pitch";
 import { addDays, cn, daysUntil, fmtDay, isCanceled, lane, money, moneyShort, num, today } from "@/lib/format";
+import { checklist, fleetPaperwork, problems, shortName } from "@/lib/docs";
 import type { Load, Truck } from "@/lib/types";
 
 function greeting() {
@@ -20,7 +21,7 @@ function greeting() {
 }
 
 export default function Dashboard() {
-  const { me, loads, trucks, drivers, documents, invoices, companies, inScope, scopedCompany, driverById, truckById, companyById } = useStore();
+  const { me, loads, trucks, drivers, documents, docTypes, invoices, companies, inScope, scopedCompany, driverById, truckById, companyById } = useStore();
   const t = today();
   const month = t.slice(0, 7);
 
@@ -92,32 +93,53 @@ export default function Dashboard() {
     const scopedInvoices = invoices.filter((i) => !i.company_id || inScope(i.company_id));
     for (const i of scopedInvoices.filter((i) => payState(i) === "overdue"))
       out.push({ key: `inv${i.id}`, icon: FileWarning, text: `${i.invoice_number} · ${i.bill_to_name} · ${money(i.total_due)} overdue since ${fmtDay(i.due_date)}`, href: `/invoices/${i.id}`, tone: "red" });
-    for (const l of L.filter((l) => ["delivered", "invoiced"].includes(l.status) && !documents.some((d) => d.load_id === l.id && d.doc_type === "pod")).slice(0, 6))
-      out.push({ key: `pod${l.id}`, icon: FileWarning, text: `POD missing · ${lane(l)}`, href: `/loads/${l.id}`, tone: "amber" });
+    // Loads on the road or waiting to be paid that are missing required paperwork (BOL, POD…).
+    let shownLoads = 0;
+    for (const l of L.filter((l) => ["in_transit", "delivered", "invoiced"].includes(l.status))) {
+      const miss = problems(checklist(docTypes, documents, { scope: "load", id: l.id, companyId: l.company_id, status: l.status }));
+      if (!miss.length || shownLoads++ >= 6) continue;
+      const names = miss.map((i) => shortName(i.type)).join(", ");
+      out.push({ key: `ldoc${l.id}`, icon: FileWarning, text: `${names} missing · ${lane(l)}`, href: `/loads/${l.id}`, tone: l.status === "in_transit" ? "amber" : "red" });
+    }
     for (const l of L.filter((l) => ["new", "booked"].includes(l.status) && !l.driver_id && l.pickup_date && l.pickup_date <= addDays(t, 2)))
       out.push({ key: `drv${l.id}`, icon: TruckIcon, text: `No driver · picks up ${fmtDay(l.pickup_date)} · ${lane(l)}`, href: `/loads/${l.id}`, tone: "red" });
-    for (const d of drivers.filter((d) => inScope(d.company_id) && d.status === "active")) {
-      for (const [label, date] of [
-        ["CDL", d.cdl_expiry],
-        ["Medical card", d.medical_card_expiry],
-      ] as const) {
-        const n = daysUntil(date);
-        if (n !== null && n <= 30)
-          out.push({ key: `${label}${d.id}`, icon: CalendarClock, text: `${d.name}: ${label} ${n < 0 ? "expired" : `expires in ${n}d`}`, href: `/fleet?tab=drivers&driver=${d.id}`, tone: n < 0 ? "red" : "amber" });
+    // Carrier, driver and truck paperwork: expired / expiring files one by one,
+    // missing required files grouped per carrier.
+    const holders = fleetPaperwork({ companies, drivers, trucks, documents, docTypes }, inScope);
+    const missingBy = new Map<string, number>();
+    for (const h of holders) {
+      for (const i of [...h.bad, ...h.soon]) {
+        if (i.state === "missing") {
+          missingBy.set(h.companyId, (missingBy.get(h.companyId) || 0) + 1);
+          continue;
+        }
+        if (i.state === "no_date") continue;
+        const n = daysUntil(i.doc?.expires_on) ?? 0;
+        out.push({
+          key: `exp${h.scope}${h.id}${i.type.key}`,
+          icon: CalendarClock,
+          text: `${h.name}: ${i.type.name} ${n < 0 ? "expired" : `expires in ${n}d`}`,
+          href: h.href,
+          tone: n < 0 ? "red" : "amber",
+        });
       }
     }
-    for (const doc of documents.filter((d) => inScope(d.company_id) && d.expires_on && (daysUntil(d.expires_on) ?? 99) <= 30)) {
-      const n = daysUntil(doc.expires_on)!;
-      out.push({
-        key: `doc${doc.id}`,
-        icon: CalendarClock,
-        text: `${companyById(doc.company_id)?.name}: ${doc.file_name} ${n < 0 ? "expired" : `expires in ${n}d`}`,
-        href: "/fleet?tab=docs",
-        tone: n < 0 ? "red" : "amber",
-      });
+    // CDL / medical dates typed on the driver (no file with a date on record).
+    for (const d of drivers.filter((d) => inScope(d.company_id) && d.status === "active")) {
+      for (const [key, label, date] of [
+        ["cdl", "CDL", d.cdl_expiry],
+        ["medical_card", "Medical card", d.medical_card_expiry],
+      ] as const) {
+        const covered = holders.some((h) => h.scope === "driver" && h.id === d.id && h.items.some((i) => i.type.key === key && i.doc?.expires_on));
+        const n = daysUntil(date);
+        if (!covered && n !== null && n <= 30)
+          out.push({ key: `${key}${d.id}`, icon: CalendarClock, text: `${d.name}: ${label} ${n < 0 ? "expired" : `expires in ${n}d`}`, href: `/fleet?company=${d.company_id}&tab=drivers&driver=${d.id}`, tone: n < 0 ? "red" : "amber" });
+      }
     }
+    for (const [cid, n] of missingBy)
+      out.push({ key: `miss${cid}`, icon: FileWarning, text: `${companyById(cid)?.name}: ${n} required document${n === 1 ? "" : "s"} missing`, href: `/fleet?company=${cid}&tab=docs`, tone: "amber" });
     return out;
-  }, [L, invoices, documents, drivers, inScope, companyById, t]);
+  }, [L, invoices, documents, docTypes, companies, drivers, trucks, inScope, companyById, t]);
 
   const weeks = useMemo(() => series(L.filter((l) => !isCanceled(l.status)), { from: addDays(t, -7 * 11 - ((new Date().getDay() + 6) % 7)), to: t }, "week"), [L, t]);
   const recent = useMemo(() => [...L].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 6), [L]);

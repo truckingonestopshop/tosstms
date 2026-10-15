@@ -9,6 +9,7 @@ import { Empty } from "@/components/ui/Bits";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { addDays, cut, fmtDay, lane, money, today } from "@/lib/format";
+import { checklist, problems, shortName } from "@/lib/docs";
 import type { Load } from "@/lib/types";
 
 /** Loads that can still be billed: delivered and not on a live invoice. */
@@ -22,7 +23,12 @@ export function useBillable() {
 
 export function InvoiceBuilder({ open, onClose, companyId: initial }: { open: boolean; onClose: () => void; companyId?: string | null }) {
   const router = useRouter();
-  const { companies, companyById, createInvoiceFromLoads, loads } = useStore();
+  const { companies, companyById, createInvoiceFromLoads, loads, documents, docTypes } = useStore();
+  // Paperwork a delivered load should have (rate con, BOL, POD): shown so nothing gets billed blind.
+  const missingFor = (l: Load) =>
+    problems(checklist(docTypes, documents, { scope: "load", id: l.id, companyId: l.company_id, status: l.status }))
+      .map((i) => shortName(i.type))
+      .join(", ");
   const billable = useBillable();
   const [companyId, setCompanyId] = useState(initial || "");
   const [showAll, setShowAll] = useState(false);
@@ -163,6 +169,7 @@ export function InvoiceBuilder({ open, onClose, companyId: initial }: { open: bo
                         {fmtDay(l.delivery_date)} · {money(l.gross_amount, { cents: false })} gross
                         {l.status !== "delivered" ? ` · ${l.status.replace("_", " ")}` : ""}
                       </div>
+                      {missingFor(l) && <div className="truncate text-xs font-medium text-amber-800 dark:text-amber-300">Missing {missingFor(l)}</div>}
                     </div>
                     <Input
                       value={amounts[l.id] ?? cut(l.gross_amount, l.commission_percent).toFixed(2)}

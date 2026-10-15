@@ -19,7 +19,6 @@ import {
   KeyRound,
   Settings2,
   PanelRightOpen,
-  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Segmented } from "@/components/ui/Field";
@@ -32,9 +31,10 @@ import { TruckSheet } from "@/components/fleet/TruckSheet";
 import { DriverCard, DriverForm, DriverSheet, driverAlert } from "@/components/fleet/Drivers";
 import { Vault } from "@/components/fleet/Vault";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
+import { FleetPaperwork } from "@/components/docs/FleetPaperwork";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
-import { ACTIVE_STATUSES, cn, daysUntil, lane, money, num, today } from "@/lib/format";
+import { ACTIVE_STATUSES, daysUntil, lane, money, num, today } from "@/lib/format";
 import { availability, equipmentLine, pitchFor } from "@/lib/pitch";
 import type { Company, Driver, Truck } from "@/lib/types";
 
@@ -51,8 +51,28 @@ export default function FleetPage() {
 function Fleet() {
   const params = useSearchParams();
   const router = useRouter();
-  const { companies, scopedCompany } = useStore();
+  const { companies, drivers, trucks, scopedCompany, setScope } = useStore();
   const [newOpen, setNewOpen] = useState(false);
+
+  // Links from the dashboard and alerts name the carrier (or a driver / truck of it):
+  // open that carrier even when "All companies" is selected.
+  const wantCompany =
+    params.get("company") ||
+    drivers.find((d) => d.id === params.get("driver"))?.company_id ||
+    trucks.find((t) => t.id === params.get("truck"))?.company_id ||
+    null;
+  useEffect(() => {
+    if (!wantCompany || !companies.some((c) => c.id === wantCompany)) return;
+    if (scopedCompany?.id !== wantCompany) setScope(wantCompany);
+    // Drop ?company= once applied, so switching carriers in the header isn't undone.
+    if (params.get("company")) {
+      const next = new URLSearchParams(params.toString());
+      next.delete("company");
+      router.replace(`/fleet${next.size ? `?${next}` : ""}`, { scroll: false });
+    }
+    // Only when the link changes, not when the header switcher changes the scope.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantCompany, companies.length]);
 
   useEffect(() => {
     if (params.get("new") === "company") {
@@ -439,43 +459,16 @@ function DriversTab({ company, drivers }: { company: Company; drivers: Driver[] 
   );
 }
 
-const COMPLIANCE = [
-  { key: "insurance", label: "COI" },
-  { key: "authority", label: "MC Authority" },
-  { key: "w9", label: "W-9" },
-  { key: "noa", label: "NOA" },
-  { key: "dispatch_agreement", label: "Dispatch agreement" },
-];
-
 function DocsTab({ company }: { company: Company }) {
-  const { documents } = useStore();
-  const companyDocs = documents.filter((d) => d.company_id === company.id && !d.load_id && !d.driver_id && !d.truck_id);
+  const target = useMemo(() => ({ scope: "company" as const, companyId: company.id }), [company.id]);
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {COMPLIANCE.map((c) => {
-          const doc = companyDocs.find((d) => d.doc_type === c.key);
-          const days = daysUntil(doc?.expires_on);
-          const state = !doc ? "missing" : days !== null && days < 0 ? "expired" : days !== null && days <= 30 ? "soon" : "ok";
-          return (
-            <span
-              key={c.key}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium",
-                state === "ok" && "border-emerald-600/25 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300",
-                state === "missing" && "border-dashed border-line-strong text-fg-3",
-                state === "soon" && "border-amber-600/30 bg-amber-500/5 text-amber-800 dark:text-amber-300",
-                state === "expired" && "border-red-600/30 bg-red-500/5 text-red-700 dark:text-red-300",
-              )}
-            >
-              {state === "ok" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-              {c.label}
-              <span className="font-normal opacity-75">{state === "missing" ? "missing" : state === "expired" ? "expired" : state === "soon" ? "expiring" : ""}</span>
-            </span>
-          );
-        })}
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="min-w-0">
+        <DocumentsPanel target={target} includeAll emptyText="No documents for this carrier yet." />
       </div>
-      <DocumentsPanel companyId={company.id} scope="company" includeAll emptyText="No documents for this carrier yet." />
+      <div className="min-w-0 xl:order-none">
+        <FleetPaperwork companyId={company.id} />
+      </div>
     </div>
   );
 }

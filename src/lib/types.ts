@@ -180,11 +180,21 @@ export interface LoadEvent {
 
 export type DocScope = "company" | "load" | "driver" | "truck" | "any";
 
+/** When a document type is required. Loads: from that status on. */
+export type DocRequired = "always" | "booked" | "in_transit" | "delivered";
+
 export interface DocType {
   key: string;
   name: string;
   scope: DocScope;
   is_default: boolean;
+  /** null = optional */
+  required_from: DocRequired | null;
+  /** asks for an expiry date and shows expiry alerts */
+  has_expiry: boolean;
+  /** merged into the load's billing packet */
+  in_packet: boolean;
+  sort: number;
 }
 
 export interface DocumentItem {

@@ -28,6 +28,7 @@ import {
   normTruck,
   sb,
 } from "./db";
+import { byTypeOrder, withRules } from "./docs";
 import { addDays, cut, fmtDay, lane, today } from "./format";
 import { toast } from "./toast";
 
@@ -104,6 +105,8 @@ interface Store {
   deleteDocument: (id: string) => Promise<boolean>;
   addDocType: (name: string, scope: DocType["scope"]) => Promise<DocType | null>;
   renameDocType: (key: string, name: string) => Promise<boolean>;
+  /** Required stage, expiry, packet and order of a type (built-in ones too). */
+  updateDocType: (key: string, patch: Partial<Pick<DocType, "required_from" | "has_expiry" | "in_packet" | "sort">>) => Promise<boolean>;
   deleteDocType: (key: string) => Promise<boolean>;
 
   createInvoiceFromLoads: (
@@ -155,8 +158,8 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   const [scope, setScopeState] = useState<Scope>("all");
 
   // Latest state for async callbacks without re-creating them.
-  const ref = useRef({ companies, drivers, trucks, loads, documents, invoices });
-  ref.current = { companies, drivers, trucks, loads, documents, invoices };
+  const ref = useRef({ companies, drivers, trucks, loads, documents, invoices, docTypes });
+  ref.current = { companies, drivers, trucks, loads, documents, invoices, docTypes };
 
   const refresh = useCallback(async () => {
     if (preview && process.env.NODE_ENV !== "production") {
@@ -218,7 +221,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
       for (const l of (lines.data || []) as InvoiceLine[]) byInvoice.set(l.invoice_id, [...(byInvoice.get(l.invoice_id) || []), l]);
       setInvoices((inv.data as Invoice[]).map((i) => normInvoice({ ...i, lines: byInvoice.get(i.id) || [] })));
     }
-    if (dt.data) setDocTypes(dt.data as DocType[]);
+    if (dt.data) setDocTypes((dt.data as DocType[]).map(withRules).sort(byTypeOrder));
     if (st.data) setSettings(st.data as Settings);
     setReady(true);
   }, []);
@@ -467,6 +470,21 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   );
 
   // ---------------------------------------------------------------- documents
+  // A newer CDL / medical card file with an expiry date updates the driver's dates,
+  // so the driver record and the file on record can't disagree.
+  const syncDriverExpiry = useCallback(async (doc: DocumentItem) => {
+    if (!doc.driver_id || !doc.expires_on) return;
+    const field = doc.doc_type === "cdl" ? "cdl_expiry" : doc.doc_type === "medical_card" ? "medical_card_expiry" : null;
+    if (!field) return;
+    const newest = ref.current.documents
+      .filter((d) => d.driver_id === doc.driver_id && d.doc_type === doc.doc_type && d.id !== doc.id)
+      .every((d) => d.uploaded_at <= doc.uploaded_at);
+    const drv = ref.current.drivers.find((d) => d.id === doc.driver_id);
+    if (!newest || !drv || drv[field] === doc.expires_on) return;
+    const { error } = await sb().from("tms_drivers").update({ [field]: doc.expires_on }).eq("id", drv.id);
+    if (!error) setDrivers((l) => l.map((d) => (d.id === drv.id ? { ...d, [field]: doc.expires_on } : d)));
+  }, []);
+
   const uploadDocument = useCallback<Store["uploadDocument"]>(async (file, meta) => {
     const folder = meta.load_id ? `loads/${meta.load_id}` : meta.driver_id ? `drivers/${meta.driver_id}` : meta.truck_id ? `trucks/${meta.truck_id}` : "company";
     const path = docPath(meta.company_id, folder, file.name);
@@ -482,18 +500,20 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
       return fail(error, "Upload failed"), null;
     }
     setDocuments((l) => upsert(l, data as DocumentItem, true));
+    syncDriverExpiry(data as DocumentItem);
     if (meta.load_id) {
       sb().from("tms_load_events").insert({ load_id: meta.load_id, kind: "document", message: `Uploaded ${file.name}` }).then(() => {});
     }
     return data as DocumentItem;
-  }, []);
+  }, [syncDriverExpiry]);
 
   const updateDocument = useCallback(async (id: string, patch: Partial<DocumentItem>) => {
     const { data, error } = await sb().from("tms_documents").update(clean(patch)).eq("id", id).select().single();
     if (error) return fail(error, "Couldn't save the document"), false;
     setDocuments((l) => upsert(l, data as DocumentItem));
+    syncDriverExpiry(data as DocumentItem);
     return true;
-  }, []);
+  }, [syncDriverExpiry]);
 
   const replaceDocumentFile = useCallback(async (id: string, file: File) => {
     const doc = ref.current.documents.find((d) => d.id === id);
@@ -532,13 +552,23 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
         .slice(0, 40) || `type_${Date.now()}`;
     const { data, error } = await sb().from("tms_doc_types").insert({ key, name: name.trim(), scope }).select().single();
     if (error) return fail(error, "Couldn't add the document type"), null;
-    setDocTypes((l) => [...l.filter((d) => d.key !== key), data as DocType].sort(byName));
+    setDocTypes((l) => [...l.filter((d) => d.key !== key), withRules(data as DocType)].sort(byTypeOrder));
     return data as DocType;
   }, []);
   const renameDocType = useCallback(async (key: string, name: string) => {
     const { error } = await sb().from("tms_doc_types").update({ name: name.trim() }).eq("key", key);
     if (error) return fail(error, "Couldn't rename"), false;
     setDocTypes((l) => l.map((d) => (d.key === key ? { ...d, name: name.trim() } : d)));
+    return true;
+  }, []);
+  const updateDocType = useCallback<Store["updateDocType"]>(async (key, patch) => {
+    const prev = ref.current.docTypes.find((d) => d.key === key);
+    setDocTypes((l) => l.map((d) => (d.key === key ? { ...d, ...patch } : d)).sort(byTypeOrder));
+    const { error } = await sb().from("tms_doc_types").update(patch).eq("key", key);
+    if (error) {
+      if (prev) setDocTypes((l) => l.map((d) => (d.key === key ? prev : d)).sort(byTypeOrder));
+      return fail(error, "Couldn't save the document rule"), false;
+    }
     return true;
   }, []);
   const deleteDocType = useCallback(async (key: string) => {
@@ -806,6 +836,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     deleteDocument,
     addDocType,
     renameDocType,
+    updateDocType,
     deleteDocType,
     createInvoiceFromLoads,
     createCustomInvoice,
