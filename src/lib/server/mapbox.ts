@@ -26,23 +26,49 @@ export interface RouteResult {
 const geoCache = new Map<string, [number, number] | null>();
 const routeCache = new Map<string, RouteResult>();
 
+// Two-letter codes are ambiguous to the geocoder ("Glasgow, MO" came back as
+// Glasgow, Montana), so queries use the full state/province name.
+const REGIONS: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut",
+  DE: "Delaware", DC: "District of Columbia", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois",
+  IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana",
+  NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico", NY: "New York",
+  NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
+  RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah",
+  VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+  AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick", NL: "Newfoundland and Labrador",
+  NS: "Nova Scotia", ON: "Ontario", PE: "Prince Edward Island", QC: "Quebec", SK: "Saskatchewan",
+};
+
+const code = (state?: string) => (state || "").trim().toUpperCase();
+
 function queryText(s: StopQuery, precise: boolean) {
-  const cityState = [s.city, s.state].filter(Boolean).join(", ");
+  const region = REGIONS[code(s.state)] || s.state;
+  const cityState = [s.city, region].filter(Boolean).join(", ");
   if (precise && s.address) return [s.address, cityState, s.zip].filter(Boolean).join(", ");
   if (cityState) return [cityState, s.zip].filter(Boolean).join(" ");
   return s.zip || s.address || "";
 }
 
-async function geocodeOne(q: string): Promise<[number, number] | null> {
-  const key = q.trim().toLowerCase();
-  if (!key) return null;
+interface Feature {
+  geometry?: { coordinates?: [number, number] };
+  properties?: { context?: { region?: { region_code?: string } } };
+}
+
+/** Best match, preferring one inside the requested state when a state was given. */
+async function geocodeOne(q: string, state: string, types?: string): Promise<[number, number] | null> {
+  const key = `${q.trim().toLowerCase()}|${state}|${types || ""}`;
+  if (!q.trim()) return null;
   if (geoCache.has(key)) return geoCache.get(key)!;
-  const url = `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(q)}&country=us,ca,mx&limit=1&access_token=${TOKEN}`;
+  const url = `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(q)}&country=us,ca,mx&limit=5${types ? `&types=${types}` : ""}&access_token=${TOKEN}`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
     if (!res.ok) return null;
     const data = await res.json();
-    const c = data?.features?.[0]?.geometry?.coordinates as [number, number] | undefined;
+    const feats: Feature[] = data?.features || [];
+    const inState = state && REGIONS[state] ? feats.find((f) => (f.properties?.context?.region?.region_code || "").toUpperCase() === state) : feats[0];
+    const c = inState?.geometry?.coordinates;
     const out = c && c.length === 2 ? c : null;
     geoCache.set(key, out);
     return out;
@@ -53,11 +79,18 @@ async function geocodeOne(q: string): Promise<[number, number] | null> {
 
 /** Street address first (more exact), then city/state/zip. */
 export async function geocode(s: StopQuery) {
+  const st = code(s.state);
   if (s.address) {
-    const p = await geocodeOne(queryText(s, true));
+    const p = await geocodeOne(queryText(s, true), st);
     if (p) return p;
   }
-  return geocodeOne(queryText(s, false));
+  // City stops: a real town first ("Yorkville, NY" is a village, not the Manhattan
+  // neighborhood), then anything (ZIP-only or unusual places).
+  if (s.city) {
+    const town = await geocodeOne(queryText(s, false), st, "place,postcode");
+    if (town) return town;
+  }
+  return geocodeOne(queryText(s, false), st);
 }
 
 /** Driving route through every stop in order. Returns null when fewer than 2 stops are found. */

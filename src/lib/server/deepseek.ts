@@ -16,7 +16,7 @@ export interface ChatMessage {
   content: string | Part[];
 }
 
-export async function chatJson(messages: ChatMessage[], { timeoutMs = 45000, firstByteMs = 20000 } = {}): Promise<unknown> {
+export async function chatJson(messages: ChatMessage[], { timeoutMs = 52000, firstByteMs = 20000 } = {}): Promise<unknown> {
   if (!KEY) throw new Error("DeepSeek key missing");
   const ctrl = new AbortController();
   const total = setTimeout(() => ctrl.abort(new Error("timeout")), timeoutMs);
@@ -30,7 +30,9 @@ export async function chatJson(messages: ChatMessage[], { timeoutMs = 45000, fir
         messages,
         stream: true,
         temperature: 0,
-        max_tokens: 6000,
+        // The model thinks before answering and the thinking counts against this
+        // budget; at 6,000 a 3-page rate con used it all and the answer came back empty.
+        max_tokens: 24000,
         response_format: { type: "json_object" },
       }),
       signal: ctrl.signal,
@@ -43,6 +45,7 @@ export async function chatJson(messages: ChatMessage[], { timeoutMs = 45000, fir
     const dec = new TextDecoder();
     let buf = "";
     let content = "";
+    let finish: string | null = null;
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -70,13 +73,19 @@ export async function chatJson(messages: ChatMessage[], { timeoutMs = 45000, fir
           const j = JSON.parse(data);
           if (j.error) throw new Error(j.error.message || "DeepSeek error");
           content += j.choices?.[0]?.delta?.content || "";
+          finish = j.choices?.[0]?.finish_reason || finish;
         } catch (err) {
           if (!(err instanceof SyntaxError)) throw err;
         }
       }
     }
     const cleaned = content.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-    return JSON.parse(cleaned);
+    if (!cleaned) throw new Error(finish === "length" ? "answer cut off (token limit)" : `empty answer (${finish || "no finish reason"})`);
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      throw new Error(`answer was not valid JSON (${finish || "?"}): ${cleaned.slice(0, 120)}`);
+    }
   } finally {
     clearTimeout(total);
     clearTimeout(first);

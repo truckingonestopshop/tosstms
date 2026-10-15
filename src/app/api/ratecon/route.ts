@@ -6,7 +6,7 @@ import { mergeExtract, readRateConText, toIsoDate } from "@/lib/ratecon/fallback
 import type { LoadStop, RateConExtract } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 const MAX_FILE = 20 * 1024 * 1024;
 const MAX_BODY = 32 * 1024 * 1024;
@@ -21,8 +21,16 @@ Rules:
 - stops: every pickup and delivery in order. type is "pickup" or "delivery". state = 2-letter code. date = YYYY-MM-DD.
   time = appointment time like "08:00" if one exact time; appointment = window or note like "FCFS 08:00–15:00" or "Appt 10:00".
   reference_numbers = PU#, PO#, BOL# etc for that stop joined with ", ". instructions = stop-specific notes as one string.
-- loaded_miles only if the document states miles. weight_lbs number.
-- broker_notes = general load requirements (tracking, tarps, temperature, lumper, detention terms) as short sentences.
+- Stops come ONLY from pickup / delivery / shipper / consignee / stop sections. Never use payment, remit-to,
+  factoring, bank, "mail invoices to" or broker office addresses (e.g. "TBK BANK ... PO BOX ... DALLAS, TX") as stops.
+  If a stop shows only "City, ST" with no street, leave address and zip empty.
+- Tables such as "Dispatcher Driver Truck # Trailer #" followed by "george petru 632 013" mean dispatcher=george,
+  driver=petru, truck_unit=632, trailer_number=013.
+- loaded_miles only if the document states miles. weight_lbs number (an "Estimated Weight" counts).
+- equipment_type = trailer type and size, e.g. "Flatbed 48 ft", "Conestoga 53 ft", "Dry Van 53 ft".
+- broker_notes = only this load's practical requirements for dispatcher and driver (the "note to carrier", PPE, tarps,
+  straps, tracking app, temperature, unloading, appointment rules) as a few short sentences. Leave out legal terms,
+  payment/quick-pay terms, detention policy boilerplate, privacy policy and agreement text.
 Return exactly:
 {"load_number":"","rate_con_number":"","broker_name":"","broker_mc":"","broker_contact":"","broker_email":"","broker_phone":"",
 "carrier_name":"","driver_name":"","truck_unit":"","trailer_number":"","gross_amount":0,"loaded_miles":null,"weight_lbs":null,
@@ -48,7 +56,7 @@ function normalize(raw: unknown): RateConExtract {
     broker_email: str(r.broker_email) || undefined,
     broker_phone: str(r.broker_phone) || undefined,
     carrier_name: str(r.carrier_name) || undefined,
-    driver_name: str(r.driver_name) || undefined,
+    driver_name: str(r.driver_name).replace(/\b[a-z]/g, (c) => c.toUpperCase()) || undefined,
     truck_unit: str(r.truck_unit) || undefined,
     trailer_number: str(r.trailer_number) || undefined,
     gross_amount: numOrUndef(r.gross_amount),
@@ -143,10 +151,16 @@ export async function POST(req: NextRequest) {
       primary = normalize(await chatJson([{ role: "system", content: SYSTEM }, { role: "user", content }]));
       source = "online";
     } catch (e) {
-      console.warn("rate con reader fell back to local rules:", (e as Error).message);
-      notice = hasText
-        ? "The full reader is busy right now, so only the basics were filled. Check every field."
-        : "The full reader is busy and this file is a scan, so nothing could be filled. Try again in a minute or fill it in by hand.";
+      const msg = (e as Error).message || "";
+      console.warn("rate con reader fell back to local rules:", msg);
+      const busy = /busy|overload|503|529|429|timeout|no response|stalled|abort/i.test(msg);
+      notice = !hasText
+        ? busy
+          ? "The full reader is busy and this file is a scan. It was read on this device instead; check every field."
+          : "This scan couldn't be read in full. It was read on this device instead; check every field."
+        : busy
+          ? "The full reader is busy right now, so only the basics were filled. Check every field or press Read again."
+          : "The full reader couldn't finish this document, so only the basics were filled. Check every field or press Read again.";
     }
   } else {
     notice = "Only the basics were filled. Check every field.";

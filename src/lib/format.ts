@@ -125,7 +125,7 @@ export interface StatusMeta {
   chip: string;
 }
 
-export const STATUS: Record<LoadStatus, StatusMeta> = {
+const STATUS_BASE: Record<LoadStatus, StatusMeta> = {
   new: {
     label: "New",
     short: "New",
@@ -183,6 +183,19 @@ export const STATUS: Record<LoadStatus, StatusMeta> = {
     chip: "border-l-red-500",
   },
 };
+
+const UNKNOWN_STATUS: StatusMeta = {
+  label: "Unknown",
+  short: "Unknown",
+  pill: "bg-zinc-500/10 text-zinc-600 ring-zinc-600/20 dark:text-zinc-400",
+  dot: "bg-zinc-400",
+  chip: "border-l-zinc-400",
+};
+
+/** Status vocabulary. An unexpected value shows as "Unknown" instead of crashing a page. */
+export const STATUS: Record<LoadStatus, StatusMeta> = new Proxy(STATUS_BASE, {
+  get: (t, k, r) => (typeof k !== "string" || k in t || k in Object.prototype ? Reflect.get(t, k, r) : UNKNOWN_STATUS),
+});
 
 export const STATUS_ORDER: LoadStatus[] = [
   "new",

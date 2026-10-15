@@ -88,7 +88,12 @@ export function readRateConText(raw: string): RateConExtract {
 
   // --- broker
   const emails = [...text.matchAll(/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g)].map((m) => m[1]);
-  out.broker_email = emails.find((e) => !/driver|carrier|gmail|yahoo|outlook|hotmail/i.test(e)) || emails[0];
+  // A person's address over billing/paperwork inboxes (invoices@, ap@, billing@, pod@…).
+  const generic = /^(c?invoices?|billing|ap|ar|accounting|pods?|docs|paperwork|quickpay|payables|carrier\w*|noreply|no-reply|support|info)@/i;
+  out.broker_email =
+    emails.find((e) => !generic.test(e) && !/gmail|yahoo|outlook|hotmail/i.test(e)) ||
+    emails.find((e) => !generic.test(e)) ||
+    emails[0];
   for (const l of lines.slice(0, 20)) {
     if (/rate\s*confirm|load\s*confirm|page\s*\d|carrier|bill to|remit/i.test(l)) continue;
     if (/\b(LLC|INC|CORP|LOGISTICS|BROKERAGE|FREIGHT|TRANSPORTATION|SOLUTIONS|GROUP)\b/i.test(l) && l.length < 70) {
@@ -129,12 +134,83 @@ export function readRateConText(raw: string): RateConExtract {
   const trailer = text.match(/trailer\s*(?:#|no\.?)\s*[:]?\s*([A-Z0-9-]{1,12})\b/i);
   if (trailer) out.trailer_number = trailer[1];
 
+  // --- TQL-style tables: a header row, then values on the next line.
+  // "Name Phone Email Fax" / "Walker Petty 800-580-3101 x42544 jpetty@TQL.com"
+  const contactHdr = lines.findIndex((l) => /^name\s+phone\s+email/i.test(l));
+  if (contactHdr >= 0 && lines[contactHdr + 1]) {
+    const row = lines[contactHdr + 1];
+    const nm = row.match(/^([A-Za-z][A-Za-z.'-]*(?: [A-Za-z][A-Za-z.'-]*){0,3}?)\s+\(?\d/);
+    if (nm) out.broker_contact = nm[1];
+    const ph = row.match(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?:\s*(?:x|ext\.?)\s*\d{1,6})?/i);
+    if (ph) out.broker_phone = ph[0];
+    const em = row.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+    if (em) out.broker_email = em[0];
+  }
+  // "Dispatcher Driver Truck # Trailer #" / "george petru 632 013"
+  const dtHdr = lines.findIndex((l) => /driver\s+truck\s*#?\s+trailer\s*#?/i.test(l));
+  if (dtHdr >= 0 && lines[dtHdr + 1]) {
+    const tok = lines[dtHdr + 1].split(/\s+/);
+    if (tok.length >= 3) {
+      out.trailer_number = tok[tok.length - 1];
+      out.truck_unit = tok[tok.length - 2];
+      const people = tok.slice(0, -2);
+      const name = /dispatcher/i.test(lines[dtHdr]) && people.length > 1 ? people.slice(1) : people;
+      if (name.length) out.driver_name = name.join(" ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+  }
+  // "XYZ RATE CONFIRMATION FOR PO# …" → broker is the first words.
+  if (!out.broker_name) {
+    for (const l of lines.slice(0, 5)) {
+      const head = l.match(/^([A-Z][A-Za-z&.,' ]{1,40}?)\s+(?:LOAD|RATE|CARRIER)\s+(?:CONFIRMATION|TENDER|AGREEMENT)/i);
+      if (head) {
+        out.broker_name = head[1].trim();
+        break;
+      }
+    }
+  }
+  if (!out.commodity) {
+    const tl = text.match(/\b(?:truckload|pallets?|pieces?|pcs)\s+([A-Za-z][^\n]{2,60})/i);
+    if (tl) out.commodity = tl[1].trim();
+  }
+  const ntc = text.match(/note\s+to\s*\n?\s*carrier\s*([\s\S]{3,700}?)(?=\n[^\n]*privacy policy|\n[A-Z][A-Z ]{15,}\n|$)/i);
+  if (ntc) out.broker_notes = ntc[1].replace(/\s+/g, " ").trim();
+
   // --- stops
   const stops: Partial<LoadStop>[] = [];
+  // T: "Pick-up Location Date Time" / "Hendersonville, TN 10/9/2026 Appt 08:00 to 15:00"
+  {
+    let section: "pickup" | "delivery" | null = null;
+    for (const l of lines) {
+      if (/^(pick[\s-]*up|shipper|origin)s?\b.*(location|address|date)/i.test(l)) {
+        section = "pickup";
+        continue;
+      }
+      if (/^(delivery|deliveries|drop|consignee|receiver|destination)s?\b.*(location|address|date)/i.test(l)) {
+        section = "delivery";
+        continue;
+      }
+      if (!section) continue;
+      const m = l.match(/^([A-Za-z][A-Za-z .'-]{1,40}),\s*([A-Z]{2})(?:\s+(\d{5}))?\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s*(.*)$/);
+      if (m && STATES.has(m[2])) {
+        const s = blankStop(section);
+        s.city = m[1].trim();
+        s.state = m[2];
+        s.zip = m[3] || "";
+        s.date = toIsoDate(m[4]);
+        const rest = m[5] || "";
+        const t = rest.match(/(\d{1,2}:\d{2})(?:\s*(?:-|to)\s*(\d{1,2}:\d{2}))?/);
+        if (t) s.appointment = `${/fcfs/i.test(rest) ? "FCFS " : /appt/i.test(rest) ? "Appt " : ""}${t[2] ? `${t[1]}–${t[2]}` : t[1]}`;
+        else if (/fcfs/i.test(rest)) s.appointment = "FCFS";
+        stops.push(s);
+      } else if (stops.length && !/^[A-Za-z][A-Za-z .'-]+,\s*[A-Z]{2}\b/.test(l) && !/^(delivery|pick)/i.test(l)) {
+        // A line that isn't a stop ends the table.
+        if (section === "delivery") section = null;
+      }
+    }
+  }
   // A: numbered stop rows ("1 Pickup 09/15/26 08:00 …", "PU 1 …", "SO 2 …")
   // Also "STOP 1 - PICKUP", "Stop 2: Delivery", "1. Shipper".
-  const rowRe =
-    /(?:^|\n)\s*(?:(?:stop\s*)?(\d+)\s*[-:.–]?\s*(Pick\s*up|Pickup|Delivery|Drop|Shipper|Consignee|Receiver)|(PU|SO|DO|DEL)\s*(\d+))\b([\s\S]*?)(?=\n\s*(?:(?:stop\s*)?\d+\s*[-:.–]?\s*(?:Pick\s*up|Pickup|Delivery|Drop|Shipper|Consignee|Receiver)|(?:PU|SO|DO|DEL)\s*\d+)\b|\n\s*(?:commodity|total|line\s*haul|special\s*instructions|pay\s*items)\b|$)/gi;
+  const rowRe = stops.length >= 2 ? /$^/g : /(?:^|\n)\s*(?:(?:stop\s*)?(\d+)\s*[-:.–]?\s*(Pick\s*up|Pickup|Delivery|Drop|Shipper|Consignee|Receiver)|(PU|SO|DO|DEL)\s*(\d+))\b([\s\S]*?)(?=\n\s*(?:(?:stop\s*)?\d+\s*[-:.–]?\s*(?:Pick\s*up|Pickup|Delivery|Drop|Shipper|Consignee|Receiver)|(?:PU|SO|DO|DEL)\s*\d+)\b|\n\s*(?:commodity|total|line\s*haul|special\s*instructions|pay\s*items)\b|$)/gi;
   for (const m of text.matchAll(rowRe)) {
     const kind = (m[2] || m[3] || "").toLowerCase();
     const type = kind.startsWith("pick") || kind === "pu" ? "pickup" : "delivery";
@@ -188,8 +264,12 @@ export function readRateConText(raw: string): RateConExtract {
     if (stops.length > 1 && !stops.some((s) => s.type === "delivery")) stops[stops.length - 1].type = "delivery";
     out.stops = stops;
   } else {
-    // Last resort: first two city/state/zip lines are pickup then delivery.
-    const found = lines.map(cityStateZip).filter(Boolean) as { city: string; state: string; zip: string }[];
+    // Last resort: first two city/state/zip lines are pickup then delivery
+    // (never the payment / remit-to / factoring address).
+    const found = lines
+      .filter((l) => !/p\.?\s*o\.?\s*box|bank|remit|factor|triumph|mail\s+to|invoice/i.test(l))
+      .map(cityStateZip)
+      .filter(Boolean) as { city: string; state: string; zip: string }[];
     if (found.length >= 2) {
       out.stops = [
         { ...blankStop("pickup"), ...found[0] },

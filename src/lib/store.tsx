@@ -240,39 +240,52 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   useEffect(() => {
     const c = sb();
     type Payload = { eventType: "INSERT" | "UPDATE" | "DELETE"; new: Record<string, unknown>; old: Record<string, unknown> };
-    const apply = <T extends { id: string }>(set: React.Dispatch<React.SetStateAction<T[]>>, norm: (r: T) => T = (r) => r) =>
-      (p: Payload) => {
+    // Change messages can arrive with columns missing (large rows, unchanged values),
+    // and merging those would blank fields like status, gross or stops. So a change
+    // only says "row X changed": the complete row is read back from the database.
+    const apply = <T extends { id: string }>(table: string, set: React.Dispatch<React.SetStateAction<T[]>>, norm: (r: T) => T = (r) => r) =>
+      async (p: Payload) => {
+        const id = ((p.new && p.new.id) || (p.old && p.old.id)) as string | undefined;
+        if (!id) return;
         if (p.eventType === "DELETE") {
-          const id = p.old.id as string;
           set((l) => l.filter((x) => x.id !== id));
-        } else {
-          set((l) => upsert(l, norm(p.new as unknown as T)));
+          return;
         }
+        const { data, error } = await c.from(table).select("*").eq("id", id).maybeSingle();
+        if (error) return;
+        if (!data) set((l) => l.filter((x) => x.id !== id));
+        else set((l) => upsert(l, norm(data as T)));
       };
     const ch = c
       .channel("tms-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "tms_companies" }, apply(setCompanies, normCompany))
-      .on("postgres_changes", { event: "*", schema: "public", table: "tms_drivers" }, apply(setDrivers))
-      .on("postgres_changes", { event: "*", schema: "public", table: "tms_trucks" }, apply(setTrucks, normTruck))
-      .on("postgres_changes", { event: "*", schema: "public", table: "tms_loads" }, apply(setLoads, normLoad))
-      .on("postgres_changes", { event: "*", schema: "public", table: "tms_documents" }, apply(setDocuments))
-      .on("postgres_changes", { event: "*", schema: "public", table: "tms_invoices" }, (p: Payload) => {
-        if (p.eventType === "DELETE") setInvoices((l) => l.filter((x) => x.id !== p.old.id));
-        else
-          setInvoices((l) => {
-            const prev = l.find((x) => x.id === p.new.id);
-            return upsert(l, normInvoice({ ...(p.new as unknown as Invoice), lines: prev?.lines || [] }), true);
-          });
+      .on("postgres_changes", { event: "*", schema: "public", table: "tms_companies" }, apply("tms_companies", setCompanies, normCompany))
+      .on("postgres_changes", { event: "*", schema: "public", table: "tms_drivers" }, apply("tms_drivers", setDrivers))
+      .on("postgres_changes", { event: "*", schema: "public", table: "tms_trucks" }, apply("tms_trucks", setTrucks, normTruck))
+      .on("postgres_changes", { event: "*", schema: "public", table: "tms_loads" }, apply("tms_loads", setLoads, normLoad))
+      .on("postgres_changes", { event: "*", schema: "public", table: "tms_documents" }, apply("tms_documents", setDocuments))
+      .on("postgres_changes", { event: "*", schema: "public", table: "tms_invoices" }, async (p: Payload) => {
+        const id = ((p.new && p.new.id) || (p.old && p.old.id)) as string | undefined;
+        if (!id) return;
+        if (p.eventType === "DELETE") return setInvoices((l) => l.filter((x) => x.id !== id));
+        const { data } = await c.from("tms_invoices").select("*").eq("id", id).maybeSingle();
+        if (!data) return setInvoices((l) => l.filter((x) => x.id !== id));
+        setInvoices((l) => {
+          const prev = l.find((x) => x.id === id);
+          return upsert(l, normInvoice({ ...(data as Invoice), lines: prev?.lines || [] }), true);
+        });
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "tms_invoice_lines" }, (p: Payload) => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "tms_invoice_lines" }, async (p: Payload) => {
+        const id = ((p.new && p.new.id) || (p.old && p.old.id)) as string | undefined;
+        if (!id) return;
         if (p.eventType === "DELETE") {
-          setInvoices((l) => l.map((i) => ({ ...i, lines: i.lines.filter((x) => x.id !== p.old.id) })));
-        } else {
-          const line = normLine(p.new as unknown as InvoiceLine);
-          setInvoices((l) =>
-            l.map((i) => (i.id === line.invoice_id ? { ...i, lines: upsert(i.lines, line).sort((a, b) => a.position - b.position) } : i)),
-          );
+          return setInvoices((l) => l.map((i) => ({ ...i, lines: i.lines.filter((x) => x.id !== id) })));
         }
+        const { data } = await c.from("tms_invoice_lines").select("*").eq("id", id).maybeSingle();
+        if (!data) return;
+        const line = normLine(data as InvoiceLine);
+        setInvoices((l) =>
+          l.map((i) => (i.id === line.invoice_id ? { ...i, lines: upsert(i.lines, line).sort((a, b) => a.position - b.position) } : i)),
+        );
       })
       .subscribe();
     return () => {
