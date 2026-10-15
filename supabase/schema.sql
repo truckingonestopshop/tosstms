@@ -200,12 +200,12 @@ ALTER TABLE public.tms_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tms_invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tms_company_vault ENABLE ROW LEVEL SECURITY;
 
--- Allow full operations for authenticated users (internal team platform)
-CREATE POLICY "Full access for authenticated users on tms_profiles" ON public.tms_profiles FOR ALL TO authenticated USING (true);
-CREATE POLICY "Full access for authenticated users on tms_companies" ON public.tms_companies FOR ALL TO authenticated USING (true);
-CREATE POLICY "Full access for authenticated users on tms_drivers" ON public.tms_drivers FOR ALL TO authenticated USING (true);
-CREATE POLICY "Full access for authenticated users on tms_trucks" ON public.tms_trucks FOR ALL TO authenticated USING (true);
-CREATE POLICY "Full access for authenticated users on tms_loads" ON public.tms_loads FOR ALL TO authenticated USING (true);
-CREATE POLICY "Full access for authenticated users on tms_documents" ON public.tms_documents FOR ALL TO authenticated USING (true);
-CREATE POLICY "Full access for authenticated users on tms_invoices" ON public.tms_invoices FOR ALL TO authenticated USING (true);
-CREATE POLICY "Full access for authenticated users on tms_company_vault" ON public.tms_company_vault FOR ALL TO authenticated USING (true);
+-- Allow full operations for authenticated and anon users (internal team platform)
+CREATE POLICY "Full access on tms_profiles" ON public.tms_profiles FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Full access on tms_companies" ON public.tms_companies FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Full access on tms_drivers" ON public.tms_drivers FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Full access on tms_trucks" ON public.tms_trucks FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Full access on tms_loads" ON public.tms_loads FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Full access on tms_documents" ON public.tms_documents FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Full access on tms_invoices" ON public.tms_invoices FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Full access on tms_company_vault" ON public.tms_company_vault FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
