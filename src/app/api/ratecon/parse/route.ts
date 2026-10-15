@@ -81,7 +81,17 @@ export async function POST(req: NextRequest) {
         const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 
         const systemPrompt = `You are an expert US Freight Logistics Dispatcher and Rate Confirmation (Rate Con) document intelligence parser for Trucking One Stop Shop (TOSS TMS).
-Analyze this freight broker rate confirmation (supports TQL, C.H. Robinson, Echo Global Logistics, Coyote, Landstar, Arrive Logistics, NTG, Worldwide Express, RXO, J.B. Hunt, Schneider, etc.) and extract full operational details.
+Analyze this freight broker rate confirmation (supports TQL, C.H. Robinson, Echo Global Logistics, Coyote, Landstar, Arrive Logistics, NTG, Worldwide Express, RXO, J.B. Hunt, Schneider, Mode, Sunteck, etc.) and extract full operational details.
+
+CRITICAL INSTRUCTIONS FOR STOPS:
+- In freight logistics, brokers often label a load with 1 pickup and 2 delivery drops as "2 stops" or "1 Pick, 2 Drops".
+- You MUST extract EVERY distinct stop in chronological sequence:
+  - Stop 1: Pickup / Shipper (origin facility, street address, city, state, zip, pickup date, appointment time/window, PO/PU #).
+  - Stop 2: Delivery 1 / Drop 1 (consignee facility, street address, city, state, zip, delivery date, appointment time/window, BOL/Ref #).
+  - Stop 3+: Delivery 2 / Final Drop (consignee facility, street address, city, state, zip, delivery date, appointment time/window, BOL/Ref #).
+- Origin city and state MUST match Stop 1 (first pickup).
+- Destination city and state MUST match the final delivery stop.
+- Extract total gross pay, linehaul amount, fuel surcharge, accessorial rates (detention rate per hour & free time, TONU fee, layover), equipment type (e.g. 53ft Dry Van, Reefer, Flatbed), cargo weight in lbs, commodities, and reefer temperature.
 
 Return ONLY a valid JSON object matching this schema:
 {
@@ -133,7 +143,7 @@ Return ONLY a valid JSON object matching this schema:
 }`;
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 14000);
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
 
         const aiRes = await fetch(endpoint, {
           method: 'POST',
@@ -147,7 +157,7 @@ Return ONLY a valid JSON object matching this schema:
               { role: 'system', content: systemPrompt },
               {
                 role: 'user',
-                content: `Here is the Rate Confirmation raw text to parse:\n\n${clientText.substring(0, 10000)}`,
+                content: `Here is the Rate Confirmation raw text to parse:\n\n${clientText.substring(0, 12000)}`,
               },
             ],
             temperature: 0.1,
@@ -193,30 +203,18 @@ Return ONLY a valid JSON object matching this schema:
       }
     }
 
-    // 3. Mapbox Routing & Live Deadhead Calculation
-    if (finalData.origin_city && finalData.destination_city) {
+    // 3. Mapbox Routing, Multi-Stop Leg Breakdown & Live Deadhead Calculation
+    if (finalData.origin_city || (finalData.stops && finalData.stops.length >= 2)) {
       try {
-        const originStr = `${finalData.origin_city}, ${finalData.origin_state || ''}`.trim();
-        const destStr = `${finalData.destination_city}, ${finalData.destination_state || ''}`.trim();
-
-        const intermediateStops: string[] = [];
-        if (finalData.stops && finalData.stops.length > 2) {
-          // Add intermediate stops between first pickup and last delivery
-          for (let i = 1; i < finalData.stops.length - 1; i++) {
-            const s = finalData.stops[i];
-            if (s.city && s.state) {
-              intermediateStops.push(`${s.city}, ${s.state}`);
-            }
-          }
-        }
-
         const tripDetails = await calculateFreightTripDetails({
-          originCityState: originStr,
-          destCityState: destStr,
-          intermediateStops,
+          originCityState: finalData.origin_city ? `${finalData.origin_city}, ${finalData.origin_state || ''}`.trim() : undefined,
+          destCityState: finalData.destination_city ? `${finalData.destination_city}, ${finalData.destination_state || ''}`.trim() : undefined,
+          stops: finalData.stops,
           truckLocation: truckLocation || null,
         });
 
+        finalData.stops = tripDetails.stops;
+        finalData.legs = tripDetails.legs;
         finalData.loaded_miles = tripDetails.loadedMiles;
         finalData.deadhead_miles = tripDetails.deadheadMiles;
         finalData.total_miles = tripDetails.totalMiles;
@@ -228,7 +226,7 @@ Return ONLY a valid JSON object matching this schema:
         }
       } catch (routeErr) {
         console.warn('Mapbox route calculation fallback:', routeErr);
-        const estLoaded = estimateCityDistanceMiles(finalData.origin_city, finalData.destination_city);
+        const estLoaded = estimateCityDistanceMiles(finalData.origin_city || '', finalData.destination_city || '');
         finalData.loaded_miles = estLoaded;
         finalData.total_miles = estLoaded;
         if (finalData.gross_amount) {

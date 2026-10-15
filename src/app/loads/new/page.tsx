@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useApp } from '@/lib/data/AppContext';
 import { RateConScanner } from '@/components/loads/RateConScanner';
 import { MapboxRoutePreview } from '@/components/loads/MapboxRoutePreview';
-import { ExtractedRateCon, Load, LoadStop } from '@/types';
+import { ExtractedRateCon, Load, LoadStop, RouteLeg } from '@/types';
 import {
   Truck,
   Building,
@@ -73,33 +73,63 @@ export default function NewLoadPage() {
 
   const [driverId, setDriverId] = useState('');
   const [truckId, setTruckId] = useState('');
+  const [customTruckLocation, setCustomTruckLocation] = useState('');
   const [status, setStatus] = useState<any>('booked');
 
   const [stops, setStops] = useState<LoadStop[]>([]);
+  const [legs, setLegs] = useState<RouteLeg[]>([]);
   const [routeGeometry, setRouteGeometry] = useState<any>(null);
   const [deadheadGeometry, setDeadheadGeometry] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Get currently selected truck equipment to read its location for Deadhead (DH) calculation
   const selectedTruck = scopedTrucks.find((t) => t.id === truckId);
+  const effectiveTruckLocation = customTruckLocation || selectedTruck?.current_location || '';
 
-  // Recalculate deadhead if assigned truck changes and origin city is set
-  useEffect(() => {
-    if (selectedTruck?.current_location && originCity) {
-      const truckLoc = selectedTruck.current_location;
-      const originLoc = `${originCity}, ${originState}`.trim();
-      if (truckLoc.toLowerCase() === originLoc.toLowerCase()) {
-        setDeadheadMiles(0);
-      } else {
-        const estDh = estimateCityDistanceMiles(truckLoc, originLoc);
-        // Only override if not already calculated with high precision
-        if (deadheadMiles === 0) {
-          setDeadheadMiles(estDh);
-          setTotalMiles((loadedMiles || 0) + estDh);
+  // Trigger high-precision server-side Mapbox route & deadhead recalculation
+  const recalculateTrip = async (truckLocOverride?: string, newStops?: LoadStop[]) => {
+    const truckLoc = truckLocOverride !== undefined ? truckLocOverride : effectiveTruckLocation;
+    const activeStops = newStops || stops;
+
+    try {
+      const res = await fetch('/api/mapbox/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stops: activeStops.length > 0 ? activeStops : undefined,
+          originCityState: originCity ? `${originCity}, ${originState}` : undefined,
+          destCityState: destinationCity ? `${destinationCity}, ${destinationState}` : undefined,
+          truckLocation: truckLoc || null,
+        }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data) {
+          const d = json.data;
+          setLoadedMiles(d.loadedMiles);
+          setDeadheadMiles(d.deadheadMiles);
+          setTotalMiles(d.totalMiles);
+          setRouteGeometry(d.loadedGeometry);
+          setDeadheadGeometry(d.deadheadGeometry);
+          if (d.legs) setLegs(d.legs);
+          if (d.stops) setStops(d.stops);
+          if (grossAmount > 0 && d.loadedMiles > 0) {
+            setRatePerMile(Math.round((grossAmount / d.loadedMiles) * 100) / 100);
+          }
         }
       }
+    } catch (e) {
+      console.warn('Mapbox route calculation error:', e);
     }
-  }, [truckId, originCity, originState, selectedTruck, loadedMiles, deadheadMiles]);
+  };
+
+  // Recalculate deadhead when assigned truck or truck location changes
+  useEffect(() => {
+    if (effectiveTruckLocation && (originCity || stops.length > 0)) {
+      recalculateTrip(effectiveTruckLocation);
+    }
+  }, [truckId, customTruckLocation]);
 
   // When RateConScanner extracts fields via DeepSeek AI
   const handleExtracted = (data: ExtractedRateCon) => {
@@ -142,6 +172,7 @@ export default function NewLoadPage() {
     if (data.tonu_terms) setTonuTerms(data.tonu_terms);
     if (data.notes) setBrokerNotes(data.notes);
     if (data.stops && data.stops.length > 0) setStops(data.stops);
+    if (data.legs && data.legs.length > 0) setLegs(data.legs);
     if (data.route_geometry) setRouteGeometry(data.route_geometry);
     if (data.deadhead_geometry) setDeadheadGeometry(data.deadhead_geometry);
   };
@@ -242,6 +273,7 @@ export default function NewLoadPage() {
       total_miles: totalMiles || loadedMiles,
       rate_per_mile: ratePerMile || (grossAmount && loadedMiles ? grossAmount / loadedMiles : 0),
       stops: stops,
+      legs: legs,
       route_geometry: routeGeometry,
       deadhead_geometry: deadheadGeometry,
       created_at: '',
@@ -267,6 +299,7 @@ export default function NewLoadPage() {
       totalMiles,
       ratePerMile,
       stops,
+      legs,
       routeGeometry,
       deadheadGeometry,
     ]
@@ -294,10 +327,57 @@ export default function NewLoadPage() {
         </div>
       </div>
 
+      {/* Tractor & Driver Pre-Assignment Bar for Live Deadhead (DH) Calculation */}
+      <div className="tms-card p-3.5 bg-card flex flex-wrap items-center justify-between gap-3 text-xs border border-border">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 flex items-center justify-center shrink-0">
+            <Truck className="h-4 w-4" />
+          </div>
+          <div>
+            <span className="font-semibold text-text-main text-xs block">
+              Assign Tractor Equipment for Live Deadhead (DH)
+            </span>
+            <span className="text-[11px] text-text-muted">
+              Mapbox computes real highway deadhead miles and route from equipment origin to Stop 1
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={truckId}
+            onChange={(e) => {
+              const val = e.target.value;
+              setTruckId(val);
+              const found = scopedTrucks.find((t) => t.id === val);
+              if (found?.assigned_driver_id && !driverId) {
+                setDriverId(found.assigned_driver_id);
+              }
+            }}
+            className="tms-input py-1.5 text-xs w-auto min-w-[210px] font-semibold"
+          >
+            <option value="">-- Select Tractor Equipment --</option>
+            {scopedTrucks.map((t) => (
+              <option key={t.id} value={t.id}>
+                Unit {t.unit_number} ({t.trailer_type} • {t.current_location || 'Loc Pending'})
+              </option>
+            ))}
+          </select>
+
+          <input
+            type="text"
+            value={customTruckLocation}
+            onChange={(e) => setCustomTruckLocation(e.target.value)}
+            placeholder="Or custom location (e.g. Dallas, TX)"
+            className="tms-input py-1.5 text-xs w-48 font-medium"
+          />
+        </div>
+      </div>
+
       {/* 1. Rate Confirmation Document Scanner with DeepSeek AI */}
       <RateConScanner
         onExtracted={handleExtracted}
-        truckLocation={selectedTruck?.current_location}
+        truckLocation={effectiveTruckLocation}
       />
 
       {/* 2. Main Booking Form */}
@@ -485,57 +565,157 @@ export default function NewLoadPage() {
             </div>
           </div>
 
-          {/* Multi-Stop Sequence Timeline (if extracted) */}
+          {/* Multi-Stop Sequence Timeline with Mapbox Leg Miles */}
           {stops.length > 0 && (
-            <div className="mt-4 p-3.5 rounded-xl border border-border bg-card space-y-2.5">
+            <div className="mt-4 p-4 rounded-xl border border-border bg-card space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-text-main text-xs uppercase tracking-wider flex items-center gap-2">
                   <Layers className="h-3.5 w-3.5 text-brand-500" />
                   <span>Stops Schedule ({stops.length} Milestones Extracted)</span>
                 </span>
-                <span className="text-[11px] text-text-muted">
-                  Sequenced by DeepSeek AI
+                <span className="text-[11px] text-text-muted font-mono">
+                  Multi-Stop Highway Routing via Mapbox
                 </span>
               </div>
-              <div className="space-y-2">
-                {stops.map((stop, i) => (
-                  <div
-                    key={stop.id || i}
-                    className="p-2.5 rounded-lg border border-border bg-card-subtle flex flex-wrap items-center justify-between gap-3 text-xs"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] text-white ${
-                          stop.type === 'pickup' ? 'bg-emerald-500' : 'bg-brand-500'
-                        }`}
-                      >
-                        {stop.stop_number}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-text-main">
-                          {stop.facility_name || `${stop.city}, ${stop.state}`}{' '}
-                          <span className="text-[10px] font-normal text-text-muted uppercase">
-                            ({stop.type})
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-text-muted">
-                          {stop.address ? `${stop.address}, ` : ''}
-                          {stop.city}, {stop.state} {stop.zip || ''}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-medium text-text-main flex items-center gap-1 justify-end">
-                        <Calendar className="h-3 w-3 text-text-muted" />
-                        <span>{stop.date}</span>
-                      </div>
-                      <div className="text-[11px] text-text-muted">
-                        {stop.appointment_time || 'Appt Pending'}
-                        {stop.reference_numbers ? ` • Ref: ${stop.reference_numbers}` : ''}
-                      </div>
+
+              {/* Deadhead Banner before Stop 1 (if tractor origin is set) */}
+              {effectiveTruckLocation && (
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Truck className="h-4 w-4 shrink-0" />
+                    <div>
+                      <span className="font-semibold text-text-main">
+                        Equipment Origin: {selectedTruck ? `Unit ${selectedTruck.unit_number} • ` : ''}{effectiveTruckLocation}
+                      </span>
+                      <span className="text-[11px] text-text-muted block">
+                        Transit to first pickup ({stops[0]?.city}, {stops[0]?.state})
+                      </span>
                     </div>
                   </div>
-                ))}
+                  <div className="text-right font-mono">
+                    <span className="text-xs font-bold text-purple-400">
+                      +{deadheadMiles} mi DH
+                    </span>
+                    <span className="text-[10px] text-text-muted block">
+                      ~{Math.round((deadheadMiles / 55) * 10) / 10}h transit
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                {stops.map((stop, i) => {
+                  const isPickup = stop.type === 'pickup' || i === 0;
+                  const isFinal = i === stops.length - 1 && !isPickup;
+                  const isIntermediate = !isPickup && !isFinal;
+
+                  const legMiles =
+                    stop.miles_from_previous ||
+                    (i > 0 && legs[i - 1]?.distance_miles) ||
+                    0;
+                  const legDuration =
+                    stop.duration_from_previous_minutes ||
+                    (i > 0 && legs[i - 1]?.duration_minutes) ||
+                    0;
+                  const legSummary =
+                    stop.leg_summary || (i > 0 && legs[i - 1]?.summary) || '';
+
+                  return (
+                    <React.Fragment key={stop.id || i}>
+                      {/* Leg Milestone Indicator between consecutive stops */}
+                      {i > 0 && (
+                        <div className="flex items-center gap-3 py-1 px-3 text-xs">
+                          <div className="w-0.5 h-6 bg-border ml-2 mr-1" />
+                          <div className="flex flex-wrap items-center gap-2 px-2.5 py-1 rounded bg-card-subtle border border-border/80 text-[11px] font-mono">
+                            <span className="text-brand-500 font-bold">
+                              ↳ Leg {i}: +{legMiles} mi
+                            </span>
+                            {legDuration > 0 && (
+                              <span className="text-text-muted">
+                                (~{Math.round((legDuration / 60) * 10) / 10}h)
+                              </span>
+                            )}
+                            {legSummary && (
+                              <span className="text-text-muted text-[10px] italic">
+                                via {legSummary}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Stop Card */}
+                      <div className="p-3 rounded-lg border border-border bg-card-subtle flex flex-wrap items-center justify-between gap-3 text-xs hover:border-border/80 transition-all">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[11px] text-white shadow-sm ${
+                              isPickup
+                                ? 'bg-emerald-500'
+                                : isIntermediate
+                                ? 'bg-amber-500'
+                                : 'bg-[#F79B4D]'
+                            }`}
+                          >
+                            {stop.stop_number || i + 1}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-text-main flex items-center gap-2">
+                              <span>{stop.facility_name || `${stop.city}, ${stop.state}`}</span>
+                              <span
+                                className={`text-[10px] font-medium uppercase px-1.5 py-0.2 rounded ${
+                                  isPickup
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    : isIntermediate
+                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    : 'bg-brand-500/10 text-brand-400 border border-brand-500/20'
+                                }`}
+                              >
+                                {isPickup ? 'Pickup' : isFinal ? 'Final Delivery' : `Delivery (Drop ${i})`}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-text-muted mt-0.5">
+                              {stop.address ? `${stop.address}, ` : ''}
+                              {stop.city}, {stop.state} {stop.zip || ''}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="font-medium text-text-main flex items-center gap-1 justify-end">
+                            <Calendar className="h-3 w-3 text-text-muted" />
+                            <span>{stop.date}</span>
+                          </div>
+                          <div className="text-[11px] text-text-muted mt-0.5">
+                            {stop.appointment_time || 'Appt Pending'}
+                            {stop.reference_numbers ? ` • Ref: ${stop.reference_numbers}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
+              {/* Total Miles & Mileage Summary Bar */}
+              <div className="pt-2 border-t border-border flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-3 font-mono text-[11px]">
+                  <span className="text-text-muted">
+                    Loaded Route: <strong className="text-text-main">{loadedMiles} mi</strong>
+                  </span>
+                  {deadheadMiles > 0 && (
+                    <span className="text-purple-400">
+                      Deadhead: <strong>+{deadheadMiles} mi</strong>
+                    </span>
+                  )}
+                  <span className="text-brand-500 font-bold">
+                    Total Trip: {totalMiles} mi
+                  </span>
+                </div>
+                {ratePerMile > 0 && (
+                  <span className="font-mono text-emerald-500 font-bold text-xs bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    ${ratePerMile.toFixed(2)}/mi
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -544,7 +724,7 @@ export default function NewLoadPage() {
           <div className="mt-4">
             <MapboxRoutePreview
               load={previewLoad}
-              truckOriginCity={selectedTruck?.current_location}
+              truckOriginCity={effectiveTruckLocation}
             />
           </div>
         </div>

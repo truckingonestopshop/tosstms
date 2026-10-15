@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Load } from '@/types';
+import { Load, LoadStop, RouteLeg } from '@/types';
 import { useTheme } from '@/lib/context/ThemeContext';
-import { MapPin, Navigation, Clock, AlertCircle, Truck, ArrowRight } from 'lucide-react';
+import { Clock, AlertCircle, Truck, ArrowRight, Route as RouteIcon, MapPin } from 'lucide-react';
 import { geocodeLocation, calculateMapboxRoute } from '@/lib/mapbox/routing';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -11,6 +11,7 @@ interface MapboxRoutePreviewProps {
   load: Load & {
     route_geometry?: { type: 'LineString'; coordinates: [number, number][] };
     deadhead_geometry?: { type: 'LineString'; coordinates: [number, number][] };
+    legs?: RouteLeg[];
   };
   className?: string;
   truckOriginCity?: string;
@@ -23,25 +24,36 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
   const currentThemeRef = useRef<string | null>(null);
   const lastCoordinatesRef = useRef<string>('');
 
-  const markersRef = useRef<{ origin?: any; dest?: any; truck?: any }>({});
+  const stopMarkersRef = useRef<any[]>([]);
+  const truckMarkerRef = useRef<any>(null);
 
   const { theme } = useTheme();
   const [tokenMissing, setTokenMissing] = useState(false);
+  const [activeLegs, setActiveLegs] = useState<RouteLeg[]>(load.legs || []);
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
+  // Sync legs if load prop updates
+  useEffect(() => {
+    if (load.legs && load.legs.length > 0) {
+      setActiveLegs(load.legs);
+    }
+  }, [load.legs]);
 
   // Memoized metrics
   const loadedMiles = load.loaded_miles || load.total_miles || 0;
   const deadheadMiles = load.deadhead_miles || 0;
-  const totalTripMiles = load.total_miles || (loadedMiles + deadheadMiles);
+  const totalTripMiles = load.total_miles || loadedMiles + deadheadMiles;
   const estHours = Math.round((totalTripMiles / 55) * 10) / 10;
-  const rpm = load.rate_per_mile || (load.gross_amount && loadedMiles > 0 ? load.gross_amount / loadedMiles : 0);
+  const rpm =
+    load.rate_per_mile ||
+    (load.gross_amount && loadedMiles > 0 ? load.gross_amount / loadedMiles : 0);
 
   // Helper to ensure sources & layers exist
   const ensureSourcesAndLayers = (map: any) => {
     if (!map || !map.isStyleLoaded()) return false;
 
-    // 1. Loaded Route Source & Layers (Casing for contrast + vibrant Orange line)
+    // 1. Loaded Route Source & Layers (Casing for contrast + signature vibrant Orange line)
     if (!map.getSource('loaded-route')) {
       map.addSource('loaded-route', {
         type: 'geojson',
@@ -62,7 +74,7 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
         paint: {
           'line-color': '#000000',
           'line-width': 7,
-          'line-opacity': 0.45,
+          'line-opacity': 0.5,
         },
       });
     }
@@ -131,7 +143,10 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
         if (isCancelled || !mapContainerRef.current) return;
 
         currentThemeRef.current = theme;
-        const mapStyle = theme === 'dark' ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/light-v11';
+        const mapStyle =
+          theme === 'dark'
+            ? 'mapbox://styles/mapbox/dark-v11'
+            : 'mapbox://styles/mapbox/light-v11';
 
         const map = new mapboxgl.Map({
           container: mapContainerRef.current,
@@ -147,11 +162,7 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
           if (isCancelled) return;
           mapRef.current = map;
           ensureSourcesAndLayers(map);
-
-          // Force resize to container
           map.resize();
-
-          // Trigger route draw immediately
           applyRouteData(map, mapboxgl);
         });
       } catch (err) {
@@ -161,7 +172,6 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
 
     mountMap();
 
-    // Auto-resize on window / container size adjustments (crucial for modals)
     const resizeObserver = new ResizeObserver(() => {
       if (mapRef.current) {
         mapRef.current.resize();
@@ -185,12 +195,15 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
   // 2. Handle theme updates ONLY when theme actually changes
   useEffect(() => {
     if (!mapRef.current || !currentThemeRef.current) return;
-    if (currentThemeRef.current === theme) return; // Ignore if unchanged
+    if (currentThemeRef.current === theme) return;
 
     currentThemeRef.current = theme;
     const map = mapRef.current;
     const mapboxgl = mapboxglRef.current;
-    const mapStyle = theme === 'dark' ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/light-v11';
+    const mapStyle =
+      theme === 'dark'
+        ? 'mapbox://styles/mapbox/dark-v11'
+        : 'mapbox://styles/mapbox/light-v11';
 
     map.setStyle(mapStyle);
     map.once('style.load', () => {
@@ -201,7 +214,7 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
     });
   }, [theme]);
 
-  // 3. Centralized route data applier
+  // 3. Centralized multi-stop route and marker renderer
   const applyRouteData = async (map: any, mapboxgl: any) => {
     if (!map || !map.isStyleLoaded()) {
       map.once('style.load', () => applyRouteData(map, mapboxgl));
@@ -210,44 +223,182 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
 
     ensureSourcesAndLayers(map);
 
-    const originQuery = `${load.origin_city || ''}, ${load.origin_state || ''}`.trim();
-    const destQuery = `${load.destination_city || ''}, ${load.destination_state || ''}`.trim();
+    // Determine normalized stops list
+    let canonicalStops: LoadStop[] = [];
+    if (load.stops && load.stops.length > 0) {
+      canonicalStops = [...load.stops];
+    } else {
+      if (load.origin_city) {
+        canonicalStops.push({
+          id: 'stop-pickup-1',
+          stop_number: 1,
+          type: 'pickup',
+          city: load.origin_city,
+          state: load.origin_state || '',
+          date: load.pickup_date || '',
+          status: 'ready',
+        });
+      }
+      if (load.destination_city) {
+        canonicalStops.push({
+          id: 'stop-delivery-2',
+          stop_number: 2,
+          type: 'delivery',
+          city: load.destination_city,
+          state: load.destination_state || '',
+          date: load.delivery_date || '',
+          status: 'pending',
+        });
+      }
+    }
 
-    if (!originQuery || !destQuery) return;
+    if (canonicalStops.length === 0) return;
 
     try {
-      // Approximate fallback coordinates for major freight regions
-      const getQuickCoords = (city: string, state: string): [number, number] => {
-        const c = city.toLowerCase();
-        if (c.includes('houston')) return [-95.3698, 29.7604];
-        if (c.includes('memphis')) return [-90.049, 35.1495];
-        if (c.includes('chicago')) return [-87.6298, 41.8781];
-        if (c.includes('atlanta')) return [-84.388, 33.749];
-        if (c.includes('dallas')) return [-96.797, 32.7767];
-        if (c.includes('indianapolis')) return [-86.1581, 39.7684];
-        if (c.includes('savannah')) return [-81.0998, 32.0809];
-        if (c.includes('charlotte')) return [-80.8431, 35.2271];
-        if (c.includes('ardmore')) return [-97.1436, 34.1743];
-        if (c.includes('shreveport')) return [-93.7502, 32.5252];
-        return [-95.7129, 37.0902];
-      };
-
-      // Geocode or use quick coords
-      const [oRes, dRes] = await Promise.all([
-        geocodeLocation(originQuery),
-        geocodeLocation(destQuery),
-      ]);
-
-      const originCoord = oRes || getQuickCoords(load.origin_city, load.origin_state);
-      const destCoord = dRes || getQuickCoords(load.destination_city, load.destination_state);
-
-      let truckCoord: [number, number] | null = null;
-      if (truckOriginCity && truckOriginCity.trim().length > 2) {
-        truckCoord = (await geocodeLocation(truckOriginCity)) || getQuickCoords(truckOriginCity, '');
+      // 1. Geocode each stop coordinate
+      const stopCoords: [number, number][] = [];
+      for (let i = 0; i < canonicalStops.length; i++) {
+        const s = canonicalStops[i];
+        let coords: [number, number] | null = s.coordinates || null;
+        if (!coords) {
+          const query = s.address && s.city && s.state
+            ? `${s.address}, ${s.city}, ${s.state}`
+            : `${s.city}, ${s.state}`;
+          coords = await geocodeLocation(query);
+          if (!coords && s.address) {
+            coords = await geocodeLocation(`${s.city}, ${s.state}`);
+          }
+        }
+        if (!coords) {
+          coords = [-95.7129 + i * 1.5, 37.0902 + i * 0.5];
+        }
+        stopCoords.push(coords);
       }
 
-      // Instant baseline route (guarantees the orange line displays immediately)
-      let initialCoords: [number, number][] = [originCoord, destCoord];
+      // 2. Remove all previous markers
+      stopMarkersRef.current.forEach((m) => m.remove());
+      stopMarkersRef.current = [];
+
+      // 3. Create fresh markers for ALL stops
+      canonicalStops.forEach((stop, idx) => {
+        const coord = stopCoords[idx];
+        const isPickup = stop.type === 'pickup' || idx === 0;
+        const isFinal = idx === canonicalStops.length - 1 && !isPickup;
+        const isIntermediate = !isPickup && !isFinal;
+
+        const el = document.createElement('div');
+        let bgClass = 'bg-brand-500';
+        let badgeLabel = String(stop.stop_number || idx + 1);
+
+        if (isPickup) {
+          bgClass = 'bg-emerald-500';
+        } else if (isIntermediate) {
+          bgClass = 'bg-amber-500';
+        } else {
+          bgClass = 'bg-[#F79B4D]';
+        }
+
+        el.className = `w-6 h-6 ${bgClass} rounded-full border-2 border-white shadow-xl flex items-center justify-center text-white text-[11px] font-bold cursor-pointer hover:scale-110 transition-transform`;
+        el.innerText = badgeLabel;
+
+        const stopTitle = isPickup
+          ? `Stop ${badgeLabel} • Pickup`
+          : isFinal
+          ? `Stop ${badgeLabel} • Final Delivery`
+          : `Stop ${badgeLabel} • Delivery (Drop ${idx})`;
+
+        const legInfoHtml = stop.miles_from_previous
+          ? `<div class="text-[11px] font-mono font-semibold text-emerald-400 mt-1.5 pt-1.5 border-t border-border">Leg: +${stop.miles_from_previous} mi from Stop ${idx}</div>`
+          : '';
+
+        const popup = new mapboxgl.Popup({ offset: 15 }).setHTML(`
+          <div class="p-2 text-xs leading-snug">
+            <div class="font-bold uppercase tracking-wider text-[10px] text-text-muted mb-0.5">${stopTitle}</div>
+            <div class="font-semibold text-text-main text-[12px]">${stop.facility_name || `${stop.city}, ${stop.state}`}</div>
+            <div class="text-[11px] text-text-muted">${stop.address ? `${stop.address}, ` : ''}${stop.city}, ${stop.state} ${stop.zip || ''}</div>
+            <div class="text-[11px] text-text-muted mt-1 flex items-center gap-1">
+              <span>📅 ${stop.date}</span>
+              ${stop.appointment_time ? `<span>• ⏰ ${stop.appointment_time}</span>` : ''}
+            </div>
+            ${legInfoHtml}
+          </div>
+        `);
+
+        const marker = new mapboxgl.Marker(el).setLngLat(coord).setPopup(popup).addTo(map);
+        stopMarkersRef.current.push(marker);
+      });
+
+      // 4. Handle Tractor Deadhead Marker & Geometry
+      let truckCoord: [number, number] | null = null;
+      if (truckOriginCity && truckOriginCity.trim().length > 2) {
+        truckCoord = await geocodeLocation(truckOriginCity);
+      }
+
+      const dhSource = map.getSource('deadhead-route');
+      if (truckCoord && stopCoords[0]) {
+        let dhCoords: [number, number][] = [truckCoord, stopCoords[0]];
+        if (load.deadhead_geometry?.coordinates && load.deadhead_geometry.coordinates.length > 1) {
+          dhCoords = load.deadhead_geometry.coordinates;
+        }
+
+        if (dhSource) {
+          dhSource.setData({
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: dhCoords },
+          });
+        }
+
+        if (!truckMarkerRef.current) {
+          const elTruck = document.createElement('div');
+          elTruck.className =
+            'w-7 h-7 bg-purple-600 rounded-full border-2 border-white shadow-xl flex items-center justify-center text-white text-[12px] cursor-pointer hover:scale-110 transition-transform';
+          elTruck.innerHTML = '🚚';
+          truckMarkerRef.current = new mapboxgl.Marker(elTruck).setLngLat(truckCoord).addTo(map);
+        } else {
+          truckMarkerRef.current.setLngLat(truckCoord);
+        }
+
+        truckMarkerRef.current.setPopup(
+          new mapboxgl.Popup({ offset: 15 }).setHTML(`
+            <div class="p-2 text-xs">
+              <div class="font-bold text-purple-400 uppercase text-[10px] mb-0.5">Assigned Tractor Location</div>
+              <div class="font-semibold text-text-main text-[12px]">${truckOriginCity}</div>
+              <div class="text-[11px] font-mono text-purple-300 mt-1">
+                Deadhead: <strong>${deadheadMiles} mi</strong> to Stop 1 (${canonicalStops[0]?.city}, ${canonicalStops[0]?.state})
+              </div>
+            </div>
+          `)
+        );
+
+        // Fetch high-fidelity highway deadhead route if needed
+        if (!load.deadhead_geometry?.coordinates) {
+          calculateMapboxRoute([truckCoord, stopCoords[0]]).then((dhRes) => {
+            if (dhRes?.geometry && map.getSource('deadhead-route')) {
+              map.getSource('deadhead-route').setData({
+                type: 'Feature',
+                properties: {},
+                geometry: dhRes.geometry,
+              });
+            }
+          });
+        }
+      } else {
+        if (dhSource) {
+          dhSource.setData({
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: [] },
+          });
+        }
+        if (truckMarkerRef.current) {
+          truckMarkerRef.current.remove();
+          truckMarkerRef.current = null;
+        }
+      }
+
+      // 5. Update Loaded Route Line (connects all stops)
+      let initialCoords: [number, number][] = stopCoords;
       if (load.route_geometry?.coordinates && load.route_geometry.coordinates.length > 1) {
         initialCoords = load.route_geometry.coordinates;
       }
@@ -264,92 +415,35 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
         });
       }
 
-      // Update Markers
-      // Origin Marker (Pickup #1)
-      if (!markersRef.current.origin) {
-        const elOrigin = document.createElement('div');
-        elOrigin.className =
-          'w-6 h-6 bg-emerald-500 rounded-full border-2 border-white shadow-xl flex items-center justify-center text-white text-[11px] font-bold cursor-pointer';
-        elOrigin.innerText = '1';
-        markersRef.current.origin = new mapboxgl.Marker(elOrigin).setLngLat(originCoord).addTo(map);
-      } else {
-        markersRef.current.origin.setLngLat(originCoord);
+      // If high-resolution highway geometry not yet provided, calculate via Mapbox
+      if (!load.route_geometry?.coordinates && stopCoords.length >= 2) {
+        calculateMapboxRoute(stopCoords).then((highwayRoute) => {
+          if (highwayRoute?.geometry && map.getSource('loaded-route')) {
+            map.getSource('loaded-route').setData({
+              type: 'Feature',
+              properties: {},
+              geometry: highwayRoute.geometry,
+            });
+          }
+          if (highwayRoute?.legs && (!load.legs || load.legs.length === 0)) {
+            const calculatedLegs: RouteLeg[] = highwayRoute.legs.map((leg, idx) => ({
+              leg_index: idx + 1,
+              from_stop_number: canonicalStops[idx]?.stop_number || idx + 1,
+              to_stop_number: canonicalStops[idx + 1]?.stop_number || idx + 2,
+              from_name: canonicalStops[idx]?.facility_name || `${canonicalStops[idx]?.city}, ${canonicalStops[idx]?.state}`,
+              to_name: canonicalStops[idx + 1]?.facility_name || `${canonicalStops[idx + 1]?.city}, ${canonicalStops[idx + 1]?.state}`,
+              distance_miles: leg.distanceMiles,
+              duration_minutes: leg.durationMinutes,
+              summary: leg.summary,
+            }));
+            setActiveLegs(calculatedLegs);
+          }
+        });
       }
 
-      markersRef.current.origin.setPopup(
-        new mapboxgl.Popup({ offset: 15 }).setHTML(
-          `<div class="p-1 text-xs"><strong>Pickup #1</strong><br/>${originQuery}<br/>${load.pickup_date || ''}</div>`
-        )
-      );
-
-      // Destination Marker (Delivery)
-      const stopNum = load.stops && load.stops.length > 2 ? String(load.stops.length) : '2';
-      if (!markersRef.current.dest) {
-        const elDest = document.createElement('div');
-        elDest.className =
-          'w-6 h-6 bg-brand-500 rounded-full border-2 border-white shadow-xl flex items-center justify-center text-white text-[11px] font-bold cursor-pointer';
-        elDest.innerText = stopNum;
-        markersRef.current.dest = new mapboxgl.Marker(elDest).setLngLat(destCoord).addTo(map);
-      } else {
-        markersRef.current.dest.setLngLat(destCoord);
-        markersRef.current.dest.getElement().innerText = stopNum;
-      }
-
-      markersRef.current.dest.setPopup(
-        new mapboxgl.Popup({ offset: 15 }).setHTML(
-          `<div class="p-1 text-xs"><strong>Delivery</strong><br/>${destQuery}<br/>${load.delivery_date || ''}</div>`
-        )
-      );
-
-      // Deadhead Marker (Tractor origin)
-      const dhSource = map.getSource('deadhead-route');
-      if (truckCoord) {
-        let dhCoords: [number, number][] = [truckCoord, originCoord];
-        if (load.deadhead_geometry?.coordinates && load.deadhead_geometry.coordinates.length > 1) {
-          dhCoords = load.deadhead_geometry.coordinates;
-        }
-
-        if (dhSource) {
-          dhSource.setData({
-            type: 'Feature',
-            properties: {},
-            geometry: { type: 'LineString', coordinates: dhCoords },
-          });
-        }
-
-        if (!markersRef.current.truck) {
-          const elTruck = document.createElement('div');
-          elTruck.className =
-            'w-6 h-6 bg-purple-600 rounded-full border-2 border-white shadow-xl flex items-center justify-center text-white text-[11px] font-bold cursor-pointer';
-          elTruck.innerHTML = '🚚';
-          markersRef.current.truck = new mapboxgl.Marker(elTruck).setLngLat(truckCoord).addTo(map);
-        } else {
-          markersRef.current.truck.setLngLat(truckCoord);
-        }
-
-        markersRef.current.truck.setPopup(
-          new mapboxgl.Popup({ offset: 15 }).setHTML(
-            `<div class="p-1 text-xs"><strong>Assigned Tractor</strong><br/>${truckOriginCity}<br/><em>Deadhead: ${deadheadMiles} mi</em></div>`
-          )
-        );
-      } else {
-        if (dhSource) {
-          dhSource.setData({
-            type: 'Feature',
-            properties: {},
-            geometry: { type: 'LineString', coordinates: [] },
-          });
-        }
-        if (markersRef.current.truck) {
-          markersRef.current.truck.remove();
-          markersRef.current.truck = null;
-        }
-      }
-
-      // Smoothly fit bounds around origin and destination
+      // 6. Smoothly Fit Map Bounds around ALL stops and tractor
       const bounds = new mapboxgl.LngLatBounds();
-      bounds.extend(originCoord);
-      bounds.extend(destCoord);
+      stopCoords.forEach((coord) => bounds.extend(coord));
       if (truckCoord) bounds.extend(truckCoord);
 
       map.fitBounds(bounds, {
@@ -357,38 +451,16 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
         maxZoom: 7.5,
         duration: 800,
       });
-
-      // Fetch high-fidelity highway driving route asynchronously and snap to highway
-      if (!load.route_geometry?.coordinates) {
-        calculateMapboxRoute([originCoord, destCoord]).then((highwayRoute) => {
-          if (highwayRoute?.geometry?.coordinates && map.getSource('loaded-route')) {
-            map.getSource('loaded-route').setData({
-              type: 'Feature',
-              properties: {},
-              geometry: highwayRoute.geometry,
-            });
-          }
-        });
-      }
-
-      if (truckCoord && !load.deadhead_geometry?.coordinates) {
-        calculateMapboxRoute([truckCoord, originCoord]).then((highwayDh) => {
-          if (highwayDh?.geometry?.coordinates && map.getSource('deadhead-route')) {
-            map.getSource('deadhead-route').setData({
-              type: 'Feature',
-              properties: {},
-              geometry: highwayDh.geometry,
-            });
-          }
-        });
-      }
     } catch (err) {
-      console.warn('Mapbox route update error:', err);
+      console.warn('Mapbox route preview update error:', err);
     }
   };
 
-  // 4. Update route whenever origin, destination, or assigned truck changes
-  const locationKey = `${load.origin_city}|${load.origin_state}|${load.destination_city}|${load.destination_state}|${truckOriginCity || ''}|${load.route_geometry ? 'geom' : 'auto'}`;
+  // 4. Update route whenever stops, origin/dest, or tractor changes
+  const stopsKey = (load.stops || [])
+    .map((s) => `${s.stop_number}-${s.city}-${s.state}`)
+    .join('|');
+  const locationKey = `${load.origin_city}|${load.origin_state}|${load.destination_city}|${load.destination_state}|${truckOriginCity || ''}|${stopsKey}|${load.route_geometry ? 'geom' : 'auto'}`;
 
   useEffect(() => {
     if (!mapRef.current || !mapboxglRef.current) return;
@@ -398,27 +470,45 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
     applyRouteData(mapRef.current, mapboxglRef.current);
   }, [locationKey]);
 
+  // Build itinerary text list
+  const displayStops = load.stops && load.stops.length > 0 ? load.stops : [
+    { city: load.origin_city, state: load.origin_state, type: 'pickup' },
+    { city: load.destination_city, state: load.destination_state, type: 'delivery' },
+  ];
+
   return (
     <div className={`relative rounded-xl overflow-hidden border border-border bg-card shadow-sm ${className}`}>
-      {/* Route Header Info with Deadhead & RPM */}
+      {/* Route Header Info with Multi-Stop Chain, Deadhead & RPM */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-card border-b border-border text-xs">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           {truckOriginCity && (
-            <>
-              <div className="flex items-center gap-1 font-semibold text-purple-400">
-                <Truck className="h-3.5 w-3.5" />
-                <span>{truckOriginCity}</span>
-              </div>
-              <span className="text-text-muted">⇢</span>
-            </>
+            <div className="flex items-center gap-1 font-semibold text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20 text-[11px]">
+              <Truck className="h-3 w-3" />
+              <span>{truckOriginCity}</span>
+              <span className="text-purple-300 font-mono text-[10px]">({deadheadMiles} mi DH)</span>
+              <span className="text-text-muted ml-0.5">⇢</span>
+            </div>
           )}
-          <span className="font-semibold text-emerald-500">
-            {load.origin_city}, {load.origin_state}
-          </span>
-          <ArrowRight className="h-3 w-3 text-text-muted" />
-          <span className="font-semibold text-brand-500">
-            {load.destination_city}, {load.destination_state}
-          </span>
+
+          {displayStops.map((st, i) => (
+            <React.Fragment key={i}>
+              <span
+                className={`font-semibold flex items-center gap-1 ${
+                  i === 0
+                    ? 'text-emerald-500'
+                    : i === displayStops.length - 1
+                    ? 'text-[#F79B4D]'
+                    : 'text-amber-400'
+                }`}
+              >
+                <span className="text-[10px] opacity-70">[{i + 1}]</span>
+                {st.city}, {st.state}
+              </span>
+              {i < displayStops.length - 1 && (
+                <ArrowRight className="h-3 w-3 text-text-muted flex-shrink-0" />
+              )}
+            </React.Fragment>
+          ))}
         </div>
 
         {/* Mileage KPI Badges */}
@@ -450,12 +540,38 @@ export function MapboxRoutePreview({ load, className = '', truckOriginCity }: Ma
         </div>
       </div>
 
+      {/* Leg Mileage Breakdown Strip (Shown when multi-stop exists) */}
+      {activeLegs && activeLegs.length > 0 && (
+        <div className="bg-card-subtle px-4 py-2 border-b border-border flex flex-wrap items-center gap-2 text-[11px]">
+          <div className="flex items-center gap-1 text-text-muted font-semibold uppercase text-[10px] mr-1">
+            <RouteIcon className="h-3 w-3 text-brand-500" />
+            <span>Leg Miles:</span>
+          </div>
+          {activeLegs.map((leg) => (
+            <div
+              key={leg.leg_index}
+              className="px-2 py-0.5 rounded bg-card border border-border text-text-main font-mono flex items-center gap-1.5"
+            >
+              <span className="text-text-muted font-normal">
+                Stop {leg.from_stop_number}→{leg.to_stop_number}:
+              </span>
+              <span className="font-bold text-brand-500">{leg.distance_miles} mi</span>
+              {leg.duration_minutes ? (
+                <span className="text-text-muted text-[10px]">
+                  (~{Math.round((leg.duration_minutes / 60) * 10) / 10}h)
+                </span>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Map Canvas */}
-      <div className="relative w-full h-[280px] bg-card-subtle flex items-center justify-center">
+      <div className="relative w-full h-[320px] bg-card-subtle flex items-center justify-center">
         {tokenMissing ? (
           <div className="flex flex-col items-center justify-center p-6 text-center max-w-sm">
             <div className="w-10 h-10 rounded-full bg-brand-500/10 text-brand-500 flex items-center justify-center mb-2">
-              <Navigation className="h-5 w-5" />
+              <MapPin className="h-5 w-5" />
             </div>
             <h4 className="text-xs font-semibold text-text-main mb-1">Interactive Route Preview</h4>
             <p className="text-[11px] text-text-muted mb-2">

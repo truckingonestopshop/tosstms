@@ -89,6 +89,17 @@ export type LoadStatus =
 
 export type StopStatus = 'ready' | 'en_route' | 'arrived' | 'completed' | 'pending';
 
+export interface RouteLeg {
+  leg_index: number;
+  from_stop_number: number;
+  to_stop_number: number;
+  from_name: string;
+  to_name: string;
+  distance_miles: number;
+  duration_minutes: number;
+  summary?: string;
+}
+
 export interface LoadStop {
   id: string;
   stop_number: number;
@@ -108,6 +119,11 @@ export interface LoadStop {
   instructions?: string[];
   status: StopStatus;
   notes?: string;
+  coordinates?: [number, number]; // [lng, lat]
+  miles_to_next?: number;
+  miles_from_previous?: number;
+  duration_from_previous_minutes?: number;
+  leg_summary?: string;
 }
 
 export interface Load {
@@ -137,6 +153,15 @@ export interface Load {
   weight_lbs?: number;
   broker_notes?: string;
   stops?: LoadStop[];
+  legs?: RouteLeg[];
+  route_geometry?: {
+    type: 'LineString';
+    coordinates: [number, number][];
+  };
+  deadhead_geometry?: {
+    type: 'LineString';
+    coordinates: [number, number][];
+  };
   created_at: string;
   updated_at: string;
   // Computed helpers for UI
@@ -244,6 +269,7 @@ export interface ExtractedRateCon {
   tonu_terms?: string;
   notes?: string;
   stops?: LoadStop[];
+  legs?: RouteLeg[];
   deadhead_miles?: number;
   loaded_miles?: number;
   total_miles?: number;
@@ -268,6 +294,11 @@ export interface MapboxRouteResult {
   waypoints: {
     name: string;
     location: [number, number];
+  }[];
+  legs?: {
+    distanceMiles: number;
+    durationMinutes: number;
+    summary: string;
   }[];
 }
 

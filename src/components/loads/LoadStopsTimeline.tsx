@@ -56,6 +56,18 @@ export function LoadStopsTimeline({ stops = [], className = '' }: LoadStopsTimel
                 {stop.address ? `${stop.address}, ` : ''}
                 {stop.city}, {stop.state} {stop.zip || ''}
               </div>
+              {stop.miles_from_previous !== undefined && stop.miles_from_previous > 0 && (
+                <div className="text-[11px] font-mono font-medium text-brand-500 mt-1 flex items-center gap-1.5">
+                  <span className="bg-brand-500/10 px-1.5 py-0.5 rounded border border-brand-500/20">
+                    +{stop.miles_from_previous} mi from Stop {idx}
+                  </span>
+                  {stop.leg_summary && (
+                    <span className="text-text-muted text-[10px] italic">
+                      via {stop.leg_summary}
+                    </span>
+                  )}
+                </div>
+              )}
               {stop.commodities && (
                 <div className="text-[11px] text-text-muted mt-0.5">
                   Commodity: {stop.commodities}

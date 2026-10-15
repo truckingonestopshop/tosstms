@@ -1,6 +1,9 @@
-import { MapboxRouteResult } from '@/types';
+import { MapboxRouteResult, RouteLeg, LoadStop } from '@/types';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
+
+// In-memory geocode cache to avoid duplicate API calls
+const geocodeCache = new Map<string, [number, number]>();
 
 /**
  * Geocodes an address or city/state to [longitude, latitude] using Mapbox Geocoding API
@@ -8,6 +11,11 @@ const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
 export async function geocodeLocation(query: string): Promise<[number, number] | null> {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || MAPBOX_TOKEN;
   if (!token || !query || query.trim().length === 0) return null;
+
+  const normalized = query.trim().toLowerCase();
+  if (geocodeCache.has(normalized)) {
+    return geocodeCache.get(normalized)!;
+  }
 
   try {
     const encoded = encodeURIComponent(query.trim());
@@ -17,7 +25,9 @@ export async function geocodeLocation(query: string): Promise<[number, number] |
     if (!res.ok) return null;
     const data = await res.json();
     if (data.features && data.features.length > 0) {
-      return data.features[0].center as [number, number]; // [lng, lat]
+      const coords = data.features[0].center as [number, number]; // [lng, lat]
+      geocodeCache.set(normalized, coords);
+      return coords;
     }
     return null;
   } catch (err) {
@@ -27,7 +37,8 @@ export async function geocodeLocation(query: string): Promise<[number, number] |
 }
 
 /**
- * Calculates driving route between waypoints using Mapbox Directions API
+ * Calculates driving route between waypoints using Mapbox Directions API,
+ * extracting overall geometry and individual legs between consecutive stops.
  */
 export async function calculateMapboxRoute(
   coordinates: [number, number][]
@@ -53,6 +64,13 @@ export async function calculateMapboxRoute(
       const distanceMiles = Math.round((distanceMeters / 1609.344) * 10) / 10;
       const durationMinutes = Math.round(durationSeconds / 60);
 
+      // Extract individual leg metrics
+      const legs = (route.legs || []).map((l: any) => ({
+        distanceMiles: Math.round((l.distance / 1609.344) * 10) / 10,
+        durationMinutes: Math.round(l.duration / 60),
+        summary: l.summary || '',
+      }));
+
       return {
         distanceMiles,
         durationMinutes,
@@ -61,6 +79,7 @@ export async function calculateMapboxRoute(
           name: w.name,
           location: w.location,
         })),
+        legs,
       };
     }
     return null;
@@ -75,6 +94,7 @@ export interface FreightTripCalculation {
   deadheadMiles: number;
   totalMiles: number;
   durationMinutes: number;
+  legs: RouteLeg[];
   loadedGeometry?: {
     type: 'LineString';
     coordinates: [number, number][];
@@ -83,90 +103,192 @@ export interface FreightTripCalculation {
     type: 'LineString';
     coordinates: [number, number][];
   };
-  stopCoordinates: {
-    label: string;
-    cityState: string;
-    coordinates: [number, number];
-    isPickup?: boolean;
-    isDelivery?: boolean;
-    isDeadheadOrigin?: boolean;
-  }[];
+  stops: LoadStop[];
 }
 
 /**
- * Comprehensive freight route calculation:
- * - Computes exact loaded highway miles across all stops in sequence
- * - Computes empty deadhead (DH) miles from current equipment location to Stop 1
- * - Returns route geometries for rich interactive Mapbox GL rendering
+ * Comprehensive multi-stop freight route & deadhead calculation engine:
+ * - Geocodes every stop (using full street address when available or city/state)
+ * - Computes multi-point loaded highway route via Mapbox Directions API
+ * - Computes leg-by-leg mileage and transit times between consecutive stops
+ * - Enriches each stop with coordinates, miles to next, and miles from previous
+ * - Computes empty deadhead (DH) miles and geometry from equipment origin to Stop 1
  */
 export async function calculateFreightTripDetails(options: {
-  originCityState: string;
-  destCityState: string;
+  originCityState?: string;
+  destCityState?: string;
   intermediateStops?: string[];
+  stops?: LoadStop[];
   truckLocation?: string | null;
 }): Promise<FreightTripCalculation> {
-  const { originCityState, destCityState, intermediateStops = [], truckLocation } = options;
+  const { originCityState, destCityState, intermediateStops = [], stops: inputStops, truckLocation } = options;
 
-  const stopCoordsList: FreightTripCalculation['stopCoordinates'] = [];
+  // Build canonical list of stops
+  let stopsList: LoadStop[] = [];
 
-  // 1. Geocode all loaded stops in order
-  const allStopQueries = [originCityState, ...intermediateStops, destCityState].filter(Boolean);
-  const geocodedStops: [number, number][] = [];
+  if (inputStops && inputStops.length > 0) {
+    stopsList = inputStops.map((s, idx) => ({
+      ...s,
+      stop_number: s.stop_number || idx + 1,
+    }));
+  } else {
+    // Construct from origin, intermediate, and destination
+    if (originCityState) {
+      const [city, state] = originCityState.split(',').map((p) => p.trim());
+      stopsList.push({
+        id: 'stop-pickup-1',
+        stop_number: 1,
+        type: 'pickup',
+        city: city || originCityState,
+        state: state || '',
+        date: new Date().toISOString().split('T')[0],
+        status: 'ready',
+      });
+    }
 
-  for (let i = 0; i < allStopQueries.length; i++) {
-    const q = allStopQueries[i];
-    const coords = await geocodeLocation(q);
-    if (coords) {
-      geocodedStops.push(coords);
-      stopCoordsList.push({
-        label: i === 0 ? 'Pickup' : i === allStopQueries.length - 1 ? 'Delivery' : `Stop ${i + 1}`,
-        cityState: q,
-        coordinates: coords,
-        isPickup: i === 0,
-        isDelivery: i === allStopQueries.length - 1,
+    if (intermediateStops && intermediateStops.length > 0) {
+      intermediateStops.forEach((st, idx) => {
+        const [city, state] = st.split(',').map((p) => p.trim());
+        stopsList.push({
+          id: `stop-intermediate-${idx + 1}`,
+          stop_number: stopsList.length + 1,
+          type: 'delivery',
+          city: city || st,
+          state: state || '',
+          date: new Date().toISOString().split('T')[0],
+          status: 'pending',
+        });
+      });
+    }
+
+    if (destCityState) {
+      const [city, state] = destCityState.split(',').map((p) => p.trim());
+      stopsList.push({
+        id: `stop-delivery-${stopsList.length + 1}`,
+        stop_number: stopsList.length + 1,
+        type: 'delivery',
+        city: city || destCityState,
+        state: state || '',
+        date: new Date().toISOString().split('T')[0],
+        status: 'pending',
       });
     }
   }
 
-  // Calculate Loaded Route
+  // Geocode each stop
+  const geocodedCoordinates: [number, number][] = [];
+  for (let i = 0; i < stopsList.length; i++) {
+    const s = stopsList[i];
+    let query = '';
+    if (s.address && s.city && s.state) {
+      query = `${s.address}, ${s.city}, ${s.state} ${s.zip || ''}`.trim();
+    } else if (s.city && s.state) {
+      query = `${s.city}, ${s.state}`.trim();
+    } else if (s.city) {
+      query = s.city.trim();
+    }
+
+    let coords: [number, number] | null = s.coordinates || null;
+    if (!coords && query) {
+      coords = await geocodeLocation(query);
+      // Fallback to city, state if exact address geocode returned empty
+      if (!coords && s.address && s.city && s.state) {
+        coords = await geocodeLocation(`${s.city}, ${s.state}`);
+      }
+    }
+
+    // Default coordinate if completely unreachable
+    if (!coords) {
+      coords = [-95.7129 + i * 1.5, 37.0902 + i * 0.5];
+    }
+
+    stopsList[i].coordinates = coords;
+    geocodedCoordinates.push(coords);
+  }
+
   let loadedMiles = 0;
   let durationMinutes = 0;
   let loadedGeometry: FreightTripCalculation['loadedGeometry'];
+  const legs: RouteLeg[] = [];
 
-  if (geocodedStops.length >= 2) {
-    const loadedRoute = await calculateMapboxRoute(geocodedStops);
+  // Compute Loaded Route through ALL stops
+  if (geocodedCoordinates.length >= 2) {
+    const loadedRoute = await calculateMapboxRoute(geocodedCoordinates);
     if (loadedRoute) {
       loadedMiles = loadedRoute.distanceMiles;
       durationMinutes = loadedRoute.durationMinutes;
       loadedGeometry = loadedRoute.geometry;
+
+      if (loadedRoute.legs && loadedRoute.legs.length > 0) {
+        loadedRoute.legs.forEach((l, idx) => {
+          const fromStop = stopsList[idx];
+          const toStop = stopsList[idx + 1];
+          const leg: RouteLeg = {
+            leg_index: idx + 1,
+            from_stop_number: fromStop.stop_number,
+            to_stop_number: toStop.stop_number,
+            from_name: fromStop.facility_name || `${fromStop.city}, ${fromStop.state}`,
+            to_name: toStop.facility_name || `${toStop.city}, ${toStop.state}`,
+            distance_miles: l.distanceMiles,
+            duration_minutes: l.durationMinutes,
+            summary: l.summary,
+          };
+          legs.push(leg);
+
+          // Enrich the stop records
+          fromStop.miles_to_next = l.distanceMiles;
+          toStop.miles_from_previous = l.distanceMiles;
+          toStop.duration_from_previous_minutes = l.durationMinutes;
+          toStop.leg_summary = l.summary;
+        });
+      }
     }
   }
 
-  // Fallback if Mapbox didn't return or single-point
-  if (loadedMiles === 0) {
-    loadedMiles = estimateCityDistanceMiles(originCityState, destCityState);
+  // Fallback if Mapbox didn't return or was offline
+  if (loadedMiles === 0 && stopsList.length >= 2) {
+    for (let i = 0; i < stopsList.length - 1; i++) {
+      const from = stopsList[i];
+      const to = stopsList[i + 1];
+      const est = estimateCityDistanceMiles(from.city, to.city);
+      loadedMiles += est;
+      const leg: RouteLeg = {
+        leg_index: i + 1,
+        from_stop_number: from.stop_number,
+        to_stop_number: to.stop_number,
+        from_name: from.facility_name || `${from.city}, ${from.state}`,
+        to_name: to.facility_name || `${to.city}, ${to.state}`,
+        distance_miles: est,
+        duration_minutes: Math.round((est / 55) * 60),
+        summary: 'Highway corridor',
+      };
+      legs.push(leg);
+      from.miles_to_next = est;
+      to.miles_from_previous = est;
+      to.duration_from_previous_minutes = leg.duration_minutes;
+    }
+    durationMinutes = Math.round((loadedMiles / 55) * 60);
   }
 
-  // 2. Deadhead Calculation (from current equipment location to first pickup)
+  // Stop 1 has 0 miles from previous
+  if (stopsList[0]) {
+    stopsList[0].miles_from_previous = 0;
+    stopsList[0].duration_from_previous_minutes = 0;
+  }
+
+  // Compute Deadhead from Tractor Equipment to Stop 1 (First Pickup)
   let deadheadMiles = 0;
   let deadheadGeometry: FreightTripCalculation['deadheadGeometry'];
 
-  if (truckLocation && truckLocation.trim().length > 2 && stopCoordsList[0]) {
+  if (truckLocation && truckLocation.trim().length > 2 && stopsList[0]?.coordinates) {
     const truckCoords = await geocodeLocation(truckLocation);
     if (truckCoords) {
-      stopCoordsList.unshift({
-        label: 'Equipment Origin',
-        cityState: truckLocation,
-        coordinates: truckCoords,
-        isDeadheadOrigin: true,
-      });
-
-      const dhRoute = await calculateMapboxRoute([truckCoords, stopCoordsList[1].coordinates]);
+      const dhRoute = await calculateMapboxRoute([truckCoords, stopsList[0].coordinates]);
       if (dhRoute) {
         deadheadMiles = dhRoute.distanceMiles;
         deadheadGeometry = dhRoute.geometry;
       } else {
-        deadheadMiles = estimateCityDistanceMiles(truckLocation, originCityState);
+        deadheadMiles = estimateCityDistanceMiles(truckLocation, stopsList[0].city);
       }
     }
   }
@@ -178,9 +300,10 @@ export async function calculateFreightTripDetails(options: {
     deadheadMiles,
     totalMiles,
     durationMinutes,
+    legs,
     loadedGeometry,
     deadheadGeometry,
-    stopCoordinates: stopCoordsList,
+    stops: stopsList,
   };
 }
 

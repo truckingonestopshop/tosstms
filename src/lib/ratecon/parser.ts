@@ -148,27 +148,40 @@ export function parseRateConTextHeuristic(text: string, fileName: string = ''): 
     if (w > 1000 && w < 80000) result.weight_lbs = w;
   }
 
-  // 7. Assemble Structured Stops
-  result.stops = [
-    {
-      id: 'stop-pickup-1',
-      stop_number: 1,
-      type: 'pickup',
-      city: result.origin_city || '',
-      state: result.origin_state || '',
-      date: result.pickup_date || '',
-      status: 'ready',
-    },
-    {
-      id: 'stop-delivery-1',
-      stop_number: 2,
-      type: 'delivery',
-      city: result.destination_city || '',
-      state: result.destination_state || '',
-      date: result.delivery_date || '',
-      status: 'pending',
-    },
-  ];
+  // 7. Assemble Structured Stops for ALL distinct matched locations
+  if (matches.length >= 2) {
+    result.stops = matches.map((m, idx) => ({
+      id: `stop-${idx + 1}`,
+      stop_number: idx + 1,
+      type: idx === 0 ? 'pickup' : 'delivery',
+      city: m.city,
+      state: m.state,
+      zip: m.zip,
+      date: idx === 0 ? (result.pickup_date || '') : (result.delivery_date || ''),
+      status: idx === 0 ? 'ready' : 'pending',
+    }));
+  } else {
+    result.stops = [
+      {
+        id: 'stop-pickup-1',
+        stop_number: 1,
+        type: 'pickup',
+        city: result.origin_city || '',
+        state: result.origin_state || '',
+        date: result.pickup_date || '',
+        status: 'ready',
+      },
+      {
+        id: 'stop-delivery-1',
+        stop_number: 2,
+        type: 'delivery',
+        city: result.destination_city || '',
+        state: result.destination_state || '',
+        date: result.delivery_date || '',
+        status: 'pending',
+      },
+    ];
+  }
 
   return result;
 }
