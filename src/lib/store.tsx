@@ -581,7 +581,8 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
       const days = chosen.map((l) => l.delivery_date || l.pickup_date || today()).sort();
       const issue = opts.issue_date || today();
       const lines = chosen.map((l) => {
-        const amount = opts.amounts?.[l.id] ?? cut(l.gross_amount, l.commission_percent || company.commission_percent);
+        // The load's own fee (a 0% load bills 0, not the company default).
+        const amount = opts.amounts?.[l.id] ?? cut(l.gross_amount, l.commission_percent);
         const driver = ref.current.drivers.find((d) => d.id === l.driver_id);
         return {
           load_id: l.id,

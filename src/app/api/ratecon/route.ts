@@ -6,7 +6,7 @@ import { mergeExtract, readRateConText, toIsoDate } from "@/lib/ratecon/fallback
 import type { LoadStop, RateConExtract } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 90;
+export const maxDuration = 120;
 
 const MAX_FILE = 20 * 1024 * 1024;
 const MAX_BODY = 32 * 1024 * 1024;
@@ -14,8 +14,14 @@ const MAX_IMAGE_CHARS = 6 * 1024 * 1024;
 
 const SYSTEM = `You read US trucking rate confirmations (load tenders from freight brokers to a carrier) and return the load as JSON.
 Rules:
+- The document can have several pages ("--- Page N of M ---" markers, and/or page images). Read EVERY page before
+  answering: stops, the rate, accessorials and notes are often on page 2 or later. " | " separates table columns.
+- A load can have several pickups and several deliveries (multi-pick / multi-drop, "Stop 1", "Stop 2", "Shipper 2",
+  "Consignee 2"...). List every one, in the order the truck visits them. If the same stop appears in a summary
+  and again in a detail section, list it once with the details.
 - Only use what the document says. Use "" or null when a value is not present. Never guess numbers.
-- gross_amount = the total the carrier is paid (line haul + accessorials listed as carrier pay). Number, no symbols.
+- gross_amount = the total the carrier is paid. Use the stated total ("Total Carrier Pay", "Total Rate", "Total")
+  when there is one; otherwise add line haul + fuel + accessorials payable to the carrier. Number, no symbols.
 - broker_* = the brokerage that issued the confirmation (not the carrier, not the shipper). broker_mc = broker's MC number digits.
 - carrier_name / driver_name / truck_unit / trailer_number = the carrier side, if shown.
 - stops: every pickup and delivery in order. type is "pickup" or "delivery". state = 2-letter code. date = YYYY-MM-DD.
@@ -87,6 +93,21 @@ function normalize(raw: unknown): RateConExtract {
   };
 }
 
+/** What looks incomplete in a reading (compared with the document's own rules-based reading). */
+function missing(x: RateConExtract, local: RateConExtract): string[] {
+  const out: string[] = [];
+  const stops = x.stops || [];
+  if (!stops.some((s) => s.type === "pickup")) out.push("no pickup stop");
+  if (!stops.some((s) => s.type === "delivery")) out.push("no delivery stop");
+  if (stops.some((s) => !s.city || !s.state)) out.push("a stop without city and state");
+  if ((local.stops?.length || 0) > stops.length) out.push(`only ${stops.length} stops, the document lists about ${local.stops!.length}`);
+  if (!x.gross_amount) out.push("the carrier pay total");
+  else if (local.gross_amount && Math.abs(local.gross_amount - x.gross_amount) > 1 && local.gross_amount > x.gross_amount)
+    out.push(`the total carrier pay (the document shows ${local.gross_amount})`);
+  if (!x.broker_name) out.push("the broker name");
+  return out;
+}
+
 async function pdfText(bytes: Uint8Array) {
   try {
     const { extractText, getDocumentProxy } = await import("unpdf");
@@ -121,11 +142,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "That file is too large. Rate confirmations should be under 20 MB." }, { status: 413 });
   }
   let text = String(form.get("text") || "").slice(0, 200_000);
+  // Same pages with layout and page markers (from the browser); better for the full reader.
+  const layout = String(form.get("layout") || "").slice(0, 200_000);
   const images = form
     .getAll("images")
     .map(String)
     .filter((s) => /^data:image\/(png|jpe?g|webp);base64,/.test(s) && s.length <= MAX_IMAGE_CHARS)
-    .slice(0, 4);
+    .slice(0, 8);
 
   if (!text.trim() && file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))) {
     text = await pdfText(new Uint8Array(await file.arrayBuffer()));
@@ -144,12 +167,33 @@ export async function POST(req: NextRequest) {
   let notice: string | undefined;
 
   if (deepseekConfigured()) {
-    const content: ChatMessage["content"] = hasText
-      ? `Rate confirmation text:\n\n${text.slice(0, 60000)}`
-      : [{ type: "text", text: "Rate confirmation pages:" }, ...images.map((url) => ({ type: "image_url" as const, image_url: { url } }))];
+    const started = Date.now();
+    const body = (layout.replace(/\s/g, "").length > 60 ? layout : text).slice(0, 80000);
+    // Text pages and scanned pages go together, so a PDF with one scanned page is read whole.
+    const intro = hasText ? `Rate confirmation text, every page:\n\n${body}` : "Rate confirmation pages:";
+    const content: ChatMessage["content"] = images.length
+      ? [
+          { type: "text", text: hasText ? `${intro}\n\nSome pages had no text; their images follow.` : intro },
+          ...images.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+        ]
+      : intro;
     try {
       primary = normalize(await chatJson([{ role: "system", content: SYSTEM }, { role: "user", content }]));
       source = "online";
+      // A second look when something essential is missing and there is time left.
+      const gaps = missing(primary, local);
+      const left = 66000 - (Date.now() - started);
+      if (gaps.length && left > 20000) {
+        try {
+          const note = `\n\nA first reading missed or got wrong: ${gaps.join("; ")}. Re-read every page and return the complete JSON again.`;
+          const retry: ChatMessage["content"] =
+            typeof content === "string" ? content + note : [{ type: "text", text: (content[0] as { text: string }).text + note }, ...content.slice(1)];
+          const second = normalize(await chatJson([{ role: "system", content: SYSTEM }, { role: "user", content: retry }], { timeoutMs: Math.min(left - 3000, 50000) }));
+          if (missing(second, local).length < gaps.length) primary = second;
+        } catch (e) {
+          console.warn("rate con second look failed:", (e as Error).message);
+        }
+      }
     } catch (e) {
       const msg = (e as Error).message || "";
       console.warn("rate con reader fell back to local rules:", msg);

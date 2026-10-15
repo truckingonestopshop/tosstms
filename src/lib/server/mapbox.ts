@@ -13,18 +13,31 @@ export interface StopQuery {
   zip?: string;
 }
 
-export interface RouteResult {
+export interface Leg {
   miles: number;
   minutes: number;
-  legs: { miles: number; minutes: number }[];
+}
+
+export interface RouteResult {
+  /** loaded miles through every stop */
+  miles: number;
+  minutes: number;
+  /** legs[i] = stop i → stop i+1 (0 when either end couldn't be found) */
+  legs: Leg[];
   /** [lng, lat] per stop that was found, in order */
   points: ([number, number] | null)[];
   /** route line, [lng, lat][] */
   line: [number, number][];
+  /** index in `line` closest to each stop (null when not found) */
+  breaks: (number | null)[];
+  /** empty miles from where the truck is to the first stop */
+  deadhead: (Leg & { point: [number, number] | null; line: [number, number][] }) | null;
 }
 
+type Drive = { distance: number; duration: number; legs: { distance: number; duration: number }[]; line: [number, number][]; waypoints: [number, number][] };
+
 const geoCache = new Map<string, [number, number] | null>();
-const routeCache = new Map<string, RouteResult>();
+const driveCache = new Map<string, Drive>();
 
 // Two-letter codes are ambiguous to the geocoder ("Glasgow, MO" came back as
 // Glasgow, Montana), so queries use the full state/province name.
@@ -93,34 +106,96 @@ export async function geocode(s: StopQuery) {
   return geocodeOne(queryText(s, false), st);
 }
 
-/** Driving route through every stop in order. Returns null when fewer than 2 stops are found. */
-export async function routeStops(stops: StopQuery[]): Promise<RouteResult | null> {
-  if (!TOKEN) throw new Error("Mapbox token is not configured");
-  const points = await Promise.all(stops.slice(0, 25).map(geocode));
-  const found = points.filter((p): p is [number, number] => !!p);
-  if (found.length < 2) return { miles: 0, minutes: 0, legs: [], points, line: [] };
-
-  const key = found.map((p) => p.map((n) => n.toFixed(4)).join(",")).join(";");
-  const cached = routeCache.get(key);
-  if (cached) return { ...cached, points };
-
-  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${key}?geometries=geojson&overview=simplified&access_token=${TOKEN}`;
+/** One Mapbox Directions call through the given points (cached). */
+async function drive(pts: [number, number][]): Promise<Drive | null> {
+  const key = pts.map((p) => p.map((n) => n.toFixed(4)).join(",")).join(";");
+  const hit = driveCache.get(key);
+  if (hit) return hit;
+  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${key}?geometries=geojson&overview=full&access_token=${TOKEN}`;
   const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
   if (!res.ok) throw new Error(`Routing failed (${res.status})`);
   const data = await res.json();
   const r = data?.routes?.[0];
-  if (!r) return { miles: 0, minutes: 0, legs: [], points, line: [] };
-  const out: RouteResult = {
-    miles: Math.round(r.distance / METERS_PER_MILE),
-    minutes: Math.round(r.duration / 60),
-    legs: (r.legs || []).map((l: { distance: number; duration: number }) => ({
-      miles: Math.round(l.distance / METERS_PER_MILE),
-      minutes: Math.round(l.duration / 60),
-    })),
-    points,
-    line: r.geometry?.coordinates || [],
+  if (!r) return null;
+  const full: [number, number][] = r.geometry?.coordinates || [];
+  // The full line follows the road exactly; thin it so the browser gets a light payload.
+  const step = Math.max(1, Math.ceil(full.length / 1500));
+  const line = full.filter((_, i) => i % step === 0 || i === full.length - 1);
+  const out: Drive = {
+    distance: r.distance,
+    duration: r.duration,
+    legs: (r.legs || []).map((l: { distance: number; duration: number }) => ({ distance: l.distance, duration: l.duration })),
+    line,
+    waypoints: (data.waypoints || []).map((w: { location: [number, number] }) => w.location),
   };
-  if (routeCache.size > 500) routeCache.clear();
-  routeCache.set(key, out);
+  if (driveCache.size > 500) driveCache.clear();
+  driveCache.set(key, out);
+  return out;
+}
+
+const toLeg = (meters: number, seconds: number): Leg => ({ miles: Math.round(meters / METERS_PER_MILE), minutes: Math.round(seconds / 60) });
+
+/** Index of the line vertex nearest to p, searching forward from `from` so stops stay in order. */
+function nearest(line: [number, number][], p: [number, number], from: number) {
+  let best = from;
+  let bestD = Infinity;
+  const k = Math.cos((p[1] * Math.PI) / 180);
+  for (let i = from; i < line.length; i++) {
+    const dx = (line[i][0] - p[0]) * k;
+    const dy = line[i][1] - p[1];
+    const d = dx * dx + dy * dy;
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/**
+ * Driving route through every stop in order, plus the empty (deadhead) leg from
+ * `from` to the first stop when given. Legs stay matched to their stops even when a
+ * stop in the middle can't be found.
+ */
+export async function routeStops(stops: StopQuery[], from?: StopQuery | null): Promise<RouteResult> {
+  if (!TOKEN) throw new Error("Mapbox token is not configured");
+  const list = stops.slice(0, 25);
+  const hasFrom = !!from && !!(from.city || from.zip || from.address);
+  const [points, origin] = await Promise.all([Promise.all(list.map(geocode)), hasFrom ? geocode(from!) : Promise.resolve(null)]);
+  const idx = points.map((p, i) => (p ? i : -1)).filter((i) => i >= 0);
+
+  const [loaded, dh] = await Promise.all([
+    idx.length >= 2 ? drive(idx.map((i) => points[i]!)) : Promise.resolve(null),
+    origin && idx.length ? drive([origin, points[idx[0]]!]).catch(() => null) : Promise.resolve(null),
+  ]);
+
+  const out: RouteResult = {
+    miles: 0,
+    minutes: 0,
+    legs: list.slice(1).map(() => ({ miles: 0, minutes: 0 })),
+    points,
+    line: [],
+    breaks: points.map(() => null),
+    deadhead: null,
+  };
+  if (loaded) {
+    out.miles = Math.round(loaded.distance / METERS_PER_MILE);
+    out.minutes = Math.round(loaded.duration / 60);
+    out.line = loaded.line;
+    // Leg j joins found stops idx[j] → idx[j+1]; it is listed on the stop it arrives at.
+    loaded.legs.forEach((l, j) => {
+      if (idx[j + 1] !== undefined) out.legs[idx[j + 1] - 1] = toLeg(l.distance, l.duration);
+    });
+    let at = 0;
+    idx.forEach((stopI, j) => {
+      at = nearest(loaded.line, loaded.waypoints[j] || points[stopI]!, at);
+      out.breaks[stopI] = at;
+    });
+  }
+  if (origin) {
+    // Under half a mile apart = the truck is already there.
+    const meters = dh && dh.distance >= 800 ? dh.distance : 0;
+    out.deadhead = { ...toLeg(meters, meters ? dh!.duration : 0), point: origin, line: meters ? dh!.line : [] };
+  }
   return out;
 }

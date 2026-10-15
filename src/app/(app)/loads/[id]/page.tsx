@@ -96,7 +96,7 @@ function LoadView({ load }: { load: Load }) {
   const company = companyById(load.company_id);
   const driver = driverById(load.driver_id);
   const truck = truckById(load.truck_id);
-  const route = useRoute(load.stops.length ? load.stops : []);
+  const route = useRoute(load.stops.length ? load.stops : [], { from: load.deadhead_from });
   const types = useMemo(() => load.stops.map((s) => s.type), [load.stops]);
   const docs = documents.filter((d) => d.load_id === load.id);
   const invoice = invoices.find((i) => i.lines.some((li) => li.load_id === load.id));
@@ -431,7 +431,7 @@ function LoadView({ load }: { load: Load }) {
             </div>
           </Card>
 
-          <RouteMap route={route.data} types={types} loading={route.loading} className="no-print h-60" />
+          <RouteMap route={route.data} types={types} loading={route.loading} loadedMiles={load.loaded_miles} deadheadMiles={load.deadhead_miles} from={load.deadhead_from} className="no-print h-60" />
 
           <Card className="no-print">
             <CardHeader

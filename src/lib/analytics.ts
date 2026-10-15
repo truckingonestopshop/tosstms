@@ -1,5 +1,5 @@
 import type { Load } from "./types";
-import { addDays, isCanceled, parseDay, toDay, today } from "./format";
+import { addDays, isCanceled, localDay, parseDay, toDay, today } from "./format";
 
 export type RangeKey = "7d" | "30d" | "90d" | "mtd" | "last_month" | "ytd" | "12m" | "all" | "custom";
 
@@ -41,7 +41,7 @@ export function rangeDates(k: RangeKey, from?: string, to?: string): { from: str
 }
 
 /** A load counts on its delivery day (pickup day if not set). Canceled loads never count. */
-export const loadDay = (l: Load) => l.delivery_date || l.pickup_date || l.created_at.slice(0, 10);
+export const loadDay = (l: Load) => l.delivery_date || l.pickup_date || localDay(l.created_at);
 export const inWindow = (l: Load, r: { from: string; to: string }) => {
   const d = loadDay(l);
   return !isCanceled(l.status) && d >= r.from && d <= r.to;

@@ -153,6 +153,8 @@ export interface Load {
   dispatcher_cut: number;
   loaded_miles: number;
   deadhead_miles: number;
+  /** where the truck is empty before the first pickup ("City, ST") */
+  deadhead_from?: string | null;
   weight_lbs: number | null;
   commodity: string | null;
   equipment_type: string | null;

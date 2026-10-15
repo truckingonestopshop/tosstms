@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calculator, Loader2, RotateCcw } from "lucide-react";
+import { Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Card, CardHeader } from "@/components/ui/Bits";
@@ -11,7 +11,7 @@ import { StopsEditor, newStop } from "./StopsEditor";
 import { RouteMap } from "./RouteMap";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
-import { fetchRoute, useRoute } from "@/lib/route";
+import { useRoute } from "@/lib/route";
 import { STATUS, STATUS_ORDER, TRAILER_TYPES, cn, cut, money, num } from "@/lib/format";
 import type { ReadResult } from "@/lib/ratecon/client";
 import type { Load, LoadStatus, LoadStop } from "@/lib/types";
@@ -32,6 +32,7 @@ type Draft = {
   commission_percent: string;
   loaded_miles: string;
   deadhead_miles: string;
+  deadhead_from: string;
   weight_lbs: string;
   commodity: string;
   equipment_type: string;
@@ -61,6 +62,7 @@ function fromLoad(l: Load): Draft {
     commission_percent: String(l.commission_percent),
     loaded_miles: l.loaded_miles ? String(l.loaded_miles) : "",
     deadhead_miles: l.deadhead_miles ? String(l.deadhead_miles) : "",
+    deadhead_from: s(l.deadhead_from),
     weight_lbs: l.weight_lbs ? String(l.weight_lbs) : "",
     commodity: s(l.commodity),
     equipment_type: s(l.equipment_type),
@@ -100,6 +102,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
           commission_percent: String(companyById(initialCompany)?.commission_percent ?? ""),
           loaded_miles: "",
           deadhead_miles: "",
+          deadhead_from: "",
           weight_lbs: "",
           commodity: "",
           equipment_type: "",
@@ -112,8 +115,8 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
   const [milesAuto, setMilesAuto] = useState(!load || !load.loaded_miles);
   const [rcFile, setRcFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
-  const [dhFrom, setDhFrom] = useState("");
-  const [dhBusy, setDhBusy] = useState(false);
+  const [dhAuto, setDhAuto] = useState(!load || !load.deadhead_miles);
+  const dhTouched = useRef(!!load?.deadhead_from);
   const pctTouched = useRef(editing);
 
   const company = companyById(d.company_id);
@@ -126,18 +129,17 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.company_id]);
 
-  // Deadhead origin defaults to the truck's location.
-  useEffect(() => {
-    const t = truckById(d.truck_id);
-    if (t?.current_location) setDhFrom(t.current_location);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.truck_id]);
-
-  const route = useRoute(d.stops);
+  const route = useRoute(d.stops, { from: d.deadhead_from });
   useEffect(() => {
     if (milesAuto && route.data?.miles) set({ loaded_miles: String(route.data.miles) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.data?.miles, milesAuto]);
+  // Deadhead follows the routed empty leg until it is typed by hand.
+  const routedDh = route.data?.deadhead?.point ? route.data.deadhead.miles : null;
+  useEffect(() => {
+    if (dhAuto && routedDh !== null) set({ deadhead_miles: routedDh ? String(routedDh) : "0" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routedDh, dhAuto]);
 
   const gross = Number(d.gross_amount) || 0;
   const pct = Number(d.commission_percent) || 0;
@@ -185,22 +187,6 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
     setMilesAuto(!statedMiles);
   };
 
-  const calcDeadhead = async (from: string) => {
-    const first = d.stops[0];
-    if (!from.trim() || !first?.city) return toast.error("Enter where the truck is empty and the first pickup city.");
-    setDhBusy(true);
-    try {
-      const r = await fetchRoute([{ city: from }, { address: first.address, city: first.city, state: first.state, zip: first.zip }]);
-      if (!r.miles) throw new Error("No route found");
-      set({ deadhead_miles: String(r.miles) });
-      toast.success(`Deadhead ${r.miles} mi from ${from}`);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setDhBusy(false);
-    }
-  };
-
   // The truck's previous delivery is a good guess for where it will be empty.
   const lastDrop = useMemo(() => {
     if (!d.truck_id) return null;
@@ -209,6 +195,15 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
       .sort((a, b) => (b.delivery_date || "").localeCompare(a.delivery_date || ""))[0];
     return prev ? `${prev.destination_city}, ${prev.destination_state}` : null;
   }, [d.truck_id, loads, load?.id]);
+
+  // Where the truck is empty: its location on file, else its last drop. Typing wins.
+  const truckLoc = truckById(d.truck_id)?.current_location || "";
+  useEffect(() => {
+    if (dhTouched.current) return;
+    const guess = truckLoc || lastDrop || "";
+    if (guess !== d.deadhead_from) set({ deadhead_from: guess });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [truckLoc, lastDrop]);
 
   const save = async () => {
     if (!d.company_id) return toast.error("Pick the carrier company.");
@@ -233,12 +228,14 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
       origin_state: first.state,
       destination_city: last.city,
       destination_state: last.state,
-      pickup_date: filled[0].date || null,
-      delivery_date: filled[filled.length - 1].date || null,
+      // Pickup day = first pickup's date, delivery day = last delivery's (falls back to the ends).
+      pickup_date: first.date || filled[0].date || null,
+      delivery_date: last.date || filled[filled.length - 1].date || null,
       gross_amount: gross,
       commission_percent: pct,
       loaded_miles: loaded,
       deadhead_miles: dh,
+      deadhead_from: d.deadhead_from.trim() || null,
       weight_lbs: Number(d.weight_lbs) || null,
       commodity: d.commodity || null,
       equipment_type: d.equipment_type || null,
@@ -447,25 +444,74 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
                   suffix="mi"
                 />
               </Field>
-              <Field label="Deadhead" hint={lastDrop ? `Last drop: ${lastDrop}` : "Empty miles to pickup"}>
-                <Input value={d.deadhead_miles} onChange={(e) => set({ deadhead_miles: clean(e.target.value) })} inputMode="numeric" suffix="mi" />
+              <Field
+                label={
+                  <span className="flex w-full items-center justify-between">
+                    Deadhead
+                    {route.loading && d.deadhead_from.trim() && <Loader2 className="h-3 w-3 animate-spin text-fg-4" />}
+                  </span>
+                }
+                hint={
+                  routedDh !== null ? (
+                    <span className="flex items-center gap-1">
+                      Route {num(routedDh)} mi
+                      {!dhAuto && Number(d.deadhead_miles) !== routedDh && (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-0.5 font-semibold text-fg underline-offset-2 hover:underline"
+                          onClick={() => {
+                            setDhAuto(true);
+                            set({ deadhead_miles: String(routedDh) });
+                          }}
+                        >
+                          <RotateCcw className="h-3 w-3" /> use
+                        </button>
+                      )}
+                    </span>
+                  ) : (
+                    "Empty miles to pickup"
+                  )
+                }
+              >
+                <Input
+                  value={d.deadhead_miles}
+                  onChange={(e) => {
+                    setDhAuto(false);
+                    set({ deadhead_miles: clean(e.target.value) });
+                  }}
+                  inputMode="numeric"
+                  suffix="mi"
+                />
               </Field>
             </div>
-            <div className="flex gap-2">
-              <Input value={dhFrom} onChange={(e) => setDhFrom(e.target.value)} placeholder={lastDrop || "Empty at: City, ST"} className="h-8 flex-1 text-[13px]" />
-              <Button
-                size="sm"
-                variant="outline"
-                loading={dhBusy}
-                onClick={() => {
-                  const from = dhFrom.trim() || lastDrop || "";
-                  if (from !== dhFrom) setDhFrom(from);
-                  calcDeadhead(from);
-                }}
-              >
-                {!dhBusy && <Calculator className="h-3.5 w-3.5" />} DH
-              </Button>
-            </div>
+            <Field label="Truck empty at" hint={lastDrop && d.deadhead_from !== lastDrop ? `Last drop: ${lastDrop}` : "City, ST or ZIP — deadhead is routed from here"}>
+              <div className="flex gap-2">
+                <Input
+                  value={d.deadhead_from}
+                  onChange={(e) => {
+                    dhTouched.current = true;
+                    setDhAuto(true);
+                    set({ deadhead_from: e.target.value });
+                  }}
+                  placeholder={lastDrop || "e.g. Chicago, IL"}
+                  className="flex-1"
+                />
+                {lastDrop && d.deadhead_from !== lastDrop && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-9"
+                    onClick={() => {
+                      dhTouched.current = true;
+                      setDhAuto(true);
+                      set({ deadhead_from: lastDrop });
+                    }}
+                  >
+                    Last drop
+                  </Button>
+                )}
+              </div>
+            </Field>
             <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-line text-center">
               {[
                 ["Total mi", num(loaded + dh)],
@@ -481,7 +527,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
           </div>
         </Card>
 
-        <RouteMap route={route.data} types={types} loading={route.loading} className="h-56 lg:h-64" />
+        <RouteMap route={route.data} types={types} loading={route.loading} loadedMiles={loaded} deadheadMiles={dh} from={d.deadhead_from} className="h-56 lg:h-64" />
 
         <div className="hidden gap-2 lg:flex">
           <Button variant="ghost" className="flex-1" onClick={() => (editing && load ? onDone?.(load) : router.back())}>

@@ -293,6 +293,9 @@ export function readRateConText(raw: string): RateConExtract {
 /** Fill gaps in `primary` with values from `extra` (primary wins). */
 export function mergeExtract(primary: RateConExtract, extra: RateConExtract): RateConExtract {
   const out: RateConExtract = { ...extra, ...Object.fromEntries(Object.entries(primary).filter(([, v]) => v !== undefined && v !== "" && v !== 0 && v !== null)) };
-  out.stops = primary.stops?.length ? primary.stops : extra.stops;
+  // The full reading's stops win unless it found fewer than a pickup and a delivery.
+  const p = primary.stops?.length || 0;
+  const e = extra.stops?.length || 0;
+  out.stops = p >= 2 || e <= p ? primary.stops || extra.stops : extra.stops;
   return out;
 }
