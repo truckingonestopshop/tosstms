@@ -221,6 +221,8 @@ export interface ExtractedRateCon {
   rate_con_number?: string;
   load_number?: string;
   gross_amount?: number;
+  linehaul_amount?: number;
+  fuel_surcharge?: number;
   origin_city?: string;
   origin_state?: string;
   origin_address?: string;
@@ -236,10 +238,24 @@ export interface ExtractedRateCon {
   weight_lbs?: number;
   commodities?: string;
   equipment_type?: string;
+  temperature?: string;
+  detention_terms?: string;
+  layover_terms?: string;
+  tonu_terms?: string;
   notes?: string;
   stops?: LoadStop[];
+  deadhead_miles?: number;
+  loaded_miles?: number;
   total_miles?: number;
   rate_per_mile?: number;
+  route_geometry?: {
+    type: 'LineString';
+    coordinates: [number, number][];
+  };
+  deadhead_geometry?: {
+    type: 'LineString';
+    coordinates: [number, number][];
+  };
 }
 
 export interface MapboxRouteResult {
