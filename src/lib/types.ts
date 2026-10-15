@@ -249,6 +249,21 @@ export interface InvoiceLine {
   delivery_date: string | null;
 }
 
+export type PaymentMethod = "ach" | "zelle" | "wire" | "check" | "card" | "cash" | "factoring" | "other";
+
+/** One payment received on an invoice (the invoice's amount paid and status follow from these). */
+export interface InvoicePayment {
+  id: string;
+  invoice_id: string;
+  amount: number;
+  paid_on: string;
+  method: PaymentMethod;
+  reference: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface Invoice {
   id: string;
   company_id: string | null;

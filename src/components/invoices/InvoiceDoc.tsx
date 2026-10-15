@@ -55,6 +55,9 @@ function D({ value, onChange, editing, className }: { value: string | null; onCh
   return <input type="date" value={value || ""} onChange={(e) => onChange(e.target.value)} className={cn(edit, "w-[132px]", className)} />;
 }
 
+/** "10%" / "8.5%" */
+const pctOf = (amount: number, gross: number) => `${+((Number(amount) / Number(gross)) * 100).toFixed(2)}%`;
+
 export const InvoiceDoc = forwardRef<
   HTMLDivElement,
   { d: InvoiceDraft; editing: boolean; onChange: (d: InvoiceDraft) => void; statusLabel?: string }
@@ -81,8 +84,22 @@ export const InvoiceDoc = forwardRef<
   return (
     <div
       ref={ref}
-      className="print-sheet mx-auto w-full max-w-[860px] rounded-lg bg-white p-6 text-[13px] leading-relaxed text-[#111] shadow-[0_1px_3px_rgba(0,0,0,0.08),0_12px_40px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/5 sm:p-10"
+      className="print-sheet relative mx-auto w-full max-w-[860px] overflow-hidden rounded-lg bg-white p-6 text-[13px] leading-relaxed text-[#111] shadow-[0_1px_3px_rgba(0,0,0,0.08),0_12px_40px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/5 sm:p-10"
     >
+      {/* Paid / void stamp (lands with a small thud when the status changes; prints too). */}
+      {!editing && (d.status === "paid" || d.status === "void") && (
+        <div
+          key={d.status}
+          aria-hidden
+          className={cn(
+            "animate-stamp pointer-events-none absolute right-6 top-[132px] z-10 select-none rounded-md border-[3px] px-4 py-1 text-[30px] font-black uppercase tracking-[0.18em] opacity-90 sm:right-12 sm:top-[150px]",
+            d.status === "paid" ? "border-emerald-600 text-emerald-600" : "border-red-600 text-red-600",
+          )}
+        >
+          {d.status === "paid" ? "Paid" : "Void"}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col gap-6 border-b border-zinc-200 pb-6 sm:flex-row sm:justify-between">
         <div className="min-w-0 sm:max-w-[55%]">
@@ -218,6 +235,10 @@ export const InvoiceDoc = forwardRef<
                 )}
                 <td className="tnum py-2 text-right font-semibold">
                   {isLoad ? <N editing={editing} value={l.amount} onChange={(v) => setLine(i, { amount: v, unit_price: v })} /> : money(l.amount, { currency: cur })}
+                  {/* Show the math: the fee as a share of the load's gross. */}
+                  {isLoad && !editing && Number(l.gross_amount) > 0 && Number(l.amount) > 0 && (
+                    <div className="text-[11px] font-normal text-zinc-500">{pctOf(l.amount, l.gross_amount)} of gross</div>
+                  )}
                 </td>
                 {editing && (
                   <td className="py-2 pl-1">
@@ -253,11 +274,17 @@ export const InvoiceDoc = forwardRef<
             <T editing={editing} value={o.total_label ?? (isLoad ? "Dispatch fee due" : "Total due")} onChange={(v) => setO({ total_label: v })} />
             <span className="tnum shrink-0 pl-3">{money(t.due, { currency: cur })}</span>
           </div>
-          {d.status === "paid" && (
-            <div className="flex justify-between text-emerald-700">
-              <span>Paid</span>
-              <span className="tnum">−{money(t.due, { currency: cur })}</span>
-            </div>
+          {d.amount_paid > 0 && d.status !== "void" && d.status !== "draft" && (
+            <>
+              <div className="flex justify-between text-emerald-700">
+                <span>Paid</span>
+                <span className="tnum">−{money(Math.min(d.amount_paid, t.due), { currency: cur })}</span>
+              </div>
+              <div className="flex justify-between border-t border-zinc-200 pt-1.5 font-semibold">
+                <span>Balance due</span>
+                <span className="tnum">{money(Math.max(0, t.due - d.amount_paid), { currency: cur })}</span>
+              </div>
+            </>
           )}
         </div>
       </div>

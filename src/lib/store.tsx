@@ -8,6 +8,7 @@ import type {
   Driver,
   Invoice,
   InvoiceLine,
+  InvoicePayment,
   InvoiceStatus,
   Load,
   LoadStatus,
@@ -61,6 +62,8 @@ interface Store {
   loads: Load[];
   documents: DocumentItem[];
   invoices: Invoice[];
+  /** every payment on every invoice, oldest first */
+  payments: InvoicePayment[];
   docTypes: DocType[];
   settings: Settings | null;
 
@@ -116,7 +119,10 @@ interface Store {
   ) => Promise<Invoice | null>;
   createCustomInvoice: (draft: InvoiceDraftInput) => Promise<Invoice | null>;
   saveInvoice: (id: string, draft: InvoiceDraftInput) => Promise<boolean>;
+  /** Draft / sent / void. "Paid" comes from recording payments. */
   setInvoiceStatus: (id: string, status: InvoiceStatus) => Promise<boolean>;
+  recordPayment: (invoiceId: string, p: Pick<InvoicePayment, "amount" | "paid_on" | "method" | "reference" | "notes">) => Promise<boolean>;
+  deletePayment: (id: string) => Promise<boolean>;
   deleteInvoice: (id: string) => Promise<boolean>;
 
   updateSettings: (patch: Partial<Settings>) => Promise<boolean>;
@@ -143,6 +149,8 @@ function fail(e: unknown, what: string) {
 }
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
+const byPaidOn = (a: InvoicePayment, b: InvoicePayment) => a.paid_on.localeCompare(b.paid_on) || a.created_at.localeCompare(b.created_at);
+const normPayment = (r: InvoicePayment): InvoicePayment => ({ ...r, amount: Number(r.amount) || 0 });
 
 export function StoreProvider({ me, preview = false, children }: { me: Me; preview?: boolean; children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -153,13 +161,14 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   const [loads, setLoads] = useState<Load[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [payments, setPayments] = useState<InvoicePayment[]>([]);
   const [docTypes, setDocTypes] = useState<DocType[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [scope, setScopeState] = useState<Scope>("all");
 
   // Latest state for async callbacks without re-creating them.
-  const ref = useRef({ companies, drivers, trucks, loads, documents, invoices, docTypes });
-  ref.current = { companies, drivers, trucks, loads, documents, invoices, docTypes };
+  const ref = useRef({ companies, drivers, trucks, loads, documents, invoices, docTypes, payments });
+  ref.current = { companies, drivers, trucks, loads, documents, invoices, docTypes, payments };
 
   const refresh = useCallback(async () => {
     if (preview && process.env.NODE_ENV !== "production") {
@@ -172,6 +181,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
       setLoads(d.loads);
       setDocuments(d.documents);
       setInvoices(d.invoices);
+      setPayments(d.payments);
       setDocTypes(d.docTypes);
       setSettings(d.settings);
       setReady(true);
@@ -189,7 +199,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
         if (!data || data.length < 1000) return { data: out, error: null };
       }
     };
-    const [m, co, dr, tr, lo, docs, inv, lines, dt, st] = await Promise.all([
+    const [m, co, dr, tr, lo, docs, inv, lines, dt, st, pay] = await Promise.all([
       c.from("tms_members").select("*").order("full_name"),
       all<Company>("tms_companies"),
       all<Driver>("tms_drivers"),
@@ -200,6 +210,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
       all<InvoiceLine>("tms_invoice_lines"),
       c.from("tms_doc_types").select("*").order("name"),
       c.from("tms_settings").select("*").eq("id", 1).maybeSingle(),
+      all<InvoicePayment>("tms_invoice_payments"),
     ]);
     // Display order (the pages above are read in id order).
     co.data?.sort(byName);
@@ -223,6 +234,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     }
     if (dt.data) setDocTypes((dt.data as DocType[]).map(withRules).sort(byTypeOrder));
     if (st.data) setSettings(st.data as Settings);
+    if (pay.data) setPayments((pay.data as InvoicePayment[]).map(normPayment).sort(byPaidOn));
     setReady(true);
   }, []);
 
@@ -277,6 +289,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
           return upsert(l, normInvoice({ ...(data as Invoice), lines: prev?.lines || [] }), true);
         });
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "tms_invoice_payments" }, apply("tms_invoice_payments", setPayments, normPayment))
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_invoice_lines" }, async (p: Payload) => {
         const id = ((p.new && p.new.id) || (p.old && p.old.id)) as string | undefined;
         if (!id) return;
@@ -728,29 +741,61 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Re-reads an invoice and its loads after the database applied payments to them.
+  const reloadInvoice = async (id: string) => {
+    const { data } = await sb().from("tms_invoices").select("*").eq("id", id).maybeSingle();
+    if (!data) return;
+    const prev = ref.current.invoices.find((i) => i.id === id);
+    setInvoices((l) => upsert(l, normInvoice({ ...(data as Invoice), lines: prev?.lines || [] })));
+    const loadIds = (prev?.lines || []).map((l) => l.load_id).filter((x): x is string => !!x);
+    if (loadIds.length) {
+      const res = await sb().from("tms_loads").select("*").in("id", loadIds);
+      if (res.data) setLoads((l) => (res.data as Load[]).reduce((acc, row) => upsert(acc, normLoad(row)), l));
+    }
+  };
+
   const setInvoiceStatus = useCallback(async (id: string, status: InvoiceStatus) => {
     const inv = ref.current.invoices.find((i) => i.id === id);
     if (!inv) return false;
-    const patch: Partial<Invoice> = { status };
-    if (status === "paid") {
-      patch.paid_at = new Date().toISOString();
-      patch.amount_paid = inv.total_due;
-    } else {
-      patch.paid_at = null;
-      patch.amount_paid = 0;
-    }
-    if (status === "sent" && !inv.sent_at) patch.sent_at = new Date().toISOString();
+    // Fully paid stays paid: payments decide that, not the status buttons.
+    const next: InvoiceStatus = status === "sent" && inv.amount_paid > 0 && inv.amount_paid >= inv.total_due ? "paid" : status;
+    const patch: Partial<Invoice> = { status: next };
+    if (next !== "paid") patch.paid_at = null;
+    if ((next === "sent" || next === "paid") && !inv.sent_at) patch.sent_at = new Date().toISOString();
     setInvoices((l) => upsert(l, { ...inv, ...patch }));
     const { error } = await sb().from("tms_invoices").update(patch).eq("id", id);
     if (error) {
       setInvoices((l) => upsert(l, inv));
       return fail(error, "Couldn't change the invoice status"), false;
     }
-    // Loads follow their invoice: paid → paid; void → back to delivered (can be re-invoiced).
+    // Loads follow their invoice: void → back to delivered (can be billed again); otherwise invoiced / paid.
     const loadIds = inv.lines.map((l) => l.load_id).filter((x): x is string => !!x);
-    if (status === "paid") await releaseLoads(loadIds, "paid", ["invoiced", "delivered"]);
-    else if (status === "void") await releaseLoads(loadIds, "delivered", ["invoiced", "paid"]);
+    if (next === "void") await releaseLoads(loadIds, "delivered", ["invoiced", "paid"]);
+    else if (next === "paid") await releaseLoads(loadIds, "paid", ["invoiced", "delivered"]);
     else await releaseLoads(loadIds, "invoiced", ["paid", "delivered"]);
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const recordPayment = useCallback<Store["recordPayment"]>(async (invoiceId, p) => {
+    const { data, error } = await sb()
+      .from("tms_invoice_payments")
+      .insert(clean({ invoice_id: invoiceId, ...p, amount: Math.round(Number(p.amount) * 100) / 100 }))
+      .select()
+      .single();
+    if (error) return fail(error, "Couldn't record the payment"), false;
+    setPayments((l) => upsert(l, normPayment(data as InvoicePayment)).sort(byPaidOn));
+    await reloadInvoice(invoiceId);
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const deletePayment = useCallback(async (id: string) => {
+    const pay = ref.current.payments.find((x) => x.id === id);
+    const { error } = await sb().from("tms_invoice_payments").delete().eq("id", id);
+    if (error) return fail(error, "Couldn't remove the payment"), false;
+    setPayments((l) => l.filter((x) => x.id !== id));
+    if (pay) await reloadInvoice(pay.invoice_id);
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -804,6 +849,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     loads,
     documents,
     invoices,
+    payments,
     docTypes,
     settings,
     scope,
@@ -842,6 +888,8 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     createCustomInvoice,
     saveInvoice,
     setInvoiceStatus,
+    recordPayment,
+    deletePayment,
     deleteInvoice,
     updateSettings,
     addMember,

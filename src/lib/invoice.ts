@@ -1,23 +1,78 @@
-import type { Invoice, InvoiceLine, Settings } from "./types";
+import type { Invoice, InvoiceLine, PaymentMethod, Settings } from "./types";
 import { addDays, today, uid } from "./format";
 
-export type PayState = "draft" | "open" | "overdue" | "paid" | "void";
+export type PayState = "draft" | "open" | "partial" | "overdue" | "paid" | "void";
 
-/** What the invoice means for collections (draft / open / overdue / paid / void). */
-export function payState(i: Pick<Invoice, "status" | "due_date">): PayState {
+/** What is still owed on an invoice. */
+export const balance = (i: Pick<Invoice, "total_due" | "amount_paid" | "status">) =>
+  i.status === "void" || i.status === "draft" ? 0 : Math.max(0, Math.round((i.total_due - (i.amount_paid || 0)) * 100) / 100);
+
+/**
+ * What the invoice means for collections. Overdue is worked out from the due date, never
+ * stored, so it can't go stale; money received before then shows as part paid.
+ */
+export function payState(i: Pick<Invoice, "status" | "due_date" | "total_due" | "amount_paid">): PayState {
   if (i.status === "void") return "void";
   if (i.status === "paid") return "paid";
   if (i.status === "draft") return "draft";
-  return i.due_date && i.due_date < today() ? "overdue" : "open";
+  if (i.due_date && i.due_date < today()) return "overdue";
+  return (i.amount_paid || 0) > 0 ? "partial" : "open";
 }
 
 export const PAY_META: Record<PayState, { label: string; pill: string; dot: string }> = {
   draft: { label: "Draft", pill: "bg-zinc-500/10 text-zinc-700 ring-zinc-600/20 dark:text-zinc-300", dot: "bg-zinc-400" },
   open: { label: "Sent", pill: "bg-blue-500/10 text-blue-700 ring-blue-600/20 dark:text-blue-300", dot: "bg-blue-500" },
+  partial: { label: "Part paid", pill: "bg-teal-500/10 text-teal-700 ring-teal-600/20 dark:text-teal-300", dot: "bg-teal-500" },
   overdue: { label: "Overdue", pill: "bg-red-500/10 text-red-700 ring-red-600/20 dark:text-red-300", dot: "bg-red-500" },
   paid: { label: "Paid", pill: "bg-emerald-500/10 text-emerald-700 ring-emerald-600/20 dark:text-emerald-300", dot: "bg-emerald-500" },
   void: { label: "Void", pill: "bg-zinc-500/10 text-zinc-500 ring-zinc-600/20 line-through", dot: "bg-zinc-400" },
 };
+
+export const METHODS: { v: PaymentMethod; label: string }[] = [
+  { v: "ach", label: "ACH" },
+  { v: "zelle", label: "Zelle" },
+  { v: "wire", label: "Wire" },
+  { v: "check", label: "Check" },
+  { v: "card", label: "Card" },
+  { v: "cash", label: "Cash" },
+  { v: "factoring", label: "Factoring company" },
+  { v: "other", label: "Other" },
+];
+export const methodLabel = (m: PaymentMethod) => METHODS.find((x) => x.v === m)?.label || m;
+
+/** Receivables by how late they are (standard A/R aging buckets). */
+export const AGING = [
+  { key: "current", label: "Not due", tone: "bg-emerald-500" },
+  { key: "d30", label: "1–30 days", tone: "bg-amber-400" },
+  { key: "d60", label: "31–60", tone: "bg-orange-500" },
+  { key: "d90", label: "61–90", tone: "bg-red-500" },
+  { key: "d90p", label: "90+", tone: "bg-red-700" },
+] as const;
+export type AgingKey = (typeof AGING)[number]["key"];
+
+export function agingKey(due: string | null): AgingKey {
+  if (!due || due >= today()) return "current";
+  const days = Math.round((new Date(today()).getTime() - new Date(due).getTime()) / 86400000);
+  return days <= 30 ? "d30" : days <= 60 ? "d60" : days <= 90 ? "d90" : "d90p";
+}
+
+export function aging(invoices: Invoice[]) {
+  const out: Record<AgingKey, { amount: number; count: number }> = {
+    current: { amount: 0, count: 0 },
+    d30: { amount: 0, count: 0 },
+    d60: { amount: 0, count: 0 },
+    d90: { amount: 0, count: 0 },
+    d90p: { amount: 0, count: 0 },
+  };
+  for (const i of invoices) {
+    const b = balance(i);
+    if (!b || i.currency !== "USD") continue;
+    const k = agingKey(i.due_date);
+    out[k].amount += b;
+    out[k].count++;
+  }
+  return out;
+}
 
 /** Editable copy of an invoice (header fields + lines). */
 export type InvoiceDraft = Omit<Invoice, "id" | "created_at" | "updated_at" | "sent_at" | "paid_at" | "lines"> & {
@@ -88,7 +143,10 @@ export function draftToRow(d: InvoiceDraft) {
   const t = totals(d);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { lines, ...head } = d;
-  return { ...head, total_due: t.due, total_gross: t.gross, amount_paid: d.status === "paid" ? t.due : 0 };
+  // amount_paid is never written here: it is the sum of recorded payments (database trigger).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { amount_paid, ...rest } = head;
+  return { ...rest, total_due: t.due, total_gross: t.gross };
 }
 
 export const remittanceDefault = (s: Settings | null) =>

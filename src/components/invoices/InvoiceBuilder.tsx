@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Empty } from "@/components/ui/Bits";
+import { CountUp, stagger } from "@/components/ui/Motion";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { addDays, cut, fmtDay, lane, money, today } from "@/lib/format";
@@ -149,8 +150,8 @@ export function InvoiceBuilder({ open, onClose, companyId: initial }: { open: bo
               <Empty title="Nothing ready to bill" body="Mark loads Delivered first, or include loads not delivered yet." className="py-8" />
             ) : (
               <ul className="divide-y divide-line rounded-xl border border-line">
-                {candidates.map((l) => (
-                  <li key={l.id} className="flex items-center gap-3 px-3 py-2.5">
+                {candidates.map((l, n) => (
+                  <li key={l.id} className="animate-rise flex items-center gap-3 px-3 py-2.5" style={stagger(n)}>
                     <Checkbox
                       checked={picked.has(l.id)}
                       onChange={(v) =>
@@ -184,7 +185,7 @@ export function InvoiceBuilder({ open, onClose, companyId: initial }: { open: bo
             )}
             {chosen.length > 0 && (
               <div className="tnum mt-2 text-right text-xs text-fg-3">
-                {money(gross)} gross → {money(total)} fee
+                <CountUp value={gross} format={(v) => money(v)} /> gross → <span className="font-semibold text-fg"><CountUp value={total} format={(v) => money(v)} /></span> fee
               </div>
             )}
           </div>

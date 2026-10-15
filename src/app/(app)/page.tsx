@@ -9,7 +9,7 @@ import { StatusPill } from "@/components/loads/StatusMenu";
 import { BarChart } from "@/components/analytics/Charts";
 import { useStore } from "@/lib/store";
 import { series } from "@/lib/analytics";
-import { payState } from "@/lib/invoice";
+import { balance, payState } from "@/lib/invoice";
 import { availability } from "@/lib/pitch";
 import { addDays, cn, daysUntil, fmtDay, isCanceled, lane, money, moneyShort, num, today } from "@/lib/format";
 import { checklist, fleetPaperwork, problems, shortName } from "@/lib/docs";
@@ -92,7 +92,7 @@ export default function Dashboard() {
     const out: { key: string; icon: typeof AlertTriangle; text: string; href: string; tone: "red" | "amber" }[] = [];
     const scopedInvoices = invoices.filter((i) => !i.company_id || inScope(i.company_id));
     for (const i of scopedInvoices.filter((i) => payState(i) === "overdue"))
-      out.push({ key: `inv${i.id}`, icon: FileWarning, text: `${i.invoice_number} · ${i.bill_to_name} · ${money(i.total_due)} overdue since ${fmtDay(i.due_date)}`, href: `/invoices/${i.id}`, tone: "red" });
+      out.push({ key: `inv${i.id}`, icon: FileWarning, text: `${i.invoice_number} · ${i.bill_to_name} · ${money(balance(i))} overdue since ${fmtDay(i.due_date)}`, href: `/invoices/${i.id}`, tone: "red" });
     // Loads on the road or waiting to be paid that are missing required paperwork (BOL, POD…).
     let shownLoads = 0;
     for (const l of L.filter((l) => ["in_transit", "delivered", "invoiced"].includes(l.status))) {

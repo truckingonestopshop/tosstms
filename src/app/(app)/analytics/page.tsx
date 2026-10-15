@@ -9,13 +9,13 @@ import { BarChart, LineChart, RankTable } from "@/components/analytics/Charts";
 import { useStore } from "@/lib/store";
 import { RANGE_LABEL, grainFor, groupBy, inWindow, rangeDates, series, type RangeKey, type Row } from "@/lib/analytics";
 import { downloadCsv } from "@/lib/csv";
-import { STATUS, STATUS_ORDER, localDay, money, moneyShort, num, today } from "@/lib/format";
-import { payState } from "@/lib/invoice";
+import { STATUS, STATUS_ORDER, money, moneyShort, num, today } from "@/lib/format";
+import { balance, payState } from "@/lib/invoice";
 
 type Breakdown = "carrier" | "driver" | "truck" | "broker" | "lane" | "dispatcher";
 
 export default function AnalyticsPage() {
-  const { loads, invoices, inScope, scopedCompany, companyById, driverById, truckById, memberName } = useStore();
+  const { loads, invoices, payments, inScope, scopedCompany, companyById, driverById, truckById, memberName } = useStore();
   const [range, setRange] = useState<RangeKey>("30d");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -39,17 +39,19 @@ export default function AnalyticsPage() {
   // Collections: dispatch invoices in scope (any date), USD.
   const coll = useMemo(() => {
     const inv = invoices.filter((i) => i.invoice_type === "load" && i.currency === "USD" && i.company_id && inScope(i.company_id));
-    const paid = inv.filter((i) => i.status === "paid" && localDay(i.paid_at) >= win.from && localDay(i.paid_at) <= win.to);
-    const open = inv.filter((i) => ["open", "overdue"].includes(payState(i)));
+    const ids = new Set(inv.map((i) => i.id));
+    // Collected = payments received in the window (part payments count when they arrive).
+    const received = payments.filter((p) => ids.has(p.invoice_id) && p.paid_on >= win.from && p.paid_on <= win.to);
+    const open = inv.filter((i) => ["open", "partial", "overdue"].includes(payState(i)));
     const overdue = inv.filter((i) => payState(i) === "overdue");
     const unbilled = scoped.filter((l) => l.status === "delivered");
     return {
-      paid: paid.reduce((s, i) => s + i.total_due, 0),
-      open: open.reduce((s, i) => s + i.total_due, 0),
-      overdue: overdue.reduce((s, i) => s + i.total_due, 0),
+      paid: received.reduce((s, p) => s + p.amount, 0),
+      open: open.reduce((s, i) => s + balance(i), 0),
+      overdue: overdue.reduce((s, i) => s + balance(i), 0),
       unbilled: unbilled.reduce((s, l) => s + l.dispatcher_cut, 0),
     };
-  }, [invoices, scoped, inScope, win.from, win.to]);
+  }, [invoices, payments, scoped, inScope, win.from, win.to]);
 
   const rows: Row[] = useMemo(() => {
     switch (by) {

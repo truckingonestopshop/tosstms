@@ -200,6 +200,62 @@
   animation: slide-in-right 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+/* Motion: short, eased, never in the way. Rows rise in (staggered with --d), bars grow,
+   a paid / void stamp lands on the invoice, a check draws itself after a payment. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes stamp {
+  0% { opacity: 0; transform: rotate(-14deg) scale(1.9); }
+  60% { opacity: 1; transform: rotate(-11deg) scale(0.94); }
+  100% { opacity: 1; transform: rotate(-12deg) scale(1); }
+}
+@keyframes draw {
+  from { stroke-dashoffset: var(--len, 48); }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-brand) 45%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; }
+}
+@utility animate-rise {
+  animation: rise 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+@utility animate-grow {
+  transform-origin: left center;
+  animation: grow-x 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+@utility animate-stamp {
+  animation: stamp 520ms cubic-bezier(0.2, 0.9, 0.25, 1.2) both;
+  animation-delay: var(--d, 120ms);
+}
+@utility animate-draw {
+  stroke-dasharray: var(--len, 48);
+  animation: draw 520ms cubic-bezier(0.65, 0, 0.35, 1) both;
+  animation-delay: var(--d, 150ms);
+}
+@utility animate-pulse-ring {
+  animation: pulse-ring 1.6s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Map container (Mapbox GL) */
 .mapboxgl-ctrl-logo { opacity: 0.5; }
 .mapboxgl-ctrl-attrib { font-size: 10px !important; }

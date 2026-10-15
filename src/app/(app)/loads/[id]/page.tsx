@@ -6,8 +6,6 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Check,
-  CheckCircle2,
-  Circle,
   ClipboardCopy,
   Copy,
   FileStack,

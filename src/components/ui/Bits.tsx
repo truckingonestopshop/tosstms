@@ -83,15 +83,17 @@ export function Stat({
   sub,
   className,
   children,
+  style,
 }: {
   label: React.ReactNode;
   value: React.ReactNode;
   sub?: React.ReactNode;
   className?: string;
   children?: React.ReactNode;
+  style?: React.CSSProperties;
 }) {
   return (
-    <Card className={cn("p-4 sm:p-5", className)}>
+    <Card className={cn("p-4 sm:p-5", className)} style={style}>
       <Eyebrow>{label}</Eyebrow>
       <div className="tnum mt-1.5 truncate text-2xl font-bold tracking-tight text-fg sm:text-[28px]">{value}</div>
       {sub && <div className="mt-1 truncate text-xs text-fg-3">{sub}</div>}
