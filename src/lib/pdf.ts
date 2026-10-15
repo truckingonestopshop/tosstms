@@ -1,9 +1,12 @@
 "use client";
 
-/** Saves a rendered document element (an invoice) as a letter-size PDF file. */
+/**
+ * Saves a rendered document element (an invoice) as a letter-size PDF file.
+ * Uses html2canvas-pro: the original html2canvas can't parse the oklch()/lab()
+ * colors Tailwind v4 generates and throws before drawing anything.
+ */
 export async function saveElementPdf(el: HTMLElement, fileName: string) {
-  const [h2c, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
-  const html2canvas = (h2c as unknown as { default?: typeof import("html2canvas").default }).default ?? (h2c as unknown as typeof import("html2canvas").default);
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas-pro"), import("jspdf")]);
   const canvas = await html2canvas(el, {
     scale: 2,
     backgroundColor: "#ffffff",

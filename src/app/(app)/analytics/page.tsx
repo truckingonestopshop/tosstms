@@ -9,7 +9,7 @@ import { BarChart, LineChart, RankTable } from "@/components/analytics/Charts";
 import { useStore } from "@/lib/store";
 import { RANGE_LABEL, grainFor, groupBy, inWindow, rangeDates, series, type RangeKey, type Row } from "@/lib/analytics";
 import { downloadCsv } from "@/lib/csv";
-import { STATUS, STATUS_ORDER, money, moneyShort, num, today } from "@/lib/format";
+import { STATUS, STATUS_ORDER, localDay, money, moneyShort, num, today } from "@/lib/format";
 import { payState } from "@/lib/invoice";
 
 type Breakdown = "carrier" | "driver" | "truck" | "broker" | "lane" | "dispatcher";
@@ -39,7 +39,7 @@ export default function AnalyticsPage() {
   // Collections: dispatch invoices in scope (any date), USD.
   const coll = useMemo(() => {
     const inv = invoices.filter((i) => i.invoice_type === "load" && i.currency === "USD" && i.company_id && inScope(i.company_id));
-    const paid = inv.filter((i) => i.status === "paid" && (i.paid_at || "").slice(0, 10) >= win.from && (i.paid_at || "").slice(0, 10) <= win.to);
+    const paid = inv.filter((i) => i.status === "paid" && localDay(i.paid_at) >= win.from && localDay(i.paid_at) <= win.to);
     const open = inv.filter((i) => ["open", "overdue"].includes(payState(i)));
     const overdue = inv.filter((i) => payState(i) === "overdue");
     const unbilled = scoped.filter((l) => l.status === "delivered");

@@ -34,7 +34,7 @@ import { Vault } from "@/components/fleet/Vault";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
-import { ACTIVE_STATUSES, cn, daysUntil, lane, money, num } from "@/lib/format";
+import { ACTIVE_STATUSES, cn, daysUntil, lane, money, num, today } from "@/lib/format";
 import { availability, equipmentLine, pitchFor } from "@/lib/pitch";
 import type { Company, Driver, Truck } from "@/lib/types";
 
@@ -120,7 +120,7 @@ function CompaniesOverview({ onAdd }: { onAdd: () => void }) {
           const d = drivers.filter((x) => x.company_id === c.id);
           const l = loads.filter((x) => x.company_id === c.id);
           const active = l.filter((x) => ACTIVE_STATUSES.includes(x.status)).length;
-          const month = new Date().toISOString().slice(0, 7);
+          const month = today().slice(0, 7);
           const gross = l.filter((x) => (x.delivery_date || x.pickup_date || "").startsWith(month)).reduce((s, x) => s + x.gross_amount, 0);
           const alerts = d.filter(driverAlert).length + documents.filter((x) => x.company_id === c.id && (daysUntil(x.expires_on) ?? 99) <= 30).length;
           return (

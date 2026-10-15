@@ -214,8 +214,9 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
     if (!d.company_id) return toast.error("Pick the carrier company.");
     const filled = d.stops.filter((x) => x.city.trim() || x.zip.trim());
     if (filled.length < 2) return toast.error("Add at least a pickup and a delivery city.");
-    const first = d.stops.find((x) => x.type === "pickup") || d.stops[0];
-    const last = [...d.stops].reverse().find((x) => x.type === "delivery") || d.stops[d.stops.length - 1];
+    // Empty extra rows are dropped so they can't become the origin or destination.
+    const first = filled.find((x) => x.type === "pickup") || filled[0];
+    const last = [...filled].reverse().find((x) => x.type === "delivery") || filled[filled.length - 1];
     const row = {
       company_id: d.company_id,
       driver_id: d.driver_id || null,
@@ -232,8 +233,8 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
       origin_state: first.state,
       destination_city: last.city,
       destination_state: last.state,
-      pickup_date: d.stops[0].date || null,
-      delivery_date: d.stops[d.stops.length - 1].date || null,
+      pickup_date: filled[0].date || null,
+      delivery_date: filled[filled.length - 1].date || null,
       gross_amount: gross,
       commission_percent: pct,
       loaded_miles: loaded,
@@ -243,7 +244,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
       equipment_type: d.equipment_type || null,
       broker_notes: d.broker_notes || null,
       internal_notes: d.internal_notes || null,
-      stops: d.stops,
+      stops: filled,
     };
     setSaving(true);
     if (editing && load) {

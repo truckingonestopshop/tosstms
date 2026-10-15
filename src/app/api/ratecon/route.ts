@@ -8,6 +8,10 @@ import type { LoadStop, RateConExtract } from "@/lib/types";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+const MAX_FILE = 20 * 1024 * 1024;
+const MAX_BODY = 32 * 1024 * 1024;
+const MAX_IMAGE_CHARS = 6 * 1024 * 1024;
+
 const SYSTEM = `You read US trucking rate confirmations (load tenders from freight brokers to a carrier) and return the load as JSON.
 Rules:
 - Only use what the document says. Use "" or null when a value is not present. Never guess numbers.
@@ -93,15 +97,32 @@ async function pdfText(bytes: Uint8Array) {
 export async function POST(req: NextRequest) {
   if (!(await requireMember())) return NextResponse.json({ error: "Not allowed" }, { status: 401 });
 
-  const form = await req.formData();
-  const file = form.get("file") as File | null;
-  let text = String(form.get("text") || "");
-  const images = form.getAll("images").map(String).filter((s) => s.startsWith("data:image/")).slice(0, 4);
+  // Rate cons are small; refuse anything that would tie up memory or the reader.
+  if (Number(req.headers.get("content-length") || 0) > MAX_BODY) {
+    return NextResponse.json({ error: "That file is too large. Rate confirmations should be under 20 MB." }, { status: 413 });
+  }
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return NextResponse.json({ error: "Upload failed. Try the file again." }, { status: 400 });
+  }
+  const raw = form.get("file");
+  const file = raw instanceof File ? raw : null;
+  if (file && file.size > MAX_FILE) {
+    return NextResponse.json({ error: "That file is too large. Rate confirmations should be under 20 MB." }, { status: 413 });
+  }
+  let text = String(form.get("text") || "").slice(0, 200_000);
+  const images = form
+    .getAll("images")
+    .map(String)
+    .filter((s) => /^data:image\/(png|jpe?g|webp);base64,/.test(s) && s.length <= MAX_IMAGE_CHARS)
+    .slice(0, 4);
 
   if (!text.trim() && file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))) {
     text = await pdfText(new Uint8Array(await file.arrayBuffer()));
   }
-  if (!images.length && file && file.type.startsWith("image/") && file.size < 8 * 1024 * 1024) {
+  if (!images.length && file && /^image\/(png|jpe?g|webp)$/.test(file.type) && file.size < 4 * 1024 * 1024) {
     images.push(`data:${file.type};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}`);
   }
   const hasText = text.replace(/\s/g, "").length > 60;

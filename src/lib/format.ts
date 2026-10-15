@@ -44,6 +44,9 @@ export function toDay(d: Date) {
 
 export const today = () => toDay(new Date());
 
+/** Local calendar day of a timestamp (UTC slicing would be a day ahead on US evenings). */
+export const localDay = (ts: string | null | undefined) => (ts ? toDay(new Date(ts)) : "");
+
 export function addDays(day: string, n: number) {
   const d = parseDay(day) ?? new Date();
   d.setDate(d.getDate() + n);

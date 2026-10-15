@@ -11,7 +11,7 @@ import { InvoiceBuilder, useBillable } from "@/components/invoices/InvoiceBuilde
 import { useStore } from "@/lib/store";
 import { PAY_META, payState, type PayState } from "@/lib/invoice";
 import { downloadCsv } from "@/lib/csv";
-import { cn, daysUntil, fmtDay, money, today } from "@/lib/format";
+import { cn, daysUntil, fmtDay, localDay, money, today } from "@/lib/format";
 
 type Tab = "all" | PayState;
 
@@ -45,7 +45,7 @@ function Invoices() {
     const usd = scoped.filter((i) => i.currency === "USD");
     const open = usd.filter((i) => payState(i) === "open" || payState(i) === "overdue");
     const overdue = usd.filter((i) => payState(i) === "overdue");
-    const paidMonth = usd.filter((i) => i.status === "paid" && (i.paid_at || "").startsWith(month));
+    const paidMonth = usd.filter((i) => i.status === "paid" && localDay(i.paid_at).startsWith(month));
     return {
       outstanding: open.reduce((s, i) => s + i.total_due, 0),
       openCount: open.length,

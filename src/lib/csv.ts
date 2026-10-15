@@ -2,7 +2,9 @@
 
 export function downloadCsv(fileName: string, rows: (string | number | null | undefined)[][]) {
   const esc = (v: string | number | null | undefined) => {
-    const s = v === null || v === undefined ? "" : String(v);
+    let s = v === null || v === undefined ? "" : String(v);
+    // Text that starts like a formula would run in Excel/Sheets; keep it as plain text.
+    if (typeof v === "string" && /^[=+@\t\r]|^-(?![\d.])/.test(s)) s = `'${s}`;
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const text = rows.map((r) => r.map(esc).join(",")).join("\r\n");

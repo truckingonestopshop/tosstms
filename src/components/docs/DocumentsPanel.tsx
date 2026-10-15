@@ -35,6 +35,9 @@ export function ExpiryBadge({ date }: { date: string | null }) {
   return <Pill className={neutralPill}>Exp. {fmtDay(date)}</Pill>;
 }
 
+/** Same list as the file picker; drag-and-drop skips the picker's filter. */
+const ALLOWED = /\.(pdf|png|jpe?g|webp|heic|heif|gif|tiff?|doc|docx|xls|xlsx|csv|txt)$/i;
+
 const isImage = (d: DocumentItem) => (d.mime_type || "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic)$/i.test(d.file_name);
 
 /**
@@ -102,6 +105,10 @@ export function DocumentsPanel({
     setBusy(true);
     let ok = 0;
     for (const f of arr) {
+      if (!ALLOWED.test(f.name)) {
+        toast.error(`${f.name}: only PDF, images and Office files can be uploaded.`);
+        continue;
+      }
       if (f.size > 25 * 1024 * 1024) {
         toast.error(`${f.name} is over 25 MB.`);
         continue;
@@ -179,7 +186,7 @@ export function DocumentsPanel({
             ref={fileInput}
             type="file"
             multiple
-            accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.doc,.docx,.xls,.xlsx,.csv,.txt"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.gif,.tif,.tiff,.doc,.docx,.xls,.xlsx,.csv,.txt"
             className="hidden"
             onChange={(e) => e.target.files && upload(e.target.files)}
           />

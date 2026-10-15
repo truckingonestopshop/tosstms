@@ -175,18 +175,36 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
       return;
     }
     const c = sb();
+    // The API caps every response at 1,000 rows, so large tables are read page by page
+    // (ordered by id as a tie-breaker so no row is skipped or repeated between pages).
+    const all = async <T,>(table: string): Promise<{ data: T[] | null; error: unknown }> => {
+      const out: T[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await c.from(table).select("*").order("id").range(from, from + 999);
+        if (error) return { data: out.length ? out : null, error };
+        out.push(...((data || []) as T[]));
+        if (!data || data.length < 1000) return { data: out, error: null };
+      }
+    };
     const [m, co, dr, tr, lo, docs, inv, lines, dt, st] = await Promise.all([
       c.from("tms_members").select("*").order("full_name"),
-      c.from("tms_companies").select("*").order("name"),
-      c.from("tms_drivers").select("*").order("name"),
-      c.from("tms_trucks").select("*").order("unit_number"),
-      c.from("tms_loads").select("*").order("pickup_date", { ascending: false, nullsFirst: true }).limit(5000),
-      c.from("tms_documents").select("*").order("uploaded_at", { ascending: false }).limit(10000),
-      c.from("tms_invoices").select("*").order("created_at", { ascending: false }),
-      c.from("tms_invoice_lines").select("*").order("position"),
+      all<Company>("tms_companies"),
+      all<Driver>("tms_drivers"),
+      all<Truck>("tms_trucks"),
+      all<Load>("tms_loads"),
+      all<DocumentItem>("tms_documents"),
+      all<Invoice>("tms_invoices"),
+      all<InvoiceLine>("tms_invoice_lines"),
       c.from("tms_doc_types").select("*").order("name"),
       c.from("tms_settings").select("*").eq("id", 1).maybeSingle(),
     ]);
+    // Display order (the pages above are read in id order).
+    co.data?.sort(byName);
+    dr.data?.sort(byName);
+    tr.data?.sort((a, b) => a.unit_number.localeCompare(b.unit_number, undefined, { numeric: true }));
+    lo.data?.sort((a, b) => (b.pickup_date || "9").localeCompare(a.pickup_date || "9") || b.created_at.localeCompare(a.created_at));
+    docs.data?.sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
+    inv.data?.sort((a, b) => b.created_at.localeCompare(a.created_at));
     const firstErr = [m, co, dr, tr, lo, docs, inv, lines, dt].find((r) => r.error)?.error;
     if (firstErr) fail(firstErr, "Couldn't load data");
     if (m.data) setMembers(m.data as Member[]);
@@ -196,8 +214,9 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     if (lo.data) setLoads((lo.data as Load[]).map(normLoad));
     if (docs.data) setDocuments(docs.data as DocumentItem[]);
     if (inv.data) {
-      const ls = (lines.data || []) as InvoiceLine[];
-      setInvoices((inv.data as Invoice[]).map((i) => normInvoice({ ...i, lines: ls.filter((l) => l.invoice_id === i.id) })));
+      const byInvoice = new Map<string, InvoiceLine[]>();
+      for (const l of (lines.data || []) as InvoiceLine[]) byInvoice.set(l.invoice_id, [...(byInvoice.get(l.invoice_id) || []), l]);
+      setInvoices((inv.data as Invoice[]).map((i) => normInvoice({ ...i, lines: byInvoice.get(i.id) || [] })));
     }
     if (dt.data) setDocTypes(dt.data as DocType[]);
     if (st.data) setSettings(st.data as Settings);
