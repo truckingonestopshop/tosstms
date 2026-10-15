@@ -1,71 +1,48 @@
-# TOSS TMS — Trucking Management System
+# TOSS TMS
 
-Internal operations, dispatch, fleet, and billing platform for **Trucking One Stop Shop** ([truckingonestopshop.net](https://truckingonestopshop.net)).
+Internal dispatch TMS for Trucking One Stop Shop. TOSS dispatches for several carrier
+companies and bills each one a percentage of the gross ("dispatch fee"). Same logins as
+TOSS Leads (shared Supabase project).
 
----
+## What's in it
 
-## Architecture & Features
+| Area | What it does |
+|---|---|
+| Dashboard | Month KPIs, fleet board (which trucks need a load), today's pickups/deliveries, items needing attention, 12-week trend |
+| Loads | List / Board (drag to change status) / Calendar. Filters, bulk status, CSV and printable report |
+| New / edit load | Drop a rate con → broker, rate, stops, miles filled in. Multi-stop editor, Mapbox miles + deadhead, every field editable |
+| Load page | Status stepper, per-stop progress, map, re-assign truck/driver, paperwork checklist (RC/BOL/POD), one-click factoring packet (merged PDF), activity log with notes |
+| Invoices | "Ready to bill" per carrier, invoice from delivered loads, inline-editable invoice, Draft/Sent/Paid/Void (loads follow), overdue tracking, PDF, custom invoices |
+| Analytics | Gross, fee, RPM, miles, collections; by carrier, driver, truck, broker, lane, dispatcher |
+| Fleet & Company | Carriers, trucks (broker sheet with one-tap copy + pitch), drivers (CDL/medical expiry), documents (with expiry), encrypted credentials vault, profile & fee terms |
+| Settings | Team (owners add TOSS accounts), invoice profile, document types, light/dark |
 
-- **Multi-Carrier Tenant Management**: Switch between assigned carrier companies or master view. Scoped loads, drivers, equipment, and commission rates.
-- **Operations Dashboard**: Gross volume, commission cut, active in-transit loads, and un-invoiced freight.
-- **Interactive Dispatch Calendar**: Dual-mode monthly grid and schedule agenda view with 7d, 1m, 3m, 6m, 1y, and lifetime presets, multi-select batch status updating, and quick load inspection.
-- **Loads Board & Full Lifecycle**: Complete freight status tracking (`Booked` → `In Transit` → `Delivered` → `Invoiced` → `Paid`).
-- **Rate Confirmation Scanner**: Drag-and-drop broker PDF/image import. DeepSeek LLM structured data extraction with local OCR fallback. Zero AI buzzwords—straightforward freight terminology.
-- **Mapbox Route Engine**: Dynamic Mapbox GL JS route visualizer with dark/light map tiles, turn-by-turn driving distance, and drive time estimation.
-- **Invoicing & Factoring Packets**:
-  - Carrier commission invoicing with calendar-based load selection.
-  - Printable/PDF invoice sheets with remittance instructions.
-  - **Factoring Packet Bundler**: One-click download compiling Invoice + Rate Con + Signed POD + Lumper receipts into a clean PDF package for factoring partners (Apex, RTS, Triumph, WinFactor).
-- **Fleet & Compliance Vault**:
-  - Driver records with automated CDL and DOT Medical Card expiration alerts.
-  - Tractor & trailer inventory with live empty status and location tracking.
-  - Carrier compliance document vault (W-9, COI, Operating Authority, NOA).
-  - **Live Broker Desk**: Instant copy-paste credentials for dispatchers working load boards.
-- **Light & Dark Theme**: Full theme support with signature TOSS Orange (`#F79B4D`) accents and Eina 03 typography.
-- **Responsive Layout**: Desktop control center + optimized mobile navigation for dispatchers on smartphones and tablets.
-
----
-
-## Getting Started
-
-### 1. Install Dependencies & Run
+## Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Copy `.env.example` to `.env.local` and fill in the keys. Open http://localhost:3000.
 
-### 2. Configure Environment Variables
+**UI preview without logging in (development only):** open http://localhost:3000/preview-ui
+to browse every page with sample data. `/preview-ui?off` turns it off. It cannot be enabled
+in a production build.
 
-Edit `.env.local`:
+## Database
 
-```bash
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://yguxmgqnnbjmpzrxqlco.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+Supabase project `grvuqxxjjiebnxnwcmxu` (shared with TOSS Leads). The TMS owns only
+`public.tms_*` and the `tms_private` schema — see `supabase/migrations/0001_tms_core.sql`.
 
-# Mapbox Token (for interactive maps & distance)
-NEXT_PUBLIC_MAPBOX_TOKEN=your-mapbox-token
+- Access: a TOSS account can use the TMS only if it has a row in `tms_members`
+  (Settings → Team). Owners manage the team, invoice profile, and can delete companies.
+- Files: private storage bucket `tms-docs`, opened through short-lived signed links.
+- Vault passwords are encrypted at rest (pgcrypto, key in Supabase Vault).
+- Realtime keeps every dispatcher's screen in sync.
 
-# DeepSeek API (for Rate Confirmation extraction)
-DEEPSEEK_API_KEY=your-deepseek-api-key
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-chat
-```
+## Rate confirmation reader
 
-### 3. Supabase Database Setup
-
-1. Open your Supabase SQL editor (`https://yguxmgqnnbjmpzrxqlco.supabase.co` or your shared project).
-2. Run [`supabase/schema.sql`](supabase/schema.sql) to create all `tms_*` tables, storage buckets, views, and RLS policies.
-3. (Optional) Run [`supabase/seed.sql`](supabase/seed.sql) to populate initial sample carriers, drivers, equipment, and freight loads.
-
----
-
-## Deployment (Vercel)
-
-1. Connect the GitHub repository.
-2. In Vercel Project Settings → Environment Variables, add the keys from `.env.local`.
-3. Deploy!
+`/api/ratecon`: PDF text (or page images for scans) → DeepSeek `deepseek-flash` with a time
+limit → a local rule-based reader fills anything missing (and everything when DeepSeek is
+busy) → Mapbox highway miles. The dispatcher reviews and can change every field.

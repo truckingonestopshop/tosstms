@@ -1,29 +1,64 @@
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import "server-only";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { cache } from "react";
 
-export async function createClient() {
-  const cookieStore = await cookies();
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://grvuqxxjjiebnxnwcmxu.supabase.co';
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    'sb_publishable_HZoqU37P3tgB-GG_WYJHqA_6nuPBXJm';
-
-  return createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll();
-      },
-      setAll(cookiesToSet) {
-        try {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          );
-        } catch {
-          // Can happen in Server Components
-        }
+/** Supabase client bound to the signed-in user's cookies (RLS applies). */
+export async function supabaseServer() {
+  const store = await cookies();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll: () => store.getAll(),
+        setAll: (list) => {
+          try {
+            for (const { name, value, options } of list) store.set(name, value, options);
+          } catch {
+            // Server Components can't write cookies; proxy.ts refreshes them.
+          }
+        },
       },
     },
-  });
+  );
+}
+
+export type TmsRole = "owner" | "dispatcher";
+
+export interface CurrentUser {
+  id: string;
+  email: string;
+  fullName: string;
+  /** null = signed in to TOSS but not added to the TMS team. */
+  role: TmsRole | null;
+}
+
+/** The signed-in user and their TMS role, or null. Cached per request. */
+export const currentUser = cache(async function currentUser(): Promise<CurrentUser | null> {
+  const sb = await supabaseServer();
+  const { data, error } = await sb.auth.getClaims();
+  if (error || !data?.claims?.sub) return null;
+  const id = data.claims.sub as string;
+  const email = (data.claims.email as string | undefined) ?? "";
+  const { data: member } = await sb.from("tms_members").select("full_name, role").eq("user_id", id).maybeSingle();
+  return {
+    id,
+    email,
+    fullName: member?.full_name || email.split("@")[0],
+    role: (member?.role as TmsRole | undefined) ?? null,
+  };
+});
+
+/** Use in route handlers: returns the user only if they are a TMS member. */
+export async function requireMember() {
+  const user = await currentUser();
+  if (!user || !user.role) {
+    // Development-only sample-data preview (see /preview-ui).
+    if (process.env.NODE_ENV === "development" && (await cookies()).get("tms_ui_preview")?.value === "1") {
+      return { id: "demo-me", email: "preview@localhost", fullName: "Preview", role: "owner" as TmsRole };
+    }
+    return null;
+  }
+  return user;
 }

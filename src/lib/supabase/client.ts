@@ -1,11 +1,17 @@
-import { createBrowserClient } from '@supabase/ssr';
+"use client";
 
-export function createClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://grvuqxxjjiebnxnwcmxu.supabase.co';
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    'sb_publishable_HZoqU37P3tgB-GG_WYJHqA_6nuPBXJm';
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+let client: SupabaseClient | null = null;
+
+/** Browser Supabase client (one per tab). Session lives in cookies shared with the server. */
+export function supabaseBrowser(): SupabaseClient {
+  if (!client) {
+    client = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    );
+  }
+  return client;
 }

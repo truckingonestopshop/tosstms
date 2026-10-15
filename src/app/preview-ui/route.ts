@@ -1,0 +1,12 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { PREVIEW_COOKIE, previewAllowed } from "@/lib/preview";
+
+/** Dev only: /preview-ui turns the sample-data preview on, /preview-ui?off turns it off. */
+export function GET(req: NextRequest) {
+  if (!previewAllowed()) return new NextResponse("Not found", { status: 404 });
+  const off = req.nextUrl.searchParams.has("off");
+  const res = NextResponse.redirect(new URL(off ? "/login" : "/", req.url));
+  if (off) res.cookies.delete(PREVIEW_COOKIE);
+  else res.cookies.set(PREVIEW_COOKIE, "1", { path: "/", httpOnly: true, sameSite: "lax" });
+  return res;
+}

@@ -1,60 +1,57 @@
-import React from 'react';
-import Image from 'next/image';
-import { LogoMark } from '@/components/ui/Logo';
+import Image from "next/image";
+import { LogoMark } from "@/components/brand/Logo";
+
+// Login and set-password frame, identical to TOSS Leads: one rounded dark frame split in
+// two. Left: the company website's truck photo darkened from the bottom, the white logo
+// and the team headline (first word in brand orange). Right: the dark form. Phones: the
+// photo becomes a short banner on top. Always dark, whatever the app theme.
 
 export const authInput =
-  'w-full rounded-lg border border-border bg-card px-3.5 py-2.5 text-base text-text-main placeholder:text-text-muted focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:text-sm';
-export const authLabel = 'block space-y-1.5 text-sm';
-export const authLabelText = 'font-semibold text-text-main text-xs uppercase tracking-wider';
+  "w-full rounded-[10px] border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-base text-white placeholder:text-zinc-500 focus:border-[#f28c38] focus:outline-none focus:ring-1 focus:ring-[#f28c38] sm:text-sm";
+export const authLabel = "block space-y-1.5 text-sm";
+export const authLabelText = "font-semibold text-zinc-300";
+/** The one orange action: black text on orange. */
 export const authButton =
-  'w-full rounded-lg bg-brand-500 py-2.5 text-sm font-bold text-zinc-950 hover:bg-brand-600 disabled:opacity-50 transition-colors shadow-xs';
+  "w-full rounded-full bg-[#f28c38] py-2.5 text-sm font-semibold text-[#0a0a0d] transition-colors hover:bg-[#db7522] disabled:bg-zinc-700 disabled:text-zinc-400";
 
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950 p-2 sm:p-4 lg:p-8">
-      <div className="grid min-h-[580px] w-full max-w-5xl overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 shadow-2xl lg:grid-cols-[1.1fr_1fr]">
-        {/* Left Side: Photo Panel */}
-        <section className="relative flex min-h-[240px] flex-col justify-between overflow-hidden p-6 sm:p-10 lg:min-h-0">
+    <div className="flex min-h-dvh items-center justify-center bg-black sm:p-4 lg:p-8">
+      <div className="grid min-h-dvh w-full max-w-6xl gap-2 bg-[#0a0a0d] p-2 sm:min-h-0 sm:gap-3 sm:rounded-[22px] sm:border sm:border-white/10 sm:p-3 lg:min-h-[640px] lg:grid-cols-[1.1fr_1fr]">
+        <section className="relative flex min-h-[260px] overflow-hidden rounded-[16px] sm:min-h-[320px] lg:min-h-0">
           <Image
             src="/brand/login-hero.png"
-            alt="Trucking One Stop Shop"
+            alt=""
             fill
             priority
             sizes="(min-width: 1024px) 55vw, 100vw"
             className="object-cover object-[65%_center]"
           />
-          <div
-            aria-hidden
-            className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/30"
-          />
-
-          <div className="relative z-10 flex w-full flex-col justify-between h-full">
-            <div className="flex items-center gap-2">
-              <LogoMark tone="dark" className="h-8 w-auto" />
-              <span className="text-xs font-black tracking-widest uppercase px-2 py-0.5 rounded bg-brand-500 text-zinc-950">
+          <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-black/25" />
+          <div className="relative flex w-full flex-col justify-between p-5 sm:p-8 lg:p-10">
+            <div className="flex items-center gap-3 self-start text-white">
+              <LogoMark className="h-8 w-auto sm:h-10" />
+              <span className="rounded-md border border-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/80">
                 TMS
               </span>
             </div>
-
-            <div className="mt-8">
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white leading-tight tracking-tight">
-                <span className="text-brand-500">Dispatch</span>, Fleet, & Revenue Operations.
-              </h1>
-              <p className="mt-3 max-w-sm text-xs sm:text-sm text-zinc-300 leading-relaxed">
-                Internal freight operations platform for Trucking One Stop Shop: book loads, track drivers, scan rate confirmations, and invoice carriers in one system.
+            <div className="mt-10">
+              <p className="text-3xl font-bold leading-[1.05] tracking-[-0.03em] text-white sm:text-4xl lg:text-5xl">
+                <span className="text-[#f28c38]">Dispatch</span> Every Load, Keep Every Truck Moving.
               </p>
-              <p className="mt-5 text-[11px] font-semibold text-zinc-400">
-                TOSS · Trucking One Stop Shop
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-zinc-300">
+                Our team&apos;s dispatch platform at Trucking One Stop Shop: book loads, manage carriers and
+                fleets, keep paperwork in order and bill on time.
               </p>
+              <p className="mt-5 hidden text-xs text-zinc-400 sm:block">TOSS · Trucking One Stop Shop</p>
             </div>
           </div>
         </section>
 
-        {/* Right Side: Auth Form */}
-        <section className="flex flex-col justify-center px-6 py-10 sm:px-12 bg-zinc-900 text-white">
+        <section className="flex flex-col justify-center px-3 py-8 text-white sm:px-10 lg:px-14">
           <div className="mx-auto w-full max-w-sm">{children}</div>
-          <p className="mt-8 text-center text-[11px] text-zinc-400">
-            Internal team access only · truckingonestopshop.net
+          <p className="mt-10 text-center text-[11px] text-zinc-500">
+            Team access only. Same account as TOSS Leads.
           </p>
         </section>
       </div>
