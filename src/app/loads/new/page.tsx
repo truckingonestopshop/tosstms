@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/lib/data/AppContext';
 import { RateConScanner } from '@/components/loads/RateConScanner';
@@ -218,34 +218,59 @@ export default function NewLoadPage() {
   };
 
   // Preview Load object for live Mapbox route
-  const previewLoad: any = {
-    id: 'preview',
-    company_id: companyId,
-    driver_id: driverId,
-    truck_id: truckId,
-    load_number: loadNumber,
-    origin_city: originCity || 'Chicago',
-    origin_state: originState || 'IL',
-    destination_city: destinationCity || 'Atlanta',
-    destination_state: destinationState || 'GA',
-    pickup_date: pickupDate,
-    delivery_date: deliveryDate,
-    gross_amount: grossAmount,
-    dispatcher_cut: 0,
-    status: 'booked',
-    broker_name: brokerName || 'Broker',
-    broker_contact: brokerContact,
-    rate_con_number: rateConNumber,
-    deadhead_miles: deadheadMiles,
-    loaded_miles: loadedMiles || totalMiles,
-    total_miles: totalMiles || loadedMiles,
-    rate_per_mile: ratePerMile || (grossAmount && loadedMiles ? grossAmount / loadedMiles : 0),
-    stops: stops,
-    route_geometry: routeGeometry,
-    deadhead_geometry: deadheadGeometry,
-    created_at: '',
-    updated_at: '',
-  };
+  const previewLoad = useMemo<any>(
+    () => ({
+      id: 'preview',
+      company_id: companyId,
+      driver_id: driverId,
+      truck_id: truckId,
+      load_number: loadNumber,
+      origin_city: originCity || 'Chicago',
+      origin_state: originState || 'IL',
+      destination_city: destinationCity || 'Atlanta',
+      destination_state: destinationState || 'GA',
+      pickup_date: pickupDate,
+      delivery_date: deliveryDate,
+      gross_amount: grossAmount,
+      dispatcher_cut: 0,
+      status: 'booked',
+      broker_name: brokerName || 'Broker',
+      broker_contact: brokerContact,
+      rate_con_number: rateConNumber,
+      deadhead_miles: deadheadMiles,
+      loaded_miles: loadedMiles || totalMiles,
+      total_miles: totalMiles || loadedMiles,
+      rate_per_mile: ratePerMile || (grossAmount && loadedMiles ? grossAmount / loadedMiles : 0),
+      stops: stops,
+      route_geometry: routeGeometry,
+      deadhead_geometry: deadheadGeometry,
+      created_at: '',
+      updated_at: '',
+    }),
+    [
+      companyId,
+      driverId,
+      truckId,
+      loadNumber,
+      originCity,
+      originState,
+      destinationCity,
+      destinationState,
+      pickupDate,
+      deliveryDate,
+      grossAmount,
+      brokerName,
+      brokerContact,
+      rateConNumber,
+      deadheadMiles,
+      loadedMiles,
+      totalMiles,
+      ratePerMile,
+      stops,
+      routeGeometry,
+      deadheadGeometry,
+    ]
+  );
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
