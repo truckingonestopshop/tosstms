@@ -5,6 +5,15 @@ import { NextResponse, type NextRequest } from "next/server";
 // to /login. This is an optimistic check only; the app layout, route handlers and
 // RLS verify the user again.
 export async function proxy(request: NextRequest) {
+  // Without these the Supabase client throws on every request and the host shows a bare
+  // "Internal Server Error". Say what's missing instead (names only, never values).
+  const missing = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"].filter((k) => !process.env[k]);
+  if (missing.length) {
+    return new NextResponse(`TOSS TMS is not configured: ${missing.join(", ")} missing. Add it in the hosting settings and redeploy.`, {
+      status: 503,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
   let response = NextResponse.next({ request });
   const sb = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
