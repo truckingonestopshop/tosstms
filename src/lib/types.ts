@@ -80,6 +80,8 @@ export interface Trailer {
   suspension: string | null;
   /** reefer unit, e-track, liftgate, food grade… */
   features: string | null;
+  /** type-specific specs (air chute, reefer unit, deck…), see lib/trailerSpecs.ts */
+  specs: Record<string, string | string[]>;
   plate: string | null;
   vin_number: string | null;
   year: number | null;

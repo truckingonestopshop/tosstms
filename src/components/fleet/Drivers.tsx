@@ -9,6 +9,7 @@ import { Drawer, Modal } from "@/components/ui/Modal";
 import { CopyButton, Eyebrow, KV, Pill, neutralPill } from "@/components/ui/Bits";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
+import { DriverRig } from "./Units";
 import { StatusPill } from "@/components/loads/StatusMenu";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
@@ -170,6 +171,7 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
           <ExpiryPill label="Medical" date={driver.medical_card_expiry} />
           {driver.status === "inactive" && <Pill className={neutralPill}>Inactive</Pill>}
         </div>
+        <DriverRig driver={driver} />
         <div className="grid grid-cols-2 gap-4">
           <KV label="Phone">
             {driver.phone ? (

@@ -13,6 +13,7 @@ import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { DOOR_TYPES, TRAILER_GROUPS, TRAILER_LENGTHS, TRAILER_TYPES, cn, num } from "@/lib/format";
+import { specGroupsFor, specsFor, specsLine, type SpecGroup, type Specs } from "@/lib/trailerSpecs";
 import type { Company, Trailer, TruckStatus } from "@/lib/types";
 
 const OTHER = "__other";
@@ -101,6 +102,7 @@ type Draft = {
   door_type: string;
   suspension: string;
   features: string;
+  specs: Specs;
   plate: string;
   vin_number: string;
   year: string;
@@ -117,6 +119,7 @@ const toDraft = (t?: Trailer | null): Draft => ({
   door_type: t?.door_type ?? "Swing doors",
   suspension: t?.suspension ?? "Air ride",
   features: t?.features ?? "",
+  specs: t?.specs ?? {},
   plate: t?.plate ?? "",
   vin_number: t?.vin_number ?? "",
   year: t?.year ? String(t.year) : "",
@@ -163,6 +166,8 @@ export function TrailerForm({
       year: d.year ? Number(d.year) : null,
       max_weight: d.max_weight ? Number(String(d.max_weight).replace(/[^\d]/g, "")) : null,
       vin_number: d.vin_number.toUpperCase() || null,
+      // Keep only the specs of the chosen type (a reefer turned flatbed drops its air chute).
+      specs: specsFor(d.trailer_type, d.specs),
     };
     let saved: Trailer | null = null;
     if (trailer) {
@@ -238,6 +243,11 @@ export function TrailerForm({
           </Field>
         </div>
 
+        {/* Type-specific options, e.g. air chute and reefer unit for a reefer */}
+        {specGroupsFor(d.trailer_type).map((g) => (
+          <SpecSection key={g.id} group={g} specs={d.specs} onChange={(specs) => set({ specs })} />
+        ))}
+
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Registration</div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -304,7 +314,7 @@ function HookControl({ trailer }: { trailer: Trailer }) {
 }
 
 export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | null; onClose: () => void; onEdit: (t: Trailer) => void }) {
-  const { trucks, loads, deleteTrailer } = useStore();
+  const { trucks, loads, deleteTrailer, driverById } = useStore();
   if (!trailer) return null;
   const holder = trucks.find((t) => t.trailer_id === trailer.id);
   const recent = loads.filter((l) => l.trailer_id === trailer.id).length;
@@ -323,7 +333,7 @@ export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | 
       open
       onClose={onClose}
       title={`Trailer ${trailer.unit_number}`}
-      subtitle={`${trailerLine(trailer)} · ${holder ? `on unit ${holder.unit_number}` : "in the yard"}`}
+      subtitle={[trailerLine(trailer), holder ? `on unit ${holder.unit_number}` : "in the yard", driverById(holder?.assigned_driver_id)?.name].filter(Boolean).join(" · ")}
       actions={
         <>
           <Button size="sm" variant="ghost" onClick={() => onEdit(trailer)}>
@@ -364,6 +374,24 @@ export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | 
               </KV>
             ))}
           </div>
+          {specGroupsFor(trailer.trailer_type).map((g) => {
+            const s = specsFor(trailer.trailer_type, trailer.specs);
+            const rows = g.fields.filter((f) => s[f.key]);
+            if (!rows.length) return null;
+            return (
+              <div key={g.id} className="mt-4">
+                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-4">{g.title}</div>
+                <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-[13px] sm:grid-cols-2">
+                  {rows.map((f) => (
+                    <div key={f.key} className="flex gap-2">
+                      <dt className="shrink-0 text-fg-3">{f.label}</dt>
+                      <dd className="min-w-0 font-medium text-fg">{Array.isArray(s[f.key]) ? (s[f.key] as string[]).join(", ") : s[f.key]}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            );
+          })}
           {trailer.features && <p className="mt-3 text-[13px] text-fg-2">{trailer.features}</p>}
           {trailer.notes && <p className="mt-2 whitespace-pre-wrap text-[13px] text-fg-3">{trailer.notes}</p>}
           {recent > 0 && <p className="mt-2 text-xs text-fg-4">Used on {recent} load{recent === 1 ? "" : "s"}</p>}
@@ -396,6 +424,7 @@ function TrailerCard({ t, onOpen, i }: { t: Trailer; onOpen: () => void; i: numb
             {t.status !== "active" && <Pill className={neutralPill}>{STATUS_LABEL[t.status]}</Pill>}
           </div>
           <div className="truncate text-xs text-fg-3">{trailerLine(t)}</div>
+          {specsLine(t.trailer_type, t.specs) && <div className="mt-0.5 line-clamp-2 text-[11px] text-fg-4">{specsLine(t.trailer_type, t.specs)}</div>}
         </div>
       </div>
       <div className="mt-3 flex items-center gap-1.5 border-t border-line pt-2.5 text-xs">
@@ -551,5 +580,103 @@ export function TrailerPicker({
       <TrailerSummary trailerId={value} />
       <TrailerForm open={adding} onClose={() => setAdding(false)} companyId={companyId} hookTo={truckId} onSaved={(t) => onChange?.(t.id)} />
     </div>
+  );
+}
+
+/** The options for one trailer family (e.g. reefer: air chute, unit, zones, floor, equipment). */
+function SpecSection({ group, specs, onChange }: { group: SpecGroup; specs: Specs; onChange: (s: Specs) => void }) {
+  const set = (k: string, v: string | string[]) => onChange({ ...specs, [k]: v });
+  return (
+    <div key={group.id} className="animate-rise rounded-xl border border-line bg-surface-2/40 p-3 sm:p-4">
+      <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-fg-3">{group.title}</div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {group.fields.map((f) => {
+          const v = specs[f.key];
+          if (f.kind === "multi") {
+            const on = Array.isArray(v) ? v : [];
+            return (
+              <Field key={f.key} label={f.label} className="sm:col-span-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {f.options.map((o) => {
+                    const active = on.includes(o);
+                    return (
+                      <button
+                        key={o}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => set(f.key, active ? on.filter((x) => x !== o) : [...on, o])}
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                          active ? "border-transparent bg-inverse text-inverse-fg" : "border-line text-fg-2 hover:border-line-strong hover:bg-surface",
+                        )}
+                      >
+                        {o}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            );
+          }
+          if (f.kind === "select") {
+            // Air chute gets picture-free cards so the three kinds are easy to tell apart.
+            if (f.key === "air_chute") {
+              return (
+                <Field key={f.key} label={f.label} className="sm:col-span-2">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {f.options.map((o) => (
+                      <button
+                        key={o}
+                        type="button"
+                        aria-pressed={v === o}
+                        onClick={() => set(f.key, v === o ? "" : o)}
+                        className={cn(
+                          "flex flex-col items-center gap-1.5 rounded-lg border p-2 text-center text-xs font-medium transition-[border-color,background-color]",
+                          v === o ? "border-brand bg-brand/10 text-fg" : "border-line bg-surface text-fg-2 hover:border-line-strong",
+                        )}
+                      >
+                        <ChuteIcon kind={o} />
+                        {o}
+                      </button>
+                    ))}
+                  </div>
+                  {f.hint && <p className="mt-1.5 text-[11px] text-fg-4">{f.hint}</p>}
+                </Field>
+              );
+            }
+            return (
+              <Field key={f.key} label={f.label} hint={f.hint}>
+                <ChoiceSelect value={typeof v === "string" ? v : ""} onChange={(x) => set(f.key, x)} groups={[{ types: f.options }]} placeholder="Select…" />
+              </Field>
+            );
+          }
+          return (
+            <Field key={f.key} label={f.label} hint={f.hint}>
+              <Input value={typeof v === "string" ? v : ""} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} />
+            </Field>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Top-down sketch of the trailer roof with the chute(s), to tell the kinds apart at a glance. */
+function ChuteIcon({ kind }: { kind: string }) {
+  const k = kind.toLowerCase();
+  return (
+    <svg viewBox="0 0 64 28" className="h-7 w-16" aria-hidden>
+      <rect x="1" y="1" width="62" height="26" rx="3" fill="none" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1.5" />
+      <rect x="53" y="4" width="8" height="20" rx="1.5" fill="currentColor" fillOpacity="0.25" />
+      {k.includes("standard") && <path d="M52 14 H8" stroke="#f28c38" strokeWidth="6" strokeLinecap="round" />}
+      {k.includes("two") && (
+        <>
+          <path d="M52 9 H8" stroke="#f28c38" strokeWidth="3.5" strokeLinecap="round" />
+          <path d="M52 19 H8" stroke="#f28c38" strokeWidth="3.5" strokeLinecap="round" />
+        </>
+      )}
+      {k.includes("tube") && <path d="M52 14 H8" stroke="#f28c38" strokeWidth="3" strokeLinecap="round" strokeDasharray="3 2.5" />}
+      {k.includes("no ") && <path d="M24 8 l16 12 M40 8 l-16 12" stroke="currentColor" strokeOpacity="0.4" strokeWidth="1.5" />}
+    </svg>
   );
 }

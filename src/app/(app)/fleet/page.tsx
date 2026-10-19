@@ -17,6 +17,7 @@ import {
   Users,
   FileText,
   Container,
+  Network,
   KeyRound,
   Settings2,
   PanelRightOpen,
@@ -32,6 +33,7 @@ import { TruckSheet } from "@/components/fleet/TruckSheet";
 import { DriverCard, DriverForm, DriverSheet, driverAlert } from "@/components/fleet/Drivers";
 import { Vault } from "@/components/fleet/Vault";
 import { TrailersTab } from "@/components/fleet/Trailers";
+import { UnitsTab } from "@/components/fleet/Units";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { FleetPaperwork } from "@/components/docs/FleetPaperwork";
 import { useStore } from "@/lib/store";
@@ -40,7 +42,7 @@ import { ACTIVE_STATUSES, daysUntil, lane, money, num, today } from "@/lib/forma
 import { availability, equipmentLine, pitchFor } from "@/lib/pitch";
 import type { Company, Driver, Truck } from "@/lib/types";
 
-type Tab = "trucks" | "trailers" | "drivers" | "docs" | "vault" | "profile";
+type Tab = "units" | "trucks" | "trailers" | "drivers" | "docs" | "vault" | "profile";
 
 export default function FleetPage() {
   return (
@@ -195,7 +197,7 @@ function CompanyView({ company }: { company: Company }) {
   const params = useSearchParams();
   const router = useRouter();
   const { trucks, trailers, drivers, documents } = useStore();
-  const tab = (params.get("tab") as Tab) || "trucks";
+  const tab = (params.get("tab") as Tab) || "units";
   const setTab = (t: Tab) => router.replace(`/fleet?tab=${t}`, { scroll: false });
 
   const t = trucks.filter((x) => x.company_id === company.id);
@@ -233,6 +235,7 @@ function CompanyView({ company }: { company: Company }) {
         onChange={setTab}
         className="mb-5"
         tabs={[
+          { value: "units", label: <><Network className="h-4 w-4" /> Units</>, count: t.filter((x) => x.status !== "inactive").length },
           { value: "trucks", label: <><TruckIcon className="h-4 w-4" /> Trucks</>, count: t.length },
           { value: "trailers", label: <><Container className="h-4 w-4" /> Trailers</>, count: tl.length },
           { value: "drivers", label: <><Users className="h-4 w-4" /> Drivers</>, count: d.length },
@@ -241,6 +244,7 @@ function CompanyView({ company }: { company: Company }) {
           { value: "profile", label: <><Settings2 className="h-4 w-4" /> Profile</> },
         ]}
       />
+      {tab === "units" && <UnitsTab company={company} />}
       {tab === "trucks" && <TrucksTab company={company} trucks={t} />}
       {tab === "trailers" && <TrailersTab company={company} />}
       {tab === "drivers" && <DriversTab company={company} drivers={d} />}
@@ -254,7 +258,7 @@ function CompanyView({ company }: { company: Company }) {
 function TrucksTab({ company, trucks }: { company: Company; trucks: Truck[] }) {
   const params = useSearchParams();
   const router = useRouter();
-  const { driverById, loads, deleteTruck } = useStore();
+  const { driverById, trailerById, loads, deleteTruck } = useStore();
   const [q, setQ] = useState("");
   const [f, setF] = useState<"all" | "ready" | "loaded" | "oos">("all");
   const [form, setForm] = useState<{ open: boolean; truck?: Truck | null }>({ open: false });
@@ -403,7 +407,7 @@ function TrucksTab({ company, trucks }: { company: Company; trucks: Truck[] }) {
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      navigator.clipboard.writeText(pitchFor(t, company, driver));
+                      navigator.clipboard.writeText(pitchFor(t, company, driver, trailerById(t.trailer_id)));
                       toast.success("Pitch copied");
                     }}
                   >

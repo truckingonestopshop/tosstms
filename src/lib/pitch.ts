@@ -1,4 +1,5 @@
-import type { Company, Driver, Truck } from "./types";
+import type { Company, Driver, Trailer, Truck } from "./types";
+import { specsLine } from "./trailerSpecs";
 import { fmtDay, num, today } from "./format";
 
 export function availability(t: Truck) {
@@ -13,7 +14,7 @@ export function equipmentLine(t: Truck) {
 }
 
 /** The text a dispatcher pastes to a broker (chat / email). */
-export function defaultPitch(t: Truck, company?: Company, driver?: Driver) {
+export function defaultPitch(t: Truck, company?: Company, driver?: Driver, trailer?: Trailer) {
   const gear = t.accessories.length
     ? t.accessories.map((a) => `${a.quantity ? `${a.quantity}x ` : ""}${a.name}${a.details ? ` (${a.details})` : ""}`).join(", ")
     : null;
@@ -27,6 +28,7 @@ export function defaultPitch(t: Truck, company?: Company, driver?: Driver) {
     ]
       .filter(Boolean)
       .join(" · "),
+    trailer ? specsLine(trailer.trailer_type, trailer.specs) : null,
     `Location: ${t.current_location || "call for location"} · ${availability(t)}`,
     gear ? `Gear: ${gear}` : null,
     t.important_info ? `Notes: ${t.important_info}` : null,
@@ -36,8 +38,8 @@ export function defaultPitch(t: Truck, company?: Company, driver?: Driver) {
   return lines.filter((l) => l && l.trim()).join("\n");
 }
 
-export const pitchFor = (t: Truck, company?: Company, driver?: Driver) =>
-  t.custom_pitch && t.custom_pitch.trim() ? t.custom_pitch : defaultPitch(t, company, driver);
+export const pitchFor = (t: Truck, company?: Company, driver?: Driver, trailer?: Trailer) =>
+  t.custom_pitch && t.custom_pitch.trim() ? t.custom_pitch : defaultPitch(t, company, driver, trailer);
 
 export const GEAR_PRESETS = [
   { name: "Chains", quantity: 10, details: "Grade 70, 3/8\" × 20 ft" },

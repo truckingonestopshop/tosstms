@@ -101,6 +101,8 @@ interface Store {
   deleteTrailer: (id: string) => Promise<boolean>;
   /** Hook a trailer to a truck (null = drop it, power only). Unhooks it from any other truck. */
   hookTrailer: (truckId: string, trailerId: string | null) => Promise<boolean>;
+  /** Put a driver on a truck (null = no driver). A driver drives one truck: they leave any other. */
+  assignDriver: (truckId: string, driverId: string | null) => Promise<boolean>;
 
   createLoad: (l: NewLoad) => Promise<Load | null>;
   updateLoad: (id: string, patch: Partial<Load>) => Promise<boolean>;
@@ -474,6 +476,25 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     await reloadTrucks([truckId, ...others]);
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const assignDriver = useCallback(async (truckId: string, driverId: string | null) => {
+    const before = ref.current.trucks;
+    const others = driverId ? before.filter((t) => t.assigned_driver_id === driverId && t.id !== truckId).map((t) => t.id) : [];
+    setTrucks((l) => l.map((t) => (t.id === truckId ? { ...t, assigned_driver_id: driverId } : others.includes(t.id) ? { ...t, assigned_driver_id: null } : t)));
+    if (others.length) {
+      const res = await sb().from("tms_trucks").update({ assigned_driver_id: null }).in("id", others);
+      if (res.error) {
+        setTrucks(before);
+        return fail(res.error, "Couldn't move the driver"), false;
+      }
+    }
+    const { error } = await sb().from("tms_trucks").update({ assigned_driver_id: driverId }).eq("id", truckId);
+    if (error) {
+      setTrucks(before);
+      return fail(error, "Couldn't assign the driver"), false;
+    }
+    return true;
   }, []);
 
   // -------------------------------------------------------------------- loads
@@ -946,6 +967,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     updateTrailer,
     deleteTrailer,
     hookTrailer,
+    assignDriver,
     createLoad,
     updateLoad,
     setLoadStatus,

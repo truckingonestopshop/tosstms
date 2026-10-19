@@ -43,13 +43,18 @@ export function demoData() {
   ];
   // Each sample truck pulls its own trailer; one spare trailer sits in the yard.
   const trailers: Trailer[] = [
-    ...trucks.map((x) => ({
+    ...trucks.map((x): Trailer => ({
       id: x.trailer_id!, company_id: x.company_id, unit_number: x.trailer_number!, trailer_type: x.trailer_type, trailer_length: x.trailer_length, max_weight: x.max_weight,
-      door_type: x.door_type, suspension: x.suspension, features: x.trailer_type === "Reefer" ? "Thermo King S-600, e-track" : null, plate: "IL-T44120", vin_number: null,
+      door_type: x.door_type, suspension: x.suspension, features: null,
+      specs: (x.trailer_type === "Reefer"
+        ? { air_chute: "Standard center chute", unit_make: "Thermo King", unit_model: "Precedent S-600", temp_range: "-20°F to 70°F", zones: "Single temp", floor: "Duct floor (grooved aluminum)", reefer_extras: ["Strip curtains", "Load locks / bars", "Temp recorder / download"] }
+        : x.trailer_type === "Flatbed"
+          ? { deck: "Aluminum", width: "8'6\" (102\")", deck_extras: ["Stake pockets", "Winches"] }
+          : {}) as Trailer["specs"], plate: "IL-T44120", vin_number: null,
       year: 2021, make: "Utility", status: "active" as const, notes: null, created_at: now, updated_at: now,
     })),
     { id: "trl-spare", company_id: C1, unit_number: "TR-5300", trailer_type: "Dry Van", trailer_length: "53 ft", max_weight: 45000, door_type: "Swing doors", suspension: "Air ride",
-      features: null, plate: "IL-T44199", vin_number: null, year: 2019, make: "Wabash", status: "active", notes: "Spare, at the Gary yard", created_at: now, updated_at: now },
+      features: null, specs: { floor: "Hardwood", van_extras: ["E-track", "Logistic posts"] }, plate: "IL-T44199", vin_number: null, year: 2019, make: "Wabash", status: "active", notes: "Spare, at the Gary yard", created_at: now, updated_at: now },
   ];
   let n = 0;
   const ld = (c: string, d: string, tk: string, o: [string, string], de: [string, string], pu: number, days: number, gross: number, miles: number, status: LoadStatus, broker: string): Load => {

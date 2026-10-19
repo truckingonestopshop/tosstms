@@ -41,7 +41,12 @@ export const normTruck = (r: Truck): Truck => ({
   accessories: Array.isArray(r.accessories) ? r.accessories : [],
   desk_blocks: Array.isArray(r.desk_blocks) ? r.desk_blocks : [],
 });
-export const normTrailer = (r: Trailer): Trailer => ({ ...r, max_weight: nn(r.max_weight), year: nn(r.year) });
+export const normTrailer = (r: Trailer): Trailer => ({
+  ...r,
+  max_weight: nn(r.max_weight),
+  year: nn(r.year),
+  specs: r.specs && typeof r.specs === "object" && !Array.isArray(r.specs) ? r.specs : {},
+});
 export const normLoad = (r: Load): Load => ({
   ...r,
   gross_amount: n(r.gross_amount),
