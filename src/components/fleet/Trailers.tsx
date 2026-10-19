@@ -28,6 +28,7 @@ export function ChoiceSelect({
   groups,
   placeholder = "Select…",
   otherLabel = "Other…",
+  allowOther = true,
   id,
 }: {
   value: string;
@@ -35,6 +36,8 @@ export function ChoiceSelect({
   groups: { label?: string; types: string[] }[];
   placeholder?: string;
   otherLabel?: string;
+  /** false for fixed choices like Yes / No */
+  allowOther?: boolean;
   id?: string;
 }) {
   const all = useMemo(() => groups.flatMap((g) => g.types), [groups]);
@@ -80,7 +83,7 @@ export function ChoiceSelect({
           ))
         ),
       )}
-      <option value={OTHER}>{otherLabel}</option>
+      {allowOther && <option value={OTHER}>{otherLabel}</option>}
     </Select>
   );
 }
@@ -646,7 +649,7 @@ function SpecSection({ group, specs, onChange }: { group: SpecGroup; specs: Spec
             }
             return (
               <Field key={f.key} label={f.label} hint={f.hint}>
-                <ChoiceSelect value={typeof v === "string" ? v : ""} onChange={(x) => set(f.key, x)} groups={[{ types: f.options }]} placeholder="Select…" />
+                <ChoiceSelect value={typeof v === "string" ? v : ""} onChange={(x) => set(f.key, x)} groups={[{ types: f.options }]} placeholder="Select…" allowOther={!f.short} />
               </Field>
             );
           }

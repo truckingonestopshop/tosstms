@@ -22,6 +22,7 @@ type Draft = {
   driver_id: string;
   truck_id: string;
   trailer_id: string;
+  dispatcher_id: string;
   status: LoadStatus;
   load_number: string;
   rate_con_number: string;
@@ -53,6 +54,7 @@ function fromLoad(l: Load): Draft {
     driver_id: s(l.driver_id),
     truck_id: s(l.truck_id),
     trailer_id: s(l.trailer_id),
+    dispatcher_id: s(l.dispatcher_id),
     status: l.status,
     load_number: s(l.load_number),
     rate_con_number: s(l.rate_con_number),
@@ -82,7 +84,7 @@ function fromLoad(l: Load): Draft {
 
 export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) => void }) {
   const router = useRouter();
-  const { companies, drivers, trucks, trailers, scope, companyById, truckById, createLoad, updateLoad, uploadDocument, loads } = useStore();
+  const { companies, drivers, trucks, trailers, members, me, scope, companyById, truckById, createLoad, updateLoad, uploadDocument, loads } = useStore();
   const editing = !!load;
 
   const initialCompany = load?.company_id || (scope !== "all" ? scope : companies.length === 1 ? companies[0].id : "");
@@ -94,6 +96,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
           driver_id: "",
           truck_id: "",
           trailer_id: "",
+          dispatcher_id: me.id,
           status: "booked",
           load_number: "",
           rate_con_number: "",
@@ -225,6 +228,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
       driver_id: d.driver_id || null,
       truck_id: d.truck_id || null,
       trailer_id: d.trailer_id || null,
+      dispatcher_id: d.dispatcher_id || null,
       status: d.status,
       load_number: d.load_number || null,
       rate_con_number: d.rate_con_number || null,
@@ -276,8 +280,8 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
 
         <Card>
           <CardHeader title="Carrier & assignment" />
-          <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-5">
-            <Field label="Carrier company" required className="sm:col-span-2 xl:col-span-1">
+          <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3 2xl:grid-cols-6">
+            <Field label="Carrier company" required className="sm:col-span-2 lg:col-span-1">
               <Select value={d.company_id} onChange={(e) => set({ company_id: e.target.value, driver_id: "", truck_id: "", trailer_id: "" })}>
                 <option value="">Select…</option>
                 {companies.map((c) => (
@@ -321,6 +325,16 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
                 {companyDrivers.map((x) => (
                   <option key={x.id} value={x.id}>
                     {x.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Dispatcher" hint={d.dispatcher_id === me.id ? "You" : undefined}>
+              <Select value={d.dispatcher_id} onChange={(e) => set({ dispatcher_id: e.target.value })}>
+                <option value="">No dispatcher</option>
+                {members.map((m) => (
+                  <option key={m.user_id} value={m.user_id}>
+                    {m.full_name || m.email}
                   </option>
                 ))}
               </Select>

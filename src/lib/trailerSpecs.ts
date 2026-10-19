@@ -6,7 +6,7 @@ export type SpecValue = string | string[];
 export type Specs = Record<string, SpecValue>;
 
 export type SpecField =
-  | { key: string; label: string; kind: "select"; options: string[]; hint?: string }
+  | { key: string; label: string; kind: "select"; options: string[]; hint?: string; /** Yes/No fields: word used in one-line summaries */ short?: string }
   | { key: string; label: string; kind: "text"; placeholder?: string; hint?: string }
   | { key: string; label: string; kind: "multi"; options: string[]; hint?: string };
 
@@ -37,6 +37,14 @@ export const SPEC_GROUPS: SpecGroup[] = [
       { key: "unit_model", label: "Unit model", kind: "text", placeholder: "Precedent S-600, X4 7500, Vector 8600…" },
       { key: "temp_range", label: "Temperature range", kind: "text", placeholder: "-20°F to 70°F" },
       { key: "zones", label: "Temperature zones", kind: "select", options: ["Single temp", "Multi-temp · 2 zones", "Multi-temp · 3 zones"] },
+      {
+        key: "downloadable",
+        label: "Reefer downloadable",
+        kind: "select",
+        options: ["Yes", "No"],
+        short: "Downloadable",
+        hint: "Temperature history can be downloaded (brokers often ask for it on food and pharma loads)",
+      },
       { key: "floor", label: "Floor", kind: "select", options: ["Duct floor (grooved aluminum)", "Flat floor"] },
       {
         key: "reefer_extras",
@@ -137,6 +145,7 @@ export function specsLine(type: string | null | undefined, specs: Specs | null |
       if (!v) continue;
       if (f.key === "unit_make") parts.push([v, s.unit_model].filter(Boolean).join(" "));
       else if (f.key === "unit_model") continue;
+      else if (f.kind === "select" && f.short) parts.push(v === "Yes" ? f.short : `Not ${f.short.toLowerCase()}`);
       else parts.push(Array.isArray(v) ? v.join(", ") : String(v));
     }
   }

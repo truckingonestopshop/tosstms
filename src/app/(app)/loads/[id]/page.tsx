@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Field";
-import { Card, CardHeader, CopyButton, Empty, Eyebrow, KV, Page } from "@/components/ui/Bits";
+import { Avatar, Card, CardHeader, CopyButton, Empty, Eyebrow, KV, Page } from "@/components/ui/Bits";
 import { Popover, MenuItem, MenuSep } from "@/components/ui/Menu";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { StatusMenu } from "@/components/loads/StatusMenu";
@@ -30,7 +30,7 @@ import { useRoute } from "@/lib/route";
 import { toast } from "@/lib/toast";
 import { buildPacket } from "@/lib/packet";
 import { checklist, problems, type DocTarget } from "@/lib/docs";
-import { STATUS, cn, fmtDay, isCanceled, lane, money, num, rpm, rpmAllIn, totalMiles } from "@/lib/format";
+import { STATUS, cn, fmtDateTime, fmtDay, isCanceled, lane, money, num, rpm, rpmAllIn, totalMiles } from "@/lib/format";
 import type { Load, LoadStatus, LoadStop, StopStatus } from "@/lib/types";
 
 const FLOW: LoadStatus[] = ["booked", "in_transit", "delivered", "invoiced", "paid"];
@@ -94,6 +94,8 @@ function LoadView({ load }: { load: Load }) {
     deleteLoads,
     duplicateLoad,
     memberName,
+    members,
+    me,
   } = useStore();
   const company = companyById(load.company_id);
   const driver = driverById(load.driver_id);
@@ -448,7 +450,24 @@ function LoadView({ load }: { load: Load }) {
                   <Phone className="h-3.5 w-3.5 text-fg-4" /> Call {driver.name.split(" ")[0]} · {driver.phone}
                 </a>
               )}
-              <div className="text-xs text-fg-4">Dispatched by {memberName(load.dispatcher_id)}</div>
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-fg-2">Dispatcher</span>
+                <Select value={load.dispatcher_id || ""} onChange={(e) => updateLoad(load.id, { dispatcher_id: e.target.value || null })}>
+                  <option value="">No dispatcher</option>
+                  {members.map((m) => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.full_name || m.email}
+                      {m.user_id === me.id ? " (you)" : ""}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <div className="flex items-center gap-2 border-t border-line pt-3 text-xs text-fg-3">
+                <Avatar name={memberName(load.created_by)} className="h-6 w-6 text-[10px]" />
+                <span>
+                  Added by <b className="font-semibold text-fg-2">{load.created_by === me.id ? "you" : memberName(load.created_by)}</b> · {fmtDateTime(load.created_at)}
+                </span>
+              </div>
             </div>
           </Card>
 

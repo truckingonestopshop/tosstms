@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Checkbox, Input, Segmented, Select } from "@/components/ui/Field";
-import { Card, Empty, Page, PageHeader, Stat } from "@/components/ui/Bits";
+import { Avatar, Card, Empty, Page, PageHeader, Stat } from "@/components/ui/Bits";
 import { Popover, MenuItem, MenuLabel, MenuSep } from "@/components/ui/Menu";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { StatusMenu, StatusPill } from "@/components/loads/StatusMenu";
@@ -64,13 +64,15 @@ function inRange(l: Load, r: Range) {
 function Loads() {
   const params = useSearchParams();
   const router = useRouter();
-  const { loads, inScope, scopedCompany, drivers, trucks, driverById, truckById, companyById, documents, setLoadStatus, deleteLoads, duplicateLoad, scope } = useStore();
+  const { loads, inScope, scopedCompany, drivers, trucks, driverById, truckById, companyById, documents, setLoadStatus, deleteLoads, duplicateLoad, scope, members, memberName, me } = useStore();
 
   const [view, setViewState] = useState<View>((params.get("view") as View) || "list");
   const [tab, setTab] = useState<StatusTab>((params.get("status") as StatusTab) || "all");
   const [q, setQ] = useState("");
   const [driver, setDriver] = useState("all");
   const [truck, setTruck] = useState("all");
+  // "all", "me" (my loads) or a member's user id
+  const [dispatcher, setDispatcher] = useState((params.get("dispatcher") as string) || "all");
   const [range, setRange] = useState<Range>("all");
   const [sort, setSort] = useState<"pickup_desc" | "pickup_asc" | "gross_desc" | "created_desc">("pickup_desc");
   const [page, setPage] = useState(1);
@@ -98,6 +100,7 @@ function Loads() {
     return scoped.filter((l) => {
       if (driver !== "all" && l.driver_id !== driver) return false;
       if (truck !== "all" && l.truck_id !== truck) return false;
+      if (dispatcher !== "all" && l.dispatcher_id !== (dispatcher === "me" ? me.id : dispatcher)) return false;
       if (!inRange(l, range)) return false;
       if (s) {
         const hay = [
@@ -111,6 +114,7 @@ function Loads() {
           driverById(l.driver_id)?.name,
           truckById(l.truck_id)?.unit_number,
           companyById(l.company_id)?.name,
+          memberName(l.dispatcher_id),
         ]
           .join(" ")
           .toLowerCase();
@@ -118,7 +122,7 @@ function Loads() {
       }
       return true;
     });
-  }, [scoped, q, driver, truck, range, driverById, truckById, companyById]);
+  }, [scoped, q, driver, truck, dispatcher, range, driverById, truckById, companyById, memberName, me.id]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: base.length, active: 0, canceled: 0 };
@@ -164,7 +168,7 @@ function Loads() {
 
   const exportCsv = () => {
     downloadCsv(`loads-${today()}.csv`, [
-      ["Load #", "Rate con #", "Status", "Carrier", "Broker", "Origin", "Destination", "Pickup", "Delivery", "Driver", "Truck", "Loaded mi", "DH mi", "Gross", "Fee %", "Fee", "RPM"],
+      ["Load #", "Rate con #", "Status", "Carrier", "Broker", "Origin", "Destination", "Pickup", "Delivery", "Driver", "Truck", "Dispatcher", "Added by", "Loaded mi", "DH mi", "Gross", "Fee %", "Fee", "RPM"],
       ...target.map((l) => [
         l.load_number,
         l.rate_con_number,
@@ -177,6 +181,8 @@ function Loads() {
         l.delivery_date,
         driverById(l.driver_id)?.name,
         truckById(l.truck_id)?.unit_number,
+        memberName(l.dispatcher_id),
+        memberName(l.created_by),
         l.loaded_miles,
         l.deadhead_miles,
         l.gross_amount.toFixed(2),
@@ -269,7 +275,7 @@ function Loads() {
             </button>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:flex">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 lg:flex">
           <Select value={driver} onChange={(e) => setDriver(e.target.value)} className="lg:w-40">
             <option value="all">All drivers</option>
             {scopedDrivers.map((d) => (
@@ -285,6 +291,17 @@ function Loads() {
                 Unit {t.unit_number}
               </option>
             ))}
+          </Select>
+          <Select value={dispatcher} onChange={(e) => setDispatcher(e.target.value)} className="lg:w-40" aria-label="Dispatcher">
+            <option value="all">All dispatchers</option>
+            <option value="me">My loads</option>
+            {members
+              .filter((m) => m.user_id !== me.id)
+              .map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {m.full_name || m.email}
+                </option>
+              ))}
           </Select>
           <Select value={range} onChange={(e) => setRange(e.target.value as Range)} className="lg:w-36">
             <option value="all">Any date</option>
@@ -432,6 +449,7 @@ function Loads() {
                     <th className="px-3 py-2.5">Lane</th>
                     <th className="px-3 py-2.5">Dates</th>
                     <th className="px-3 py-2.5">Driver / unit</th>
+                    <th className="px-3 py-2.5">Dispatcher</th>
                     <th className="px-3 py-2.5 text-right">Miles</th>
                     <th className="px-3 py-2.5 text-right">Gross</th>
                     <th className="px-3 py-2.5 text-right">RPM</th>
@@ -481,6 +499,9 @@ function Loads() {
                         <td className="max-w-[150px] px-3 py-3">
                           <div className="truncate text-fg">{d?.name || <span className="text-fg-4">Unassigned</span>}</div>
                           <div className="text-xs text-fg-3">{t ? `Unit ${t.unit_number}` : ""}</div>
+                        </td>
+                        <td className="max-w-[150px] px-3 py-3">
+                          <DispatcherTag id={l.dispatcher_id} />
                         </td>
                         <td className="tnum whitespace-nowrap px-3 py-3 text-right text-fg-2">
                           {num(l.loaded_miles)}
@@ -539,6 +560,7 @@ function Loads() {
                         {d?.name || "No driver"}
                         {t ? ` · #${t.unit_number}` : ""}
                       </div>
+                      <div className="truncate text-fg-4">Dispatcher: {memberName(l.dispatcher_id)}</div>
                     </div>
                     <div className="text-right">
                       <div className="tnum text-[15px] font-bold text-fg">{money(l.gross_amount, { cents: false })}</div>
@@ -599,5 +621,18 @@ function RowMenu({ onEdit, onDuplicate, onDelete }: { onEdit: () => void; onDupl
         </>
       )}
     </Popover>
+  );
+}
+
+/** Avatar + first name of the dispatcher on a load ("You" for the signed-in user). */
+function DispatcherTag({ id }: { id: string | null }) {
+  const { memberName, me } = useStore();
+  if (!id) return <span className="text-xs text-fg-4">—</span>;
+  const name = memberName(id);
+  return (
+    <span className="flex min-w-0 items-center gap-2" title={name}>
+      <Avatar name={name} className="h-6 w-6 text-[10px]" />
+      <span className="truncate text-[13px] text-fg-2">{id === me.id ? "You" : name.split(/\s+/)[0]}</span>
+    </span>
   );
 }
