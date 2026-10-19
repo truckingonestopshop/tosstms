@@ -12,7 +12,8 @@ import { RouteMap } from "./RouteMap";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { useRoute } from "@/lib/route";
-import { STATUS, STATUS_ORDER, TRAILER_TYPES, cn, cut, money, num } from "@/lib/format";
+import { STATUS, STATUS_ORDER, cn, cut, money, num } from "@/lib/format";
+import { TrailerTypeSelect } from "@/components/fleet/Trailers";
 import type { ReadResult } from "@/lib/ratecon/client";
 import type { Load, LoadStatus, LoadStop } from "@/lib/types";
 
@@ -20,6 +21,7 @@ type Draft = {
   company_id: string;
   driver_id: string;
   truck_id: string;
+  trailer_id: string;
   status: LoadStatus;
   load_number: string;
   rate_con_number: string;
@@ -50,6 +52,7 @@ function fromLoad(l: Load): Draft {
     company_id: l.company_id,
     driver_id: s(l.driver_id),
     truck_id: s(l.truck_id),
+    trailer_id: s(l.trailer_id),
     status: l.status,
     load_number: s(l.load_number),
     rate_con_number: s(l.rate_con_number),
@@ -79,7 +82,7 @@ function fromLoad(l: Load): Draft {
 
 export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) => void }) {
   const router = useRouter();
-  const { companies, drivers, trucks, scope, companyById, truckById, createLoad, updateLoad, uploadDocument, loads } = useStore();
+  const { companies, drivers, trucks, trailers, scope, companyById, truckById, createLoad, updateLoad, uploadDocument, loads } = useStore();
   const editing = !!load;
 
   const initialCompany = load?.company_id || (scope !== "all" ? scope : companies.length === 1 ? companies[0].id : "");
@@ -90,6 +93,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
           company_id: initialCompany,
           driver_id: "",
           truck_id: "",
+          trailer_id: "",
           status: "booked",
           load_number: "",
           rate_con_number: "",
@@ -122,6 +126,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
   const company = companyById(d.company_id);
   const companyDrivers = drivers.filter((x) => x.company_id === d.company_id);
   const companyTrucks = trucks.filter((x) => x.company_id === d.company_id);
+  const companyTrailers = trailers.filter((x) => x.company_id === d.company_id && (x.status !== "inactive" || x.id === d.trailer_id));
 
   // New company → its dispatch fee, unless the % was changed by hand.
   useEffect(() => {
@@ -161,6 +166,8 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
     const drv = x.driver_name ? pool.find((v) => squash(v.name).includes(squash(x.driver_name!)) || squash(x.driver_name!).includes(squash(v.name))) : undefined;
     const tPool = trucks.filter((v) => !companyId || v.company_id === companyId);
     const trk = x.truck_unit ? tPool.find((v) => squash(v.unit_number) === squash(x.truck_unit!)) : undefined;
+    const trlPool = trailers.filter((v) => !companyId || v.company_id === companyId);
+    const trl = x.trailer_number ? trlPool.find((v) => squash(v.unit_number) === squash(x.trailer_number!)) : undefined;
     const stops = (x.stops || []).map((st) => newStop(st.type || "pickup", st));
     while (stops.length < 2) stops.push(newStop(stops.length === 0 ? "pickup" : "delivery"));
     const statedMiles = x.loaded_miles && x.loaded_miles > 0;
@@ -169,6 +176,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
       company_id: companyId,
       driver_id: drv?.id || (trk?.assigned_driver_id ?? p.driver_id),
       truck_id: trk?.id || p.truck_id,
+      trailer_id: trl?.id || trk?.trailer_id || p.trailer_id,
       load_number: x.load_number || p.load_number,
       rate_con_number: x.rate_con_number || p.rate_con_number,
       broker_name: x.broker_name || p.broker_name,
@@ -216,6 +224,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
       company_id: d.company_id,
       driver_id: d.driver_id || null,
       truck_id: d.truck_id || null,
+      trailer_id: d.trailer_id || null,
       status: d.status,
       load_number: d.load_number || null,
       rate_con_number: d.rate_con_number || null,
@@ -267,9 +276,9 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
 
         <Card>
           <CardHeader title="Carrier & assignment" />
-          <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-5">
             <Field label="Carrier company" required className="sm:col-span-2 xl:col-span-1">
-              <Select value={d.company_id} onChange={(e) => set({ company_id: e.target.value, driver_id: "", truck_id: "" })}>
+              <Select value={d.company_id} onChange={(e) => set({ company_id: e.target.value, driver_id: "", truck_id: "", trailer_id: "" })}>
                 <option value="">Select…</option>
                 {companies.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -284,14 +293,24 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
                 disabled={!d.company_id}
                 onChange={(e) => {
                   const t = truckById(e.target.value);
-                  set({ truck_id: e.target.value, driver_id: t?.assigned_driver_id || d.driver_id });
+                  set({ truck_id: e.target.value, driver_id: t?.assigned_driver_id || d.driver_id, trailer_id: t?.trailer_id || "" });
                 }}
               >
                 <option value="">Unassigned</option>
                 {companyTrucks.map((t) => (
                   <option key={t.id} value={t.id}>
                     Unit {t.unit_number}
-                    {t.trailer_type ? ` · ${t.trailer_type}` : ""}
+                    {t.trailer_type ? ` · ${t.trailer_type}` : " · power only"}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Trailer" hint={d.truck_id && d.trailer_id && truckById(d.truck_id)?.trailer_id !== d.trailer_id ? "Not the truck's hooked trailer" : undefined}>
+              <Select value={d.trailer_id} disabled={!d.company_id} onChange={(e) => set({ trailer_id: e.target.value })}>
+                <option value="">None / power only</option>
+                {companyTrailers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.unit_number} · {[t.trailer_length, t.trailer_type].filter(Boolean).join(" ")}
                   </option>
                 ))}
               </Select>
@@ -362,12 +381,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
               <Input value={d.weight_lbs} onChange={(e) => set({ weight_lbs: clean(e.target.value) })} inputMode="numeric" suffix="lbs" />
             </Field>
             <Field label="Equipment">
-              <Input list="trailer-types-load" value={d.equipment_type} onChange={(e) => set({ equipment_type: e.target.value })} />
-              <datalist id="trailer-types-load">
-                {TRAILER_TYPES.map((t) => (
-                  <option key={t} value={t} />
-                ))}
-              </datalist>
+              <TrailerTypeSelect value={d.equipment_type} onChange={(v) => set({ equipment_type: v })} />
             </Field>
             <Field label="Broker requirements" className="col-span-2">
               <Textarea value={d.broker_notes} onChange={(e) => set({ broker_notes: e.target.value })} rows={3} placeholder="Tracking, tarps, temp, lumper, detention…" />

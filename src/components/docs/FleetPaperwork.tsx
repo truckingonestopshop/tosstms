@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, Truck as TruckIcon, User } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, ChevronRight, Container, Truck as TruckIcon, User } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { cn, fmtDay } from "@/lib/format";
 import { fleetPaperwork, type CheckItem, type Holder } from "@/lib/docs";
@@ -18,10 +18,10 @@ const chip = (i: CheckItem) =>
 
 /** Drivers and trucks of one carrier, each with what's missing, expired or expiring. */
 export function FleetPaperwork({ companyId }: { companyId: string }) {
-  const { companies, drivers, trucks, documents, docTypes } = useStore();
+  const { companies, drivers, trucks, trailers, documents, docTypes } = useStore();
   const rows = useMemo(
-    () => fleetPaperwork({ companies, drivers, trucks, documents, docTypes }, (id) => id === companyId).filter((h) => h.scope !== "company"),
-    [companies, drivers, trucks, documents, docTypes, companyId],
+    () => fleetPaperwork({ companies, drivers, trucks, trailers, documents, docTypes }, (id) => id === companyId).filter((h) => h.scope !== "company"),
+    [companies, drivers, trucks, trailers, documents, docTypes, companyId],
   );
   if (!rows.length) return null;
   const issues = rows.filter((r) => r.bad.length || r.soon.length).length;
@@ -29,7 +29,7 @@ export function FleetPaperwork({ companyId }: { companyId: string }) {
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-surface">
       <div className="flex items-center justify-between border-b border-line px-3 py-2 sm:px-4">
-        <span className="text-xs font-semibold uppercase tracking-wider text-fg-3">Drivers & trucks</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-fg-3">Drivers, trucks & trailers</span>
         <span className={cn("text-xs font-semibold", issues ? "text-amber-800 dark:text-amber-300" : "text-emerald-700 dark:text-emerald-300")}>
           {issues ? `${issues} need attention` : "All on file"}
         </span>
@@ -44,7 +44,7 @@ export function FleetPaperwork({ companyId }: { companyId: string }) {
 }
 
 function Row({ r }: { r: Holder }) {
-  const Icon = r.scope === "driver" ? User : TruckIcon;
+  const Icon = r.scope === "driver" ? User : r.scope === "trailer" ? Container : TruckIcon;
   const list = [...r.bad, ...r.soon];
   const req = r.items.filter((i) => i.required);
   const done = req.filter((i) => i.state !== "missing" && i.state !== "expired").length;

@@ -1,5 +1,5 @@
 // Sample data for the development-only UI preview (/preview-ui). Never used in production.
-import type { Company, DocType, DocumentItem, Driver, Invoice, InvoicePayment, Load, LoadStatus, Member, Settings, Truck } from "./types";
+import type { Company, DocType, DocumentItem, Driver, Invoice, InvoicePayment, Load, LoadStatus, Member, Settings, Trailer, Truck } from "./types";
 import { BUILT_IN_TYPES } from "./docs";
 import { addDays, today } from "./format";
 
@@ -30,7 +30,7 @@ export function demoData() {
     dr("d4", C2, "Tariq Sterling", addDays(t, 500), addDays(t, 365)),
   ];
   const tr = (id: string, c: string, unit: string, type: string, drv: string | null, loc: string, status: Truck["status"] = "active"): Truck => ({
-    id, company_id: c, unit_number: unit, trailer_number: `TR-${unit}0`, plate: "IL-P88291", vin_number: "1FUJGLDR8NLBP1019", year: 2022, make: "Freightliner",
+    id, company_id: c, unit_number: unit, trailer_id: `trl-${id}`, trailer_number: `TR-${unit}0`, plate: "IL-P88291", vin_number: "1FUJGLDR8NLBP1019", year: 2022, make: "Freightliner",
     trailer_type: type, trailer_length: "53 ft", max_weight: 45000, door_type: "Swing doors", suspension: "Air ride", important_info: "TWIC, team capable",
     accessories: [{ id: "a1", name: "Straps", quantity: 12 }, { id: "a2", name: "Load bars", quantity: 2 }], desk_blocks: [], custom_pitch: null,
     assigned_driver_id: drv, current_location: loc, available_date: null, status, notes: null, created_at: now, updated_at: now,
@@ -40,6 +40,16 @@ export function demoData() {
     tr("t2", C1, "104", "Flatbed", "d2", "Gary, IN"),
     tr("t3", C2, "301", "Dry Van", "d3", "Dallas, TX"),
     tr("t4", C2, "305", "Dry Van", "d4", "Memphis, TN", "out_of_service"),
+  ];
+  // Each sample truck pulls its own trailer; one spare trailer sits in the yard.
+  const trailers: Trailer[] = [
+    ...trucks.map((x) => ({
+      id: x.trailer_id!, company_id: x.company_id, unit_number: x.trailer_number!, trailer_type: x.trailer_type, trailer_length: x.trailer_length, max_weight: x.max_weight,
+      door_type: x.door_type, suspension: x.suspension, features: x.trailer_type === "Reefer" ? "Thermo King S-600, e-track" : null, plate: "IL-T44120", vin_number: null,
+      year: 2021, make: "Utility", status: "active" as const, notes: null, created_at: now, updated_at: now,
+    })),
+    { id: "trl-spare", company_id: C1, unit_number: "TR-5300", trailer_type: "Dry Van", trailer_length: "53 ft", max_weight: 45000, door_type: "Swing doors", suspension: "Air ride",
+      features: null, plate: "IL-T44199", vin_number: null, year: 2019, make: "Wabash", status: "active", notes: "Spare, at the Gary yard", created_at: now, updated_at: now },
   ];
   let n = 0;
   const ld = (c: string, d: string, tk: string, o: [string, string], de: [string, string], pu: number, days: number, gross: number, miles: number, status: LoadStatus, broker: string): Load => {
@@ -98,5 +108,5 @@ export function demoData() {
     id: 1, issuer_name: "Trucking One Stop Shop LLC", issuer_address: "Chicago, IL", issuer_email: "billing@truckingonestopshop.net",
     issuer_phone: "", invoice_prefix: "TOSS", remittance_text: "ACH / Zelle within terms.", footer_text: "Thank you for your business.",
   };
-  return { members, companies, drivers, trucks, loads, documents, invoices, payments, docTypes, settings };
+  return { members, companies, drivers, trucks, trailers, loads, documents, invoices, payments, docTypes, settings };
 }

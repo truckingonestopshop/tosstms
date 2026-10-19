@@ -10,6 +10,7 @@ import { CopyButton, Eyebrow, Pill, neutralPill } from "@/components/ui/Bits";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { StatusPill } from "@/components/loads/StatusMenu";
 import { QtyStepper } from "./TruckForm";
+import { TrailerPicker } from "./Trailers";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { ACTIVE_STATUSES, cn, fmtDay, lane, num, uid } from "@/lib/format";
@@ -156,6 +157,11 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
         </section>
 
         {/* Location & availability */}
+        <section>
+          <Eyebrow className="mb-2">Trailer</Eyebrow>
+          <TrailerPicker companyId={truck.company_id} value={truck.trailer_id} truckId={truck.id} />
+        </section>
+
         <section>
           <Eyebrow className="mb-2">Where is it now</Eyebrow>
           <div className="flex flex-col gap-2 sm:flex-row">

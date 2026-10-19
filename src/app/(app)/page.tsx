@@ -21,7 +21,7 @@ function greeting() {
 }
 
 export default function Dashboard() {
-  const { me, loads, trucks, drivers, documents, docTypes, invoices, companies, inScope, scopedCompany, driverById, truckById, companyById } = useStore();
+  const { me, loads, trucks, trailers, drivers, documents, docTypes, invoices, companies, inScope, scopedCompany, driverById, truckById, companyById } = useStore();
   const t = today();
   const month = t.slice(0, 7);
 
@@ -105,7 +105,7 @@ export default function Dashboard() {
       out.push({ key: `drv${l.id}`, icon: TruckIcon, text: `No driver · picks up ${fmtDay(l.pickup_date)} · ${lane(l)}`, href: `/loads/${l.id}`, tone: "red" });
     // Carrier, driver and truck paperwork: expired / expiring files one by one,
     // missing required files grouped per carrier.
-    const holders = fleetPaperwork({ companies, drivers, trucks, documents, docTypes }, inScope);
+    const holders = fleetPaperwork({ companies, drivers, trucks, trailers, documents, docTypes }, inScope);
     const missingBy = new Map<string, number>();
     for (const h of holders) {
       for (const i of [...h.bad, ...h.soon]) {
@@ -139,7 +139,7 @@ export default function Dashboard() {
     for (const [cid, n] of missingBy)
       out.push({ key: `miss${cid}`, icon: FileWarning, text: `${companyById(cid)?.name}: ${n} required document${n === 1 ? "" : "s"} missing`, href: `/fleet?company=${cid}&tab=docs`, tone: "amber" });
     return out;
-  }, [L, invoices, documents, docTypes, companies, drivers, trucks, inScope, companyById, t]);
+  }, [L, invoices, documents, docTypes, companies, drivers, trucks, trailers, inScope, companyById, t]);
 
   const weeks = useMemo(() => series(L.filter((l) => !isCanceled(l.status)), { from: addDays(t, -7 * 11 - ((new Date().getDay() + 6) % 7)), to: t }, "week"), [L, t]);
   const recent = useMemo(() => [...L].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 6), [L]);

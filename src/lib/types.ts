@@ -68,10 +68,34 @@ export interface DeskBlock {
 
 export type TruckStatus = "active" | "out_of_service" | "inactive";
 
+/** A trailer is its own unit: it can be dropped and hooked to another truck. */
+export interface Trailer {
+  id: string;
+  company_id: string;
+  unit_number: string;
+  trailer_type: string | null;
+  trailer_length: string | null;
+  max_weight: number | null;
+  door_type: string | null;
+  suspension: string | null;
+  /** reefer unit, e-track, liftgate, food grade… */
+  features: string | null;
+  plate: string | null;
+  vin_number: string | null;
+  year: number | null;
+  make: string | null;
+  status: TruckStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Truck {
   id: string;
   company_id: string;
   unit_number: string;
+  /** hooked trailer; the trailer_* fields below mirror it (kept in step by the database) */
+  trailer_id: string | null;
   trailer_number: string | null;
   plate: string | null;
   vin_number: string | null;
@@ -133,6 +157,7 @@ export interface Load {
   company_id: string;
   driver_id: string | null;
   truck_id: string | null;
+  trailer_id?: string | null;
   dispatcher_id: string | null;
   load_number: string | null;
   rate_con_number: string | null;
@@ -178,7 +203,7 @@ export interface LoadEvent {
   created_at: string;
 }
 
-export type DocScope = "company" | "load" | "driver" | "truck" | "any";
+export type DocScope = "company" | "load" | "driver" | "truck" | "trailer" | "any";
 
 /** When a document type is required. Loads: from that status on. */
 export type DocRequired = "always" | "booked" | "in_transit" | "delivered";
@@ -203,6 +228,7 @@ export interface DocumentItem {
   load_id: string | null;
   driver_id: string | null;
   truck_id: string | null;
+  trailer_id?: string | null;
   doc_type: string;
   file_path: string;
   file_name: string;

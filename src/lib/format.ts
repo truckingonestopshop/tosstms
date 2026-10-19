@@ -217,22 +217,27 @@ export const US_STATES = [
   "AB","BC","MB","NB","NL","NS","ON","PE","QC","SK",
 ];
 
-export const TRAILER_TYPES = [
-  "Dry Van",
-  "Reefer",
-  "Flatbed",
-  "Step Deck",
-  "Conestoga",
-  "Double Drop",
-  "RGN",
-  "Lowboy",
-  "Hotshot",
-  "Power Only",
-  "Box Truck",
-  "Car Hauler",
-  "Tanker",
-  "Hopper",
+/** US trailer / equipment types, grouped as load boards list them. */
+export const TRAILER_GROUPS: { label: string; types: string[] }[] = [
+  { label: "Vans", types: ["Dry Van", "Reefer", "Vented Van", "Insulated Van", "Curtain Van", "Moving Van"] },
+  {
+    label: "Flatbeds",
+    types: ["Flatbed", "Step Deck", "Double Drop", "Conestoga", "Stretch / Extendable Flatbed", "Maxi Flatbed", "Flatbed with Sides", "Hotshot (Gooseneck)"],
+  },
+  { label: "Heavy haul", types: ["RGN (Removable Gooseneck)", "Lowboy", "Multi-axle Lowboy", "Beam Trailer", "Perimeter Frame"] },
+  {
+    label: "Bulk & tank",
+    types: ["Tanker (Liquid)", "Food-grade Tanker", "Hazmat Tanker", "Pneumatic / Dry Bulk", "Hopper (Grain)", "End Dump", "Side Dump", "Belly Dump", "Walking Floor"],
+  },
+  { label: "Specialized", types: ["Car Hauler", "Livestock", "Logging", "Intermodal Chassis", "Container (20/40/53 ft)", "Pipe Trailer", "Boat Trailer"] },
+  { label: "Small equipment", types: ["Box Truck", "Box Truck with Liftgate", "Cargo Van", "Sprinter Van", "Power Only"] },
 ];
+
+/** Every type in one list (load equipment, filters). */
+export const TRAILER_TYPES = TRAILER_GROUPS.flatMap((g) => g.types);
+
+export const TRAILER_LENGTHS = ["53 ft", "48 ft", "45 ft", "40 ft", "36 ft", "28 ft", "26 ft", "24 ft", "20 ft", "16 ft"];
+export const DOOR_TYPES = ["Swing doors", "Roll-up", "Side doors", "Open deck", "Liftgate", "Ramps"];
 
 export const uid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto

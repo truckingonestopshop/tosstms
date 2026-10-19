@@ -40,7 +40,10 @@ const BUILT_IN: Rule[] = [
   ["ifta", "IFTA License", "truck", null, true, false, 40],
   ["form_2290", "Form 2290 (Schedule 1)", "truck", null, true, false, 50],
   ["physical_damage", "Physical Damage Insurance", "truck", null, true, false, 60],
-  ["trailer_registration", "Trailer Registration", "truck", null, true, false, 70],
+  ["trailer_registration", "Trailer Registration", "trailer", "always", true, false, 10],
+  ["trailer_inspection", "Trailer Annual Inspection", "trailer", "always", true, false, 20],
+  ["trailer_lease", "Trailer Lease / Interchange", "trailer", null, false, false, 30],
+  ["reefer_service", "Reefer Unit Service Record", "trailer", null, false, false, 40],
   ["truck_title", "Title", "truck", null, false, false, 80],
   ["truck_lease", "Equipment Lease", "truck", null, false, false, 90],
   ["other", "Other", "any", null, false, false, 999],
@@ -77,19 +80,22 @@ export type DocTarget =
   | { scope: "company"; companyId: string }
   | { scope: "load"; id: string; companyId: string; status?: LoadStatus }
   | { scope: "driver"; id: string; companyId: string }
-  | { scope: "truck"; id: string; companyId: string };
+  | { scope: "truck"; id: string; companyId: string }
+  | { scope: "trailer"; id: string; companyId: string };
 
 export function docsOf(documents: DocumentItem[], t: DocTarget) {
   return documents.filter((d) => {
     if (t.scope === "load") return d.load_id === t.id;
     if (t.scope === "driver") return d.driver_id === t.id;
     if (t.scope === "truck") return d.truck_id === t.id;
-    return d.company_id === t.companyId && !d.load_id && !d.driver_id && !d.truck_id;
+    if (t.scope === "trailer") return d.trailer_id === t.id;
+    return d.company_id === t.companyId && !d.load_id && !d.driver_id && !d.truck_id && !d.trailer_id;
   });
 }
 
 /** The entity a document is attached to. */
-export const scopeOf = (d: DocumentItem): Exclude<DocScope, "any"> => (d.load_id ? "load" : d.driver_id ? "driver" : d.truck_id ? "truck" : "company");
+export const scopeOf = (d: DocumentItem): Exclude<DocScope, "any"> =>
+  d.load_id ? "load" : d.driver_id ? "driver" : d.truck_id ? "truck" : d.trailer_id ? "trailer" : "company";
 
 /** Types offered for a scope, its own first, "any" types last. */
 export function typesFor(docTypes: DocType[], scope: DocScope) {
@@ -121,7 +127,7 @@ export function latestByType(docs: DocumentItem[]) {
 export function supersededIds(docs: DocumentItem[]) {
   const groups = new Map<string, DocumentItem[]>();
   for (const d of docs) {
-    const k = `${scopeOf(d)}:${d.load_id || d.driver_id || d.truck_id || d.company_id}`;
+    const k = `${scopeOf(d)}:${d.load_id || d.driver_id || d.truck_id || d.trailer_id || d.company_id}`;
     groups.set(k, [...(groups.get(k) || []), d]);
   }
   const out = new Set<string>();
@@ -202,6 +208,10 @@ const GUESS: [RegExp, string][] = [
   [/trailer reg/, "trailer_registration"],
   [/registration|\breg\b/, "registration"],
   [/inspection|annual insp|\bdot insp|\b396\b/, "inspection"],
+  [/registration|\breg\b/, "trailer_registration"],
+  [/inspection|annual|\b396\b/, "trailer_inspection"],
+  [/reefer|thermo ?king|transicold|\btk\b/, "reefer_service"],
+  [/interchange|lease/, "trailer_lease"],
   [/title/, "truck_title"],
   [/lease/, "truck_lease"],
   [/photo|damage|\bimg\b|\bdsc\b|\bpxl\b/, "freight_photos"],
@@ -226,7 +236,7 @@ export function guessType(fileName: string, scope: DocScope, docTypes: DocType[]
 // Whole-fleet view (carrier Documents tab, dashboard alerts)
 // --------------------------------------------------------------------------
 export interface Holder {
-  scope: "company" | "driver" | "truck";
+  scope: "company" | "driver" | "truck" | "trailer";
   id: string;
   companyId: string;
   name: string;
@@ -238,12 +248,13 @@ export interface Holder {
   soon: CheckItem[];
 }
 
-/** Paperwork state of each carrier, active driver and active truck. */
+/** Paperwork state of each carrier, active driver, truck and trailer. */
 export function fleetPaperwork(
   data: {
     companies: { id: string; name: string; status: string }[];
     drivers: { id: string; company_id: string; name: string; status: string }[];
     trucks: { id: string; company_id: string; unit_number: string; status: string }[];
+    trailers?: { id: string; company_id: string; unit_number: string; status: string }[];
     documents: DocumentItem[];
     docTypes: DocType[];
   },
@@ -261,6 +272,8 @@ export function fleetPaperwork(
     add("driver", { scope: "driver", id: d.id, companyId: d.company_id }, d.id, d.company_id, d.name, `/fleet?company=${d.company_id}&tab=drivers&driver=${d.id}`);
   for (const t of data.trucks.filter((t) => t.status !== "inactive" && inScope(t.company_id)))
     add("truck", { scope: "truck", id: t.id, companyId: t.company_id }, t.id, t.company_id, `Unit ${t.unit_number}`, `/fleet?company=${t.company_id}&tab=trucks&truck=${t.id}`);
+  for (const t of (data.trailers || []).filter((t) => t.status !== "inactive" && inScope(t.company_id)))
+    add("trailer", { scope: "trailer", id: t.id, companyId: t.company_id }, t.id, t.company_id, `Trailer ${t.unit_number}`, `/fleet?company=${t.company_id}&tab=trailers&trailer=${t.id}`);
   return out;
 }
 

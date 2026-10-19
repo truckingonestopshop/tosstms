@@ -16,6 +16,7 @@ import {
   Truck as TruckIcon,
   Users,
   FileText,
+  Container,
   KeyRound,
   Settings2,
   PanelRightOpen,
@@ -30,6 +31,7 @@ import { TruckForm } from "@/components/fleet/TruckForm";
 import { TruckSheet } from "@/components/fleet/TruckSheet";
 import { DriverCard, DriverForm, DriverSheet, driverAlert } from "@/components/fleet/Drivers";
 import { Vault } from "@/components/fleet/Vault";
+import { TrailersTab } from "@/components/fleet/Trailers";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { FleetPaperwork } from "@/components/docs/FleetPaperwork";
 import { useStore } from "@/lib/store";
@@ -38,7 +40,7 @@ import { ACTIVE_STATUSES, daysUntil, lane, money, num, today } from "@/lib/forma
 import { availability, equipmentLine, pitchFor } from "@/lib/pitch";
 import type { Company, Driver, Truck } from "@/lib/types";
 
-type Tab = "trucks" | "drivers" | "docs" | "vault" | "profile";
+type Tab = "trucks" | "trailers" | "drivers" | "docs" | "vault" | "profile";
 
 export default function FleetPage() {
   return (
@@ -51,7 +53,7 @@ export default function FleetPage() {
 function Fleet() {
   const params = useSearchParams();
   const router = useRouter();
-  const { companies, drivers, trucks, scopedCompany, setScope } = useStore();
+  const { companies, drivers, trucks, trailers, scopedCompany, setScope } = useStore();
   const [newOpen, setNewOpen] = useState(false);
 
   // Links from the dashboard and alerts name the carrier (or a driver / truck of it):
@@ -60,6 +62,7 @@ function Fleet() {
     params.get("company") ||
     drivers.find((d) => d.id === params.get("driver"))?.company_id ||
     trucks.find((t) => t.id === params.get("truck"))?.company_id ||
+    trailers.find((t) => t.id === params.get("trailer"))?.company_id ||
     null;
   useEffect(() => {
     if (!wantCompany || !companies.some((c) => c.id === wantCompany)) return;
@@ -191,11 +194,12 @@ function CompaniesOverview({ onAdd }: { onAdd: () => void }) {
 function CompanyView({ company }: { company: Company }) {
   const params = useSearchParams();
   const router = useRouter();
-  const { trucks, drivers, documents } = useStore();
+  const { trucks, trailers, drivers, documents } = useStore();
   const tab = (params.get("tab") as Tab) || "trucks";
   const setTab = (t: Tab) => router.replace(`/fleet?tab=${t}`, { scroll: false });
 
   const t = trucks.filter((x) => x.company_id === company.id);
+  const tl = trailers.filter((x) => x.company_id === company.id);
   const d = drivers.filter((x) => x.company_id === company.id);
   const docs = documents.filter((x) => x.company_id === company.id);
 
@@ -230,6 +234,7 @@ function CompanyView({ company }: { company: Company }) {
         className="mb-5"
         tabs={[
           { value: "trucks", label: <><TruckIcon className="h-4 w-4" /> Trucks</>, count: t.length },
+          { value: "trailers", label: <><Container className="h-4 w-4" /> Trailers</>, count: tl.length },
           { value: "drivers", label: <><Users className="h-4 w-4" /> Drivers</>, count: d.length },
           { value: "docs", label: <><FileText className="h-4 w-4" /> Documents</>, count: docs.length },
           { value: "vault", label: <><KeyRound className="h-4 w-4" /> Credentials</> },
@@ -237,6 +242,7 @@ function CompanyView({ company }: { company: Company }) {
         ]}
       />
       {tab === "trucks" && <TrucksTab company={company} trucks={t} />}
+      {tab === "trailers" && <TrailersTab company={company} />}
       {tab === "drivers" && <DriversTab company={company} drivers={d} />}
       {tab === "docs" && <DocsTab company={company} />}
       {tab === "vault" && <Vault companyId={company.id} />}

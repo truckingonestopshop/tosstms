@@ -29,7 +29,7 @@ import { useStore } from "@/lib/store";
 import { openDocument, errMsg } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn, daysUntil, fileSize, fmtDay, relTime } from "@/lib/format";
-import { checklist, docsOf, guessType, supersededIds, typesFor, type CheckItem, type DocTarget } from "@/lib/docs";
+import { checklist, docsOf, guessType, scopeOf, supersededIds, typesFor, type CheckItem, type DocTarget } from "@/lib/docs";
 import type { DocumentItem } from "@/lib/types";
 import { DocTypesModal } from "./DocTypesModal";
 
@@ -66,7 +66,7 @@ export function DocumentsPanel({
   emptyText?: string;
   compact?: boolean;
 }) {
-  const { documents, docTypes, uploadDocument, docTypeName, loads, drivers, trucks } = useStore();
+  const { documents, docTypes, uploadDocument, docTypeName, loads, drivers, trucks, trailers } = useStore();
   const scope = target.scope;
   const offered = useMemo(() => typesFor(docTypes, scope), [docTypes, scope]);
   const items = useMemo(() => checklist(docTypes, documents, target), [docTypes, documents, target]);
@@ -90,9 +90,9 @@ export function DocumentsPanel({
   const chosen = docTypes.find((t) => t.key === type);
 
   const shown = list.filter((d) => {
-    if (filter === "company" && (d.load_id || d.driver_id || d.truck_id)) return false;
+    if (filter === "company" && (d.load_id || d.driver_id || d.truck_id || d.trailer_id)) return false;
     if (filter === "loads" && !d.load_id) return false;
-    if (filter === "people" && !d.driver_id && !d.truck_id) return false;
+    if (filter === "people" && !d.driver_id && !d.truck_id && !d.trailer_id) return false;
     if (filter.startsWith("t:") && d.doc_type !== filter.slice(2)) return false;
     if (q && !`${d.file_name} ${docTypeName(d.doc_type)} ${d.notes || ""}`.toLowerCase().includes(q.toLowerCase())) return false;
     return true;
@@ -121,6 +121,7 @@ export function DocumentsPanel({
         load_id: scope === "load" ? target.id : null,
         driver_id: scope === "driver" ? target.id : null,
         truck_id: scope === "truck" ? target.id : null,
+        trailer_id: scope === "trailer" ? target.id : null,
         doc_type: picked || "other",
         expires_on: forced ? null : expires || null,
       });
@@ -149,6 +150,7 @@ export function DocumentsPanel({
     }
     if (d.driver_id) return `Driver · ${drivers.find((x) => x.id === d.driver_id)?.name || ""}`;
     if (d.truck_id) return `Unit ${trucks.find((x) => x.id === d.truck_id)?.unit_number || ""}`;
+    if (d.trailer_id) return `Trailer ${trailers.find((x) => x.id === d.trailer_id)?.unit_number || ""}`;
     return null;
   };
 
@@ -225,7 +227,7 @@ export function DocumentsPanel({
               <>
                 <option value="company">Carrier files</option>
                 <option value="loads">Load paperwork</option>
-                <option value="people">Drivers & trucks</option>
+                <option value="people">Drivers, trucks & trailers</option>
               </>
             )}
             {typesUsed.map((t) => (
@@ -440,7 +442,7 @@ function DocRow({ d, where, old }: { d: DocumentItem; where: string | null; old:
 
 function EditDocModal({ d, onClose, focusExpiry }: { d: DocumentItem; onClose: () => void; focusExpiry?: boolean }) {
   const { docTypes, updateDocument } = useStore();
-  const scope = d.load_id ? "load" : d.driver_id ? "driver" : d.truck_id ? "truck" : "company";
+  const scope = scopeOf(d);
   const [name, setName] = useState(d.file_name);
   const [type, setType] = useState(d.doc_type);
   const [exp, setExp] = useState(d.expires_on || "");

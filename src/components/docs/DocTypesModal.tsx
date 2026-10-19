@@ -16,6 +16,7 @@ const SCOPES: { v: DocScope; label: string; title: string }[] = [
   { v: "company", label: "Carrier", title: "Carrier files" },
   { v: "driver", label: "Driver", title: "Driver files" },
   { v: "truck", label: "Truck", title: "Truck files" },
+  { v: "trailer", label: "Trailer", title: "Trailer files" },
   { v: "any", label: "Any", title: "Anything" },
 ];
 

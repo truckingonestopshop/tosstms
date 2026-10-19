@@ -82,6 +82,8 @@ function LoadView({ load }: { load: Load }) {
     companyById,
     driverById,
     truckById,
+    trailerById,
+    trailers,
     drivers,
     trucks,
     documents,
@@ -163,7 +165,7 @@ function LoadView({ load }: { load: Load }) {
             size="sm"
             variant="outline"
             onClick={() => {
-              navigator.clipboard.writeText(driverSheet(load, company?.name, driver?.name, truck?.unit_number));
+              navigator.clipboard.writeText(driverSheet(load, company?.name, driver?.name, [truck?.unit_number, trailerById(load.trailer_id) && `trailer ${trailerById(load.trailer_id)!.unit_number}`].filter(Boolean).join(" · ") || undefined));
               toast.success("Driver dispatch copied");
             }}
           >
@@ -397,7 +399,12 @@ function LoadView({ load }: { load: Load }) {
                   value={load.truck_id || ""}
                   onChange={(e) => {
                     const t = truckById(e.target.value);
-                    updateLoad(load.id, { truck_id: e.target.value || null, ...(t?.assigned_driver_id && !load.driver_id ? { driver_id: t.assigned_driver_id } : {}) });
+                    updateLoad(load.id, {
+                      truck_id: e.target.value || null,
+                      // The truck's hooked trailer goes with it (change it below if it was swapped).
+                      trailer_id: t?.trailer_id ?? null,
+                      ...(t?.assigned_driver_id && !load.driver_id ? { driver_id: t.assigned_driver_id } : {}),
+                    });
                   }}
                 >
                   <option value="">Unassigned</option>
@@ -406,6 +413,19 @@ function LoadView({ load }: { load: Load }) {
                     .map((t) => (
                       <option key={t.id} value={t.id}>
                         Unit {t.unit_number}
+                      </option>
+                    ))}
+                </Select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-fg-2">Trailer</span>
+                <Select value={load.trailer_id || ""} onChange={(e) => updateLoad(load.id, { trailer_id: e.target.value || null })}>
+                  <option value="">None / power only</option>
+                  {trailers
+                    .filter((t) => t.company_id === load.company_id && (t.status !== "inactive" || t.id === load.trailer_id))
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.unit_number} · {[t.trailer_length, t.trailer_type].filter(Boolean).join(" ")}
                       </option>
                     ))}
                 </Select>

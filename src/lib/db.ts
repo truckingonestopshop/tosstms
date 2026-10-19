@@ -1,7 +1,7 @@
 "use client";
 
 import { supabaseBrowser } from "@/lib/supabase/client";
-import type { Company, Driver, Invoice, InvoiceLine, Load, Truck } from "./types";
+import type { Company, Driver, Invoice, InvoiceLine, Load, Trailer, Truck } from "./types";
 
 export const sb = () => supabaseBrowser();
 export const BUCKET = "tms-docs";
@@ -41,6 +41,7 @@ export const normTruck = (r: Truck): Truck => ({
   accessories: Array.isArray(r.accessories) ? r.accessories : [],
   desk_blocks: Array.isArray(r.desk_blocks) ? r.desk_blocks : [],
 });
+export const normTrailer = (r: Trailer): Trailer => ({ ...r, max_weight: nn(r.max_weight), year: nn(r.year) });
 export const normLoad = (r: Load): Load => ({
   ...r,
   gross_amount: n(r.gross_amount),

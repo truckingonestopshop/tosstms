@@ -16,6 +16,7 @@ import type {
   Role,
   Settings,
   Truck,
+  Trailer,
 } from "./types";
 import {
   BUCKET,
@@ -27,6 +28,7 @@ import {
   normLine,
   normLoad,
   normTruck,
+  normTrailer,
   sb,
 } from "./db";
 import { byTypeOrder, withRules } from "./docs";
@@ -59,6 +61,7 @@ interface Store {
   companies: Company[];
   drivers: Driver[];
   trucks: Truck[];
+  trailers: Trailer[];
   loads: Load[];
   documents: DocumentItem[];
   invoices: Invoice[];
@@ -76,6 +79,7 @@ interface Store {
   companyById: (id: string | null | undefined) => Company | undefined;
   driverById: (id: string | null | undefined) => Driver | undefined;
   truckById: (id: string | null | undefined) => Truck | undefined;
+  trailerById: (id: string | null | undefined) => Trailer | undefined;
   memberName: (id: string | null | undefined) => string;
   docTypeName: (key: string) => string;
 
@@ -92,6 +96,11 @@ interface Store {
   createTruck: (t: Partial<Truck>) => Promise<Truck | null>;
   updateTruck: (id: string, patch: Partial<Truck>) => Promise<boolean>;
   deleteTruck: (id: string) => Promise<boolean>;
+  createTrailer: (t: Partial<Trailer>) => Promise<Trailer | null>;
+  updateTrailer: (id: string, patch: Partial<Trailer>) => Promise<boolean>;
+  deleteTrailer: (id: string) => Promise<boolean>;
+  /** Hook a trailer to a truck (null = drop it, power only). Unhooks it from any other truck. */
+  hookTrailer: (truckId: string, trailerId: string | null) => Promise<boolean>;
 
   createLoad: (l: NewLoad) => Promise<Load | null>;
   updateLoad: (id: string, patch: Partial<Load>) => Promise<boolean>;
@@ -101,7 +110,7 @@ interface Store {
 
   uploadDocument: (
     file: File,
-    meta: { company_id: string; doc_type: string; load_id?: string | null; driver_id?: string | null; truck_id?: string | null; expires_on?: string | null; notes?: string | null },
+    meta: { company_id: string; doc_type: string; load_id?: string | null; driver_id?: string | null; truck_id?: string | null; trailer_id?: string | null; expires_on?: string | null; notes?: string | null },
   ) => Promise<DocumentItem | null>;
   updateDocument: (id: string, patch: Partial<DocumentItem>) => Promise<boolean>;
   replaceDocumentFile: (id: string, file: File) => Promise<boolean>;
@@ -158,6 +167,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   const [companies, setCompanies] = useState<Company[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [trucks, setTrucks] = useState<Truck[]>([]);
+  const [trailers, setTrailers] = useState<Trailer[]>([]);
   const [loads, setLoads] = useState<Load[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -167,8 +177,8 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   const [scope, setScopeState] = useState<Scope>("all");
 
   // Latest state for async callbacks without re-creating them.
-  const ref = useRef({ companies, drivers, trucks, loads, documents, invoices, docTypes, payments });
-  ref.current = { companies, drivers, trucks, loads, documents, invoices, docTypes, payments };
+  const ref = useRef({ companies, drivers, trucks, trailers, loads, documents, invoices, docTypes, payments });
+  ref.current = { companies, drivers, trucks, trailers, loads, documents, invoices, docTypes, payments };
 
   const refresh = useCallback(async () => {
     if (preview && process.env.NODE_ENV !== "production") {
@@ -178,6 +188,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
       setCompanies(d.companies);
       setDrivers(d.drivers);
       setTrucks(d.trucks);
+      setTrailers(d.trailers);
       setLoads(d.loads);
       setDocuments(d.documents);
       setInvoices(d.invoices);
@@ -199,11 +210,12 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
         if (!data || data.length < 1000) return { data: out, error: null };
       }
     };
-    const [m, co, dr, tr, lo, docs, inv, lines, dt, st, pay] = await Promise.all([
+    const [m, co, dr, tr, trl, lo, docs, inv, lines, dt, st, pay] = await Promise.all([
       c.from("tms_members").select("*").order("full_name"),
       all<Company>("tms_companies"),
       all<Driver>("tms_drivers"),
       all<Truck>("tms_trucks"),
+      all<Trailer>("tms_trailers"),
       all<Load>("tms_loads"),
       all<DocumentItem>("tms_documents"),
       all<Invoice>("tms_invoices"),
@@ -225,6 +237,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     if (co.data) setCompanies((co.data as Company[]).map(normCompany));
     if (dr.data) setDrivers(dr.data as Driver[]);
     if (tr.data) setTrucks((tr.data as Truck[]).map(normTruck));
+    if (trl.data) setTrailers((trl.data as Trailer[]).map(normTrailer).sort((a, b) => a.unit_number.localeCompare(b.unit_number, undefined, { numeric: true })));
     if (lo.data) setLoads((lo.data as Load[]).map(normLoad));
     if (docs.data) setDocuments(docs.data as DocumentItem[]);
     if (inv.data) {
@@ -276,6 +289,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_companies" }, apply("tms_companies", setCompanies, normCompany))
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_drivers" }, apply("tms_drivers", setDrivers))
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_trucks" }, apply("tms_trucks", setTrucks, normTruck))
+      .on("postgres_changes", { event: "*", schema: "public", table: "tms_trailers" }, apply("tms_trailers", setTrailers, normTrailer))
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_loads" }, apply("tms_loads", setLoads, normLoad))
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_documents" }, apply("tms_documents", setDocuments))
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_invoices" }, async (p: Payload) => {
@@ -322,6 +336,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   const companyById = useCallback((id: string | null | undefined) => (id ? companies.find((c) => c.id === id) : undefined), [companies]);
   const driverById = useCallback((id: string | null | undefined) => (id ? drivers.find((c) => c.id === id) : undefined), [drivers]);
   const truckById = useCallback((id: string | null | undefined) => (id ? trucks.find((c) => c.id === id) : undefined), [trucks]);
+  const trailerById = useCallback((id: string | null | undefined) => (id ? trailers.find((c) => c.id === id) : undefined), [trailers]);
   const memberName = useCallback(
     (id: string | null | undefined) => {
       const m = id ? members.find((x) => x.user_id === id) : undefined;
@@ -415,6 +430,52 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     return true;
   }, []);
 
+  // ----------------------------------------------------------------- trailers
+  // Trucks copy their hooked trailer's specs in the database, so trucks are re-read after changes.
+  const reloadTrucks = async (ids: string[]) => {
+    if (!ids.length) return;
+    const { data } = await sb().from("tms_trucks").select("*").in("id", ids);
+    if (data) setTrucks((l) => (data as Truck[]).reduce((acc, row) => upsert(acc, normTruck(row)), l));
+  };
+  const createTrailer = useCallback(async (t: Partial<Trailer>) => {
+    const { data, error } = await sb().from("tms_trailers").insert(clean(t)).select().single();
+    if (error) return fail(error, "Couldn't add the trailer"), null;
+    const row = normTrailer(data as Trailer);
+    setTrailers((l) => upsert(l, row));
+    return row;
+  }, []);
+  const updateTrailer = useCallback(async (id: string, patch: Partial<Trailer>) => {
+    const prev = ref.current.trailers.find((t) => t.id === id);
+    if (prev) setTrailers((l) => upsert(l, { ...prev, ...patch }));
+    const { data, error } = await sb().from("tms_trailers").update(clean(patch)).eq("id", id).select().single();
+    if (error) {
+      if (prev) setTrailers((l) => upsert(l, prev));
+      return fail(error, "Couldn't save the trailer"), false;
+    }
+    setTrailers((l) => upsert(l, normTrailer(data as Trailer)));
+    await reloadTrucks(ref.current.trucks.filter((t) => t.trailer_id === id).map((t) => t.id));
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const deleteTrailer = useCallback(async (id: string) => {
+    const holders = ref.current.trucks.filter((t) => t.trailer_id === id).map((t) => t.id);
+    const { error } = await sb().from("tms_trailers").delete().eq("id", id);
+    if (error) return fail(error, "Couldn't delete the trailer"), false;
+    setTrailers((l) => l.filter((x) => x.id !== id));
+    setDocuments((l) => l.filter((x) => x.trailer_id !== id));
+    await reloadTrucks(holders);
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const hookTrailer = useCallback(async (truckId: string, trailerId: string | null) => {
+    const others = trailerId ? ref.current.trucks.filter((t) => t.trailer_id === trailerId && t.id !== truckId).map((t) => t.id) : [];
+    const { error } = await sb().from("tms_trucks").update({ trailer_id: trailerId }).eq("id", truckId);
+    if (error) return fail(error, "Couldn't change the trailer"), false;
+    await reloadTrucks([truckId, ...others]);
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // -------------------------------------------------------------------- loads
   const createLoad = useCallback(
     async (l: NewLoad) => {
@@ -499,7 +560,15 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   }, []);
 
   const uploadDocument = useCallback<Store["uploadDocument"]>(async (file, meta) => {
-    const folder = meta.load_id ? `loads/${meta.load_id}` : meta.driver_id ? `drivers/${meta.driver_id}` : meta.truck_id ? `trucks/${meta.truck_id}` : "company";
+    const folder = meta.load_id
+      ? `loads/${meta.load_id}`
+      : meta.driver_id
+        ? `drivers/${meta.driver_id}`
+        : meta.truck_id
+          ? `trucks/${meta.truck_id}`
+          : meta.trailer_id
+            ? `trailers/${meta.trailer_id}`
+            : "company";
     const path = docPath(meta.company_id, folder, file.name);
     const up = await sb().storage.from(BUCKET).upload(path, file, { contentType: file.type || undefined, upsert: false });
     if (up.error) return fail(up.error, "Upload failed"), null;
@@ -846,6 +915,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     companies,
     drivers,
     trucks,
+    trailers,
     loads,
     documents,
     invoices,
@@ -859,6 +929,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     companyById,
     driverById,
     truckById,
+    trailerById,
     memberName,
     docTypeName,
     refresh,
@@ -871,6 +942,10 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     createTruck,
     updateTruck,
     deleteTruck,
+    createTrailer,
+    updateTrailer,
+    deleteTrailer,
+    hookTrailer,
     createLoad,
     updateLoad,
     setLoadStatus,

@@ -3,24 +3,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Building2, CornerDownLeft, FileText, Search, Truck, User, Package } from "lucide-react";
+import { Building2, Container, CornerDownLeft, FileText, Search, Truck, User, Package } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { cn, fmtDay, lane, money, STATUS } from "@/lib/format";
 
 interface Hit {
   id: string;
-  kind: "load" | "company" | "truck" | "driver" | "invoice";
+  kind: "load" | "company" | "truck" | "trailer" | "driver" | "invoice";
   title: string;
   sub: string;
   href: string;
   run?: () => void;
 }
 
-const ICONS = { load: Package, company: Building2, truck: Truck, driver: User, invoice: FileText };
+const ICONS = { load: Package, company: Building2, truck: Truck, trailer: Container, driver: User, invoice: FileText };
 
 /** Ctrl/Cmd+K: jump to any load, carrier, truck, driver or invoice. */
 export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { loads, companies, trucks, drivers, invoices, companyById, setScope } = useStore();
+  const { loads, companies, trucks, trailers, drivers, invoices, companyById, setScope } = useStore();
   const router = useRouter();
   const [q, setQ] = useState("");
   const [i, setI] = useState(0);
@@ -89,6 +89,18 @@ export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenCha
           href: `/fleet?tab=trucks&truck=${t.id}`,
           run: () => setScope(t.company_id),
         });
+    for (const t of trailers)
+      if (has(t.unit_number, t.vin_number, t.plate, t.trailer_type)) {
+        const holder = trucks.find((x) => x.trailer_id === t.id);
+        out.push({
+          id: t.id,
+          kind: "trailer",
+          title: `Trailer ${t.unit_number}`,
+          sub: [companyById(t.company_id)?.name, [t.trailer_length, t.trailer_type].filter(Boolean).join(" "), holder ? `on unit ${holder.unit_number}` : "in the yard"].filter(Boolean).join(" · "),
+          href: `/fleet?tab=trailers&trailer=${t.id}`,
+          run: () => setScope(t.company_id),
+        });
+      }
     for (const d of drivers)
       if (has(d.name, d.phone, d.email, d.cdl_number))
         out.push({
@@ -109,7 +121,7 @@ export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenCha
           href: `/invoices/${inv.id}`,
         });
     return out.slice(0, 40);
-  }, [q, loads, companies, trucks, drivers, invoices, companyById, setScope]);
+  }, [q, loads, companies, trucks, trailers, drivers, invoices, companyById, setScope]);
 
   const go = (h: Hit) => {
     h.run?.();
