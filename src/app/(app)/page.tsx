@@ -124,10 +124,10 @@ export default function Dashboard() {
         });
       }
     }
-    // CDL / medical dates typed on the driver (no file with a date on record).
+    // License / medical dates typed on the driver (no file with a date on record).
     for (const d of drivers.filter((d) => inScope(d.company_id) && d.status === "active")) {
       for (const [key, label, date] of [
-        ["cdl", "CDL", d.cdl_expiry],
+        ["cdl", d.license_type || "Driving license", d.cdl_expiry],
         ["medical_card", "Medical card", d.medical_card_expiry],
       ] as const) {
         const covered = holders.some((h) => h.scope === "driver" && h.id === d.id && h.items.some((i) => i.type.key === key && i.doc?.expires_on));

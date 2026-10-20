@@ -9,9 +9,9 @@ import { useStore } from "@/lib/store";
 import { signedUrls } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
-import { compressImage, photoSlotsFor, type PhotoSlot } from "@/lib/trailerPhotos";
+import { DRIVER_PHOTO_SLOTS, TRUCK_PHOTO_SLOTS, compressImage, photoSlotsFor, type PhotoSlot } from "@/lib/trailerPhotos";
 
-/** A photo picked before the trailer exists (new trailer form); uploaded on save. */
+/** A photo picked before the truck / trailer exists (new form); uploaded on save. */
 export interface PendingPhoto {
   id: string;
   slot: string;
@@ -21,29 +21,40 @@ export interface PendingPhoto {
 
 type Shot = { id: string; slot: string; src: string | null; name: string; pending?: boolean; docId?: string };
 
+type PhotoProps = { companyId: string; pending?: PendingPhoto[]; onPending?: (p: PendingPhoto[]) => void; compact?: boolean };
+
+/** Trailer photos: side views, rear, interior, plate, and for reefers the unit and air chute. */
+export function TrailerPhotos({ trailerId, trailerType, ...p }: PhotoProps & { trailerId?: string | null; trailerType: string | null | undefined }) {
+  return <EquipmentPhotos owner="trailer" ownerId={trailerId} slots={photoSlotsFor(trailerType)} {...p} />;
+}
+
+/** Truck photos: side views (company name, DOT / MC) and the front (license plate). */
+export function TruckPhotos({ truckId, ...p }: PhotoProps & { truckId?: string | null }) {
+  return <EquipmentPhotos owner="truck" ownerId={truckId} slots={TRUCK_PHOTO_SLOTS} {...p} />;
+}
+
+/** Driver: driving license front and back, medical card. */
+export function DriverPhotos({ driverId, ...p }: PhotoProps & { driverId?: string | null }) {
+  return <EquipmentPhotos owner="driver" ownerId={driverId} slots={DRIVER_PHOTO_SLOTS} {...p} />;
+}
+
 /**
- * Photo slots for a trailer (side views, rear, interior, plate, and for reefers the unit
- * and air chute). With `trailerId` photos upload right away; without, they are kept in
- * `pending` until the trailer is saved.
+ * Photo slots for a truck, trailer or driver. With `ownerId` photos upload right away; without
+ * (new truck / trailer), they are kept in `pending` until it's saved.
  */
-export function TrailerPhotos({
-  trailerId,
+function EquipmentPhotos({
+  owner,
+  ownerId,
+  slots,
   companyId,
-  trailerType,
   pending = [],
   onPending,
   compact,
-}: {
-  trailerId?: string | null;
-  companyId: string;
-  trailerType: string | null | undefined;
-  pending?: PendingPhoto[];
-  onPending?: (p: PendingPhoto[]) => void;
-  compact?: boolean;
-}) {
+}: PhotoProps & { owner: "truck" | "trailer" | "driver"; ownerId?: string | null; slots: PhotoSlot[] }) {
   const { documents, uploadDocument, deleteDocument } = useStore();
-  const slots = photoSlotsFor(trailerType);
-  const saved = useMemo(() => (trailerId ? documents.filter((d) => d.trailer_id === trailerId && d.doc_type.startsWith("trailer_photo_")) : []), [documents, trailerId]);
+  const prefix = `${owner}_photo_`;
+  const idKey = `${owner}_id` as const;
+  const saved = useMemo(() => (ownerId ? documents.filter((d) => d[idKey] === ownerId && d.doc_type.startsWith(prefix)) : []), [documents, ownerId, idKey, prefix]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<{ list: Shot[]; i: number } | null>(null);
@@ -71,8 +82,8 @@ export function TrailerPhotos({
     const picked = slot.many ? list : list.slice(0, 1);
     setBusy(slot.key);
     const ready = await Promise.all(picked.map((f) => compressImage(f)));
-    if (!trailerId) {
-      // New trailer: keep them until it's saved.
+    if (!ownerId) {
+      // New truck / trailer: keep them until it's saved.
       const next = ready.map((file) => ({ id: crypto.randomUUID(), slot: slot.key, file, url: URL.createObjectURL(file) }));
       onPending?.([...(slot.many ? pending : pending.filter((p) => p.slot !== slot.key)), ...next]);
       setBusy(null);
@@ -81,7 +92,7 @@ export function TrailerPhotos({
     // Single-photo slots keep one picture: the old one is replaced.
     const old = slot.many ? [] : saved.filter((d) => d.doc_type === slot.key);
     let ok = 0;
-    for (const file of ready) if (await uploadDocument(file, { company_id: companyId, trailer_id: trailerId, doc_type: slot.key })) ok++;
+    for (const file of ready) if (await uploadDocument(file, { company_id: companyId, [idKey]: ownerId, doc_type: slot.key })) ok++;
     for (const d of old) await deleteDocument(d.id);
     setBusy(null);
     if (ok) toast.success(ok === 1 ? `${slot.title} added` : `${ok} photos added`);
@@ -103,7 +114,7 @@ export function TrailerPhotos({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <span className="text-xs font-semibold uppercase tracking-wider text-fg-3">Trailer photos</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-fg-3">{owner === "truck" ? "Truck photos" : owner === "driver" ? "License & medical card" : "Trailer photos"}</span>
         <span className={cn("tnum text-xs font-semibold", filled === slots.length ? "text-emerald-700 dark:text-emerald-300" : "text-fg-4")}>
           {filled}/{slots.length}
         </span>
@@ -129,8 +140,13 @@ export function TrailerPhotos({
   );
 }
 
-/** The numbering the team uses (1–6), kept when reefer slots are hidden. */
+/** The numbering the team uses (trailer 1–6, kept when reefer slots are hidden; truck 1–2). */
 const PHOTO_INDEX: Record<string, number> = {
+  truck_photo_side: 1,
+  truck_photo_front: 2,
+  driver_photo_license_front: 1,
+  driver_photo_license_back: 2,
+  driver_photo_medical_card: 3,
   trailer_photo_side: 1,
   trailer_photo_reefer_unit: 2,
   trailer_photo_interior: 3,

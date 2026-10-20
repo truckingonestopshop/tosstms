@@ -10,8 +10,9 @@ import { CountUp, stagger } from "@/components/ui/Motion";
 import { AdjustmentsEditor, adjustmentsTotal, type Adjustment } from "./AdjustmentsEditor";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
-import { addDays, cut, fmtDay, lane, money, today } from "@/lib/format";
+import { cut, fmtDay, lane, money, today } from "@/lib/format";
 import { checklist, problems, shortName } from "@/lib/docs";
+import { autoChargeDate } from "@/lib/invoice";
 import type { Load } from "@/lib/types";
 
 /** Loads that can still be billed: delivered and not on a live invoice. */
@@ -64,7 +65,7 @@ export function InvoiceBuilder({ open, onClose, companyId: initial }: { open: bo
   useEffect(() => {
     setPicked(new Set(billable.filter((l) => l.company_id === companyId).map((l) => l.id)));
     setAmounts({});
-    if (company) setDue(addDays(issue, company.payment_terms_days));
+    if (company) setDue(autoChargeDate());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
 
@@ -134,7 +135,7 @@ export function InvoiceBuilder({ open, onClose, companyId: initial }: { open: bo
           <Field label="Issue date">
             <Input type="date" value={issue} onChange={(e) => setIssue(e.target.value)} />
           </Field>
-          <Field label="Due date" hint={company ? `Net ${company.payment_terms_days} days` : undefined}>
+          <Field label="Auto charge date" hint="The day after today">
             <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
           </Field>
           <Field label="Fee">

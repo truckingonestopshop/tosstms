@@ -217,6 +217,29 @@ export const US_STATES = [
   "AB","BC","MB","NB","NL","NS","ON","PE","QC","SK",
 ];
 
+/** Where a driving license is issued: US states (and DC), then Mexico and Canada. */
+export const LICENSE_REGIONS: { label: string; options: { v: string; label: string }[] }[] = [
+  {
+    label: "United States",
+    options: [
+      ["AL", "Alabama"], ["AK", "Alaska"], ["AZ", "Arizona"], ["AR", "Arkansas"], ["CA", "California"], ["CO", "Colorado"], ["CT", "Connecticut"],
+      ["DE", "Delaware"], ["DC", "District of Columbia"], ["FL", "Florida"], ["GA", "Georgia"], ["HI", "Hawaii"], ["ID", "Idaho"], ["IL", "Illinois"],
+      ["IN", "Indiana"], ["IA", "Iowa"], ["KS", "Kansas"], ["KY", "Kentucky"], ["LA", "Louisiana"], ["ME", "Maine"], ["MD", "Maryland"],
+      ["MA", "Massachusetts"], ["MI", "Michigan"], ["MN", "Minnesota"], ["MS", "Mississippi"], ["MO", "Missouri"], ["MT", "Montana"],
+      ["NE", "Nebraska"], ["NV", "Nevada"], ["NH", "New Hampshire"], ["NJ", "New Jersey"], ["NM", "New Mexico"], ["NY", "New York"],
+      ["NC", "North Carolina"], ["ND", "North Dakota"], ["OH", "Ohio"], ["OK", "Oklahoma"], ["OR", "Oregon"], ["PA", "Pennsylvania"],
+      ["RI", "Rhode Island"], ["SC", "South Carolina"], ["SD", "South Dakota"], ["TN", "Tennessee"], ["TX", "Texas"], ["UT", "Utah"],
+      ["VT", "Vermont"], ["VA", "Virginia"], ["WA", "Washington"], ["WV", "West Virginia"], ["WI", "Wisconsin"], ["WY", "Wyoming"],
+    ].map(([v, label]) => ({ v, label: `${label} (${v})` })),
+  },
+  // "CAN" so Canada never collides with California (CA).
+  { label: "Other countries", options: [{ v: "MX", label: "Mexico (MX)" }, { v: "CAN", label: "Canada (CA)" }] },
+];
+
+/** "Illinois (IL)" for a stored code; older Canadian province codes stay as they are. */
+export const licenseRegionLabel = (v: string | null | undefined) =>
+  !v ? "" : LICENSE_REGIONS.flatMap((g) => g.options).find((o) => o.v === v)?.label ?? v;
+
 /** US trailer / equipment types, grouped as load boards list them. */
 export const TRAILER_GROUPS: { label: string; types: string[] }[] = [
   { label: "Vans", types: ["Dry Van", "Reefer", "Vented Van", "Insulated Van", "Curtain Van", "Moving Van"] },

@@ -1,6 +1,7 @@
 // Sample data for the development-only UI preview (/preview-ui). Never used in production.
 import type { Company, DocType, DocumentItem, Driver, Invoice, InvoicePayment, Load, LoadStatus, Member, Settings, Trailer, Truck } from "./types";
 import { BUILT_IN_TYPES } from "./docs";
+import { servicePeriod } from "./invoice";
 import { addDays, today } from "./format";
 
 const t = today();
@@ -94,7 +95,7 @@ export function demoData() {
   ];
   const inv = (id: string, l: Load, status: Invoice["status"], issued: number): Invoice => ({
     id, company_id: l.company_id, invoice_number: `TOSS-2026-${1000 + Number(id.slice(-1))}`, invoice_type: "load", status, currency: "USD",
-    issue_date: addDays(t, issued), due_date: addDays(t, issued + 7), period_start: l.delivery_date, period_end: l.delivery_date,
+    issue_date: addDays(t, issued), due_date: addDays(t, issued + 1), ...servicePeriod([l.delivery_date || t]),
     total_gross: l.gross_amount, total_due: l.dispatcher_cut, amount_paid: status === "paid" ? l.dispatcher_cut : 0, notes: "Weekly dispatch service fee.",
     issuer_name: "Trucking One Stop Shop LLC", issuer_address: "Chicago, IL", issuer_email: "billing@truckingonestopshop.net", issuer_phone: "",
     bill_to_name: companies.find((c) => c.id === l.company_id)!.name, bill_to_details: "MC 1428592 · DOT 31428592", doc_overrides: { terms_title: "Dispatch agreement", terms_text: "10% of gross · weekly" },

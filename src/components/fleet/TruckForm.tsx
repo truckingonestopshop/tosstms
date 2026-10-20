@@ -11,6 +11,7 @@ import { cn, uid } from "@/lib/format";
 import { GEAR_PRESETS } from "@/lib/pitch";
 import { TrailerPicker } from "./Trailers";
 import { TruckDocs, type PendingDoc } from "./TrailerDocs";
+import { TruckPhotos, type PendingPhoto } from "./TrailerPhotos";
 
 const TRUCK_MAKES = ["Freightliner", "Peterbilt", "Kenworth", "Volvo", "International", "Mack", "Western Star", "Ford", "Isuzu", "Hino", "Ram"];
 import type { Truck, TruckAccessory, TruckStatus } from "@/lib/types";
@@ -67,13 +68,17 @@ export function TruckForm({
   const [saving, setSaving] = useState(false);
   // Registration / inspection picked before a new truck exists; uploaded right after it's created.
   const [docs, setDocs] = useState<PendingDoc[]>([]);
+  const [photos, setPhotos] = useState<PendingPhoto[]>([]);
   const [gearName, setGearName] = useState("");
   const [gearQty, setGearQty] = useState("1");
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
 
   useEffect(() => {
     if (open) setD(toDraft(truck));
-    if (!open) setDocs([]);
+    if (!open) {
+      setDocs([]);
+      setPhotos([]);
+    }
   }, [open, truck]);
 
   const companyDrivers = drivers.filter((x) => x.company_id === companyId);
@@ -109,6 +114,11 @@ export function TruckForm({
         let up = 0;
         for (const p of docs) if (await uploadDocument(p.file, { company_id: companyId, truck_id: created.id, doc_type: p.slot, expires_on: p.expires || null })) up++;
         if (up < docs.length) toast.error(`${docs.length - up} document(s) didn't upload. Add them from the truck.`);
+      }
+      if (created && photos.length) {
+        let up = 0;
+        for (const p of photos) if (await uploadDocument(p.file, { company_id: companyId, truck_id: created.id, doc_type: p.slot })) up++;
+        if (up < photos.length) toast.error(`${photos.length - up} photo(s) didn't upload. Add them from the truck.`);
       }
     }
     setSaving(false);
@@ -163,7 +173,7 @@ export function TruckForm({
             </datalist>
           </Field>
           <Field label="Model">
-            <Input value={d.model} onChange={(e) => set({ model: e.target.value })} placeholder="T680" />
+            <Input value={d.model} onChange={(e) => set({ model: e.target.value })} placeholder="379" />
           </Field>
           <Field label="VIN" className="col-span-2">
             <Input value={d.vin_number} onChange={(e) => set({ vin_number: e.target.value })} maxLength={17} className="uppercase" />
@@ -208,6 +218,8 @@ export function TruckForm({
         </div>
 
         <TruckDocs truckId={truck?.id} companyId={companyId} pending={docs} onPending={setDocs} />
+
+        <TruckPhotos truckId={truck?.id} companyId={companyId} pending={photos} onPending={setPhotos} compact />
 
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Onboard gear</div>

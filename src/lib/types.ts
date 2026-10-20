@@ -54,6 +54,10 @@ export interface Driver {
   id: string;
   company_id: string;
   name: string;
+  /** name follows first + last (database trigger) */
+  first_name?: string | null;
+  last_name?: string | null;
+  license_type?: LicenseType | null;
   phone: string | null;
   email: string | null;
   cdl_number: string | null;
@@ -243,7 +247,12 @@ export interface DocType {
   /** merged into the load's billing packet */
   in_packet: boolean;
   sort: number;
+  /** heading in the Type picker */
+  doc_group?: DocGroup | null;
 }
+
+export type DocGroup = "no_expiry" | "expiry" | "per_request";
+export type LicenseType = "CDL" | "DL" | "International CDL";
 
 export interface DocumentItem {
   id: string;

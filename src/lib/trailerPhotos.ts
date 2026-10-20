@@ -1,7 +1,7 @@
 "use client";
 
-// Trailer photo slots. Each slot is a document type (migration 0008), so photos are
-// stored like any trailer file: private bucket, short-lived signed links.
+// Truck and trailer photo slots. Each slot is a document type (migrations 0008, 0014), so
+// photos are stored like any truck / trailer file: private bucket, short-lived signed links.
 
 export interface PhotoSlot {
   key: string;
@@ -22,7 +22,20 @@ export const PHOTO_SLOTS: PhotoSlot[] = [
   { key: "trailer_photo_plate", title: "License plate", hint: "Clear, readable plate and registration sticker" },
 ];
 
-export const isPhotoType = (key: string) => key.startsWith("trailer_photo_");
+/** The truck's photos. */
+export const TRUCK_PHOTO_SLOTS: PhotoSlot[] = [
+  { key: "truck_photo_side", title: "Truck exterior · side views", hint: "Company name and DOT / MC numbers visible", many: true },
+  { key: "truck_photo_front", title: "Truck exterior · front view", hint: "License plate clearly visible" },
+];
+
+/** The driver's license (both sides) and medical card. */
+export const DRIVER_PHOTO_SLOTS: PhotoSlot[] = [
+  { key: "driver_photo_license_front", title: "Driving license · front", hint: "Whole card in frame, number and expiry readable" },
+  { key: "driver_photo_license_back", title: "Driving license · back", hint: "Endorsements and restrictions readable" },
+  { key: "driver_photo_medical_card", title: "Medical card", hint: "Examiner, date and expiry readable" },
+];
+
+export const isPhotoType = (key: string) => key.startsWith("trailer_photo_") || key.startsWith("truck_photo_") || key.startsWith("driver_photo_");
 
 /** Slots for a trailer type: reefer slots only for reefers. */
 export const photoSlotsFor = (type: string | null | undefined) => PHOTO_SLOTS.filter((s) => !s.reefer || (type || "").toLowerCase().includes("reefer"));

@@ -29,7 +29,7 @@ import { useStore } from "@/lib/store";
 import { openDocument, errMsg } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn, daysUntil, fileSize, fmtDay, relTime } from "@/lib/format";
-import { checklist, docsOf, guessType, isPhotoDoc, scopeOf, supersededIds, typesFor, type CheckItem, type DocTarget } from "@/lib/docs";
+import { checklist, docsOf, groupTypes, guessType, isPhotoDoc, scopeOf, supersededIds, typesFor, type CheckItem, type DocTarget } from "@/lib/docs";
 import type { DocumentItem } from "@/lib/types";
 import { DocTypesModal } from "./DocTypesModal";
 
@@ -180,15 +180,28 @@ export function DocumentsPanel({
           <Field label="Type" className={cn("min-w-0", !compact && "sm:w-64")}>
             <Select value={type} onChange={(e) => setType(e.target.value)}>
               <option value={AUTO}>Detect from file name</option>
-              {offered.map((t) => (
-                <option key={t.key} value={t.key}>
-                  {t.name}
-                </option>
-              ))}
+              {groupTypes(offered).map((g) =>
+                g.label ? (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.types.map((t) => (
+                      <option key={t.key} value={t.key}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : (
+                  g.types.map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.name}
+                    </option>
+                  ))
+                ),
+              )}
             </Select>
           </Field>
-          {chosen?.has_expiry && (
-            <Field label="Expires" className={cn(!compact && "sm:w-44")}>
+          {/* Any document can carry an expiry date; types that expire ask for it. */}
+          {type !== AUTO && (
+            <Field label={chosen?.has_expiry ? "Expires" : "Expires (optional)"} className={cn(!compact && "sm:w-44")}>
               <Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
             </Field>
           )}

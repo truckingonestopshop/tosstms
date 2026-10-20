@@ -117,13 +117,13 @@ function InvoiceView({ id }: { id: string }) {
   const email = async () => {
     const to = company?.contact_email || "";
     const reminder = inv.status !== "draft";
-    const subject = reminder ? `Reminder: invoice ${inv.invoice_number} · ${money(left, { currency: inv.currency })} due ${fmtDay(inv.due_date)}` : `Invoice ${inv.invoice_number} from ${inv.issuer_name || "TOSS"}`;
+    const subject = reminder ? `Reminder: invoice ${inv.invoice_number} · ${money(left, { currency: inv.currency })} · auto charge ${fmtDay(inv.due_date)}` : `Invoice ${inv.invoice_number} from ${inv.issuer_name || "TOSS"}`;
     const body = [
       `Hello${company?.contact_name ? ` ${company.contact_name.split(" ")[0]}` : ""},`,
       "",
       reminder
-        ? `This is a reminder that invoice ${inv.invoice_number} has ${money(left, { currency: inv.currency })} open${inv.due_date ? `, due ${fmtDay(inv.due_date, true)}` : ""}.`
-        : `Please find attached invoice ${inv.invoice_number} for ${money(inv.total_due, { currency: inv.currency })}${inv.due_date ? `, due ${fmtDay(inv.due_date, true)}` : ""}.`,
+        ? `This is a reminder that invoice ${inv.invoice_number} has ${money(left, { currency: inv.currency })} open${inv.due_date ? `, auto charge date ${fmtDay(inv.due_date, true)}` : ""}.`
+        : `Please find attached invoice ${inv.invoice_number} for ${money(inv.total_due, { currency: inv.currency })}${inv.due_date ? `, auto charge date ${fmtDay(inv.due_date, true)}` : ""}.`,
       inv.period_start ? `Service period: ${fmtDay(inv.period_start, true)} – ${fmtDay(inv.period_end, true)} · ${inv.lines.length} line${inv.lines.length === 1 ? "" : "s"}.` : "",
       "",
       "Thank you,",
@@ -311,7 +311,7 @@ function InvoiceView({ id }: { id: string }) {
                     <div className="tnum">
                       {money(inv.amount_paid, { currency: inv.currency })} of {money(inv.total_due, { currency: inv.currency })}
                     </div>
-                    {inv.due_date && left > 0 && <div className={cn(st === "overdue" && "font-medium text-red-600 dark:text-red-400")}>due {fmtDay(inv.due_date)}</div>}
+                    {inv.due_date && left > 0 && <div className={cn(st === "overdue" && "font-medium text-red-600 dark:text-red-400")}>auto charge {fmtDay(inv.due_date)}</div>}
                   </div>
                 </div>
                 <Progress value={paidPct} className="mt-3" tone={left > 0 ? "bg-teal-500" : "bg-emerald-500"} />

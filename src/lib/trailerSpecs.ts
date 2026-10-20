@@ -35,6 +35,7 @@ export const SPEC_GROUPS: SpecGroup[] = [
       },
       { key: "unit_make", label: "Reefer unit", kind: "select", options: ["Thermo King", "Carrier Transicold", "Hwasung Thermo"] },
       { key: "unit_model", label: "Unit model", kind: "text", placeholder: "Precedent S-600, X4 7500, Vector 8600…" },
+      { key: "unit_year", label: "Unit year", kind: "text", placeholder: "2021" },
       { key: "temp_range", label: "Temperature range", kind: "text", placeholder: "-20°F to 70°F" },
       { key: "zones", label: "Temperature zones", kind: "select", options: ["Single temp", "Multi-temp · 2 zones", "Multi-temp · 3 zones"] },
       {
@@ -143,8 +144,9 @@ export function specsLine(type: string | null | undefined, specs: Specs | null |
     for (const f of g.fields) {
       const v = s[f.key];
       if (!v) continue;
-      if (f.key === "unit_make") parts.push([v, s.unit_model].filter(Boolean).join(" "));
-      else if (f.key === "unit_model") continue;
+      // "Thermo King Precedent S-600 (2021)"
+      if (f.key === "unit_make") parts.push([v, s.unit_model].filter(Boolean).join(" ") + (s.unit_year ? ` (${s.unit_year})` : ""));
+      else if (f.key === "unit_model" || f.key === "unit_year") continue;
       else if (f.kind === "select" && f.short) parts.push(v === "Yes" ? f.short : `Not ${f.short.toLowerCase()}`);
       else parts.push(Array.isArray(v) ? v.join(", ") : String(v));
     }

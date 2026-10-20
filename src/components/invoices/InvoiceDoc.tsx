@@ -3,8 +3,8 @@
 import { forwardRef } from "react";
 import { Plus, X } from "lucide-react";
 import { LogoMark } from "@/components/brand/Logo";
-import { CHARGE_PRESETS, CREDIT_PRESETS, adjustmentLine, blankLine, totals, type InvoiceDraft } from "@/lib/invoice";
-import { cn, fmtDay, money } from "@/lib/format";
+import { CHARGE_PRESETS, CREDIT_PRESETS, adjustmentLine, blankLine, mondayOf, totals, type InvoiceDraft } from "@/lib/invoice";
+import { addDays, cn, fmtDay, money } from "@/lib/format";
 
 // The invoice as a printed page: always black on white, whatever the app theme.
 // In edit mode every text is editable in place.
@@ -175,7 +175,7 @@ export const InvoiceDoc = forwardRef<
             </span>
             {(editing || d.due_date) && (
               <>
-                <span className={SUB}>Due</span>
+                <span className={SUB}>Auto charge date</span>
                 <span className="font-medium">
                   <D editing={editing} value={d.due_date} onChange={(v) => set({ due_date: v })} />
                 </span>
@@ -219,9 +219,10 @@ export const InvoiceDoc = forwardRef<
             <div className="mt-4">
               <div className={cn("mb-1.5", LABEL)}>Service period</div>
               <div className={cn("flex flex-wrap items-center gap-1", SUB)}>
-                <D editing={editing} value={d.period_start} onChange={(v) => set({ period_start: v })} />
+                {/* Always Monday to Monday: a picked day snaps to its week's Monday. */}
+                <D editing={editing} value={d.period_start} onChange={(v) => set(v ? { period_start: mondayOf(v), period_end: addDays(mondayOf(v), 7) } : { period_start: v })} />
                 <span>–</span>
-                <D editing={editing} value={d.period_end} onChange={(v) => set({ period_end: v })} />
+                <D editing={editing} value={d.period_end} onChange={(v) => set({ period_end: v ? mondayOf(v) : v })} />
               </div>
             </div>
           )}

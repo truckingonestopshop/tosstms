@@ -34,8 +34,8 @@ import {
   sb,
 } from "./db";
 import { byTypeOrder, withRules } from "./docs";
-import { totals, type InvoiceDraft } from "./invoice";
-import { addDays, cut, fmtDay, today } from "./format";
+import { autoChargeDate, servicePeriod, totals, type InvoiceDraft } from "./invoice";
+import { cut, fmtDay, today } from "./format";
 import { toast } from "./toast";
 
 export interface Me {
@@ -841,9 +841,9 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
         status: "draft" as const,
         currency: "USD" as const,
         issue_date: issue,
-        due_date: opts.due_date || addDays(issue, company.payment_terms_days),
-        period_start: opts.period_start || days[0],
-        period_end: opts.period_end || days[days.length - 1],
+        due_date: opts.due_date || autoChargeDate(),
+        period_start: opts.period_start || servicePeriod(days).period_start,
+        period_end: opts.period_end || servicePeriod(days).period_end,
         total_gross: totalGross,
         total_due: totalDue,
         notes: opts.notes ?? `${company.billing_cadence === "weekly" ? "Weekly" : "Monthly"} dispatch service fee, ${company.commission_percent}% of gross. Loads delivered ${fmtDay(days[0], true)} – ${fmtDay(days[days.length - 1], true)}.`,
@@ -856,7 +856,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
         bill_to_details: billTo,
         doc_overrides: {
           terms_title: "Dispatch agreement",
-          terms_text: `${company.commission_percent}% of gross carrier revenue · ${company.billing_cadence === "weekly" ? "weekly" : "monthly"} settlement · net ${company.payment_terms_days} days`,
+          terms_text: `${company.commission_percent}% of gross carrier revenue · ${company.billing_cadence === "weekly" ? "weekly" : "monthly"} settlement · auto charge the day after the invoice date`,
           remittance_title: "Payment notice",
           remittance_text: st?.remittance_text || "",
           footer_text: st?.footer_text || "Thank you for your business.",

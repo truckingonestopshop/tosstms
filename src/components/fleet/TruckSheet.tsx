@@ -11,6 +11,7 @@ import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { StatusPill } from "@/components/loads/StatusMenu";
 import { QtyStepper } from "./TruckForm";
 import { TrailerPicker } from "./Trailers";
+import { TruckPhotos } from "./TrailerPhotos";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { ACTIVE_STATUSES, cn, fmtDay, lane, num, uid } from "@/lib/format";
@@ -273,6 +274,10 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
               ))}
             </ul>
           )}
+        </section>
+
+        <section>
+          <TruckPhotos truckId={truck.id} companyId={truck.company_id} compact />
         </section>
 
         <section>

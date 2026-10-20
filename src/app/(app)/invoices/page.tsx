@@ -100,7 +100,7 @@ function Invoices() {
               variant="outline"
               onClick={() =>
                 downloadCsv(`invoices-${today()}.csv`, [
-                  ["Number", "Bill to", "Type", "Issued", "Due", "Status", "Currency", "Load gross", "Amount", "Paid", "Balance"],
+                  ["Number", "Bill to", "Type", "Issued", "Auto charge date", "Status", "Currency", "Load gross", "Amount", "Paid", "Balance"],
                   ...list.map((i) => [i.invoice_number, i.bill_to_name, i.invoice_type, i.issue_date, i.due_date, PAY_META[payState(i)].label, i.currency, i.total_gross, i.total_due, i.amount_paid, balance(i)]),
                 ])
               }
@@ -251,7 +251,7 @@ function Invoices() {
                   <th className="px-4 py-2.5">Invoice</th>
                   <th className="px-3 py-2.5">Bill to</th>
                   <th className="px-3 py-2.5">Issued</th>
-                  <th className="px-3 py-2.5">Due</th>
+                  <th className="px-3 py-2.5">Auto charge</th>
                   <th className="px-3 py-2.5 text-right">Lines</th>
                   <th className="px-3 py-2.5 text-right">Amount</th>
                   <th className="px-3 py-2.5">Status</th>
@@ -319,7 +319,7 @@ function Invoices() {
                       <Pill className={PAY_META[st].pill}>{PAY_META[st].label}</Pill>
                     </div>
                     <div className="truncate text-xs text-fg-3">
-                      {i.bill_to_name || "—"} · due {fmtDay(i.due_date)}
+                      {i.bill_to_name || "—"} · auto charge {fmtDay(i.due_date)}
                     </div>
                   </div>
                   <div className="text-right">

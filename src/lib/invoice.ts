@@ -1,6 +1,27 @@
 import type { Invoice, InvoiceLine, PaymentMethod, Settings } from "./types";
 import { addDays, today, uid } from "./format";
 
+/** Monday of the week a day ("YYYY-MM-DD") falls in. */
+export function mondayOf(day: string) {
+  const [y, m, d] = day.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sunday
+  return addDays(day, -((dow + 6) % 7));
+}
+
+/**
+ * Service period, always Monday to Monday: from the Monday of the first day's week to the
+ * Monday after the last day's week (one week: Mon 10/12 – Mon 10/19).
+ */
+export function servicePeriod(days: string[]) {
+  const list = days.filter(Boolean).sort();
+  const first = list[0] || today();
+  const last = list[list.length - 1] || first;
+  return { period_start: mondayOf(first), period_end: addDays(mondayOf(last), 7) };
+}
+
+/** Auto charge date: the day after the invoice is built. */
+export const autoChargeDate = () => addDays(today(), 1);
+
 export type PayState = "draft" | "open" | "partial" | "overdue" | "paid" | "void";
 
 /** What is still owed on an invoice. */
@@ -94,9 +115,8 @@ export function blankDraft(s: Settings | null, number: string): InvoiceDraft {
     status: "draft",
     currency: "USD",
     issue_date: t,
-    due_date: addDays(t, 30),
-    period_start: t,
-    period_end: t,
+    due_date: autoChargeDate(),
+    ...servicePeriod([t]),
     total_gross: 0,
     total_due: 0,
     amount_paid: 0,
