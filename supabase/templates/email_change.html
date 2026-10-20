@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>Confirm your new email</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;-webkit-text-size-adjust:100%">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">Confirm the new email address for your TOSS account.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f5">
+<tr><td align="center" style="padding:40px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px">
+<tr><td style="padding:0 4px 20px"><img src="https://www.tosscloud.tech/brand/email-logo.png" width="88" height="39" alt="TOSS" style="display:block;border:0;width:88px;height:auto"></td></tr>
+<tr><td style="background:#ffffff;border:1px solid #e4e4e7;border-radius:16px;padding:36px 36px 28px">
+<h1 style="margin:0 0 18px;font:700 22px/1.25 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:-0.02em;color:#0a0a0d">Confirm your new email</h1>
+<p style="margin:0 0 16px;font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#3f3f46;">{{ if .Data.full_name }}Hi {{ .Data.full_name }},{{ else }}Hi,{{ end }}</p>
+<p style="margin:0 0 16px;font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#3f3f46;">Confirm that <b style="color:#0a0a0d">{{ .NewEmail }}</b> should be the new email for your TOSS account (now {{ .Email }}).</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 28px"><tr><td style="border-radius:999px;background:#f28c38">
+<a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:13px 26px;font:600 15px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0a0a0d;text-decoration:none;border-radius:999px">Confirm new email</a>
+</td></tr></table>
+<p style="margin:0 0 16px;font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#3f3f46;font-size:13px;color:#71717a">If you didn't ask for this change, ignore this email and tell your TOSS admin.</p>
+<p style="margin:0 0 6px;font:13px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#71717a">If the button doesn't work, copy this link into your browser:</p>
+<p style="margin:0 0 4px;font:12px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;word-break:break-all"><a href="{{ .ConfirmationURL }}" style="color:#71717a;text-decoration:underline">{{ .ConfirmationURL }}</a></p>
+</td></tr>
+<tr><td style="padding:22px 4px 0;font:12px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#71717a">
+TOSS · Trucking One Stop Shop<br>
+TOSS Cloud · TOSS Lead Hunter · <a href="https://www.tosscloud.tech" style="color:#71717a;text-decoration:underline">tosscloud.tech</a><br>
+You got this email because of your TOSS team account. If you weren't expecting it, you can ignore it.
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>
