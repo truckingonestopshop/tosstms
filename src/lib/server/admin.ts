@@ -339,8 +339,17 @@ export async function deleteUser(actor: { id: string; email: string }, id: strin
   await audit(actor, "delete", { id, email: u.email });
 }
 
+/**
+ * Where invite and reset links land. TOSS Cloud: the address the admin panel is open on
+ * (www.tosscloud.tech), so an old configured URL can't send people elsewhere; only from a
+ * local dev server does NEXT_PUBLIC_APP_URL take over, so invites never point at localhost.
+ * Supabase only honors these if they're in Auth → URL Configuration → Redirect URLs;
+ * otherwise it falls back to the Site URL.
+ */
 export function origins(req: Request) {
-  const tms = (process.env.NEXT_PUBLIC_APP_URL && !process.env.NEXT_PUBLIC_APP_URL.includes("localhost") ? process.env.NEXT_PUBLIC_APP_URL : new URL(req.url).origin).replace(/\/+$/, "");
+  const here = new URL(req.url);
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(here.hostname);
+  const tms = (local && process.env.NEXT_PUBLIC_APP_URL ? process.env.NEXT_PUBLIC_APP_URL : here.origin).replace(/\/+$/, "");
   const leads = (process.env.NEXT_PUBLIC_LEADS_URL || "").replace(/\/+$/, "") || null;
   return { tms, leads };
 }
