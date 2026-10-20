@@ -21,7 +21,8 @@ import {
 } from "lucide-react";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Checkbox, Input, Segmented, Select } from "@/components/ui/Field";
-import { Avatar, Card, Empty, Page, PageHeader, Stat } from "@/components/ui/Bits";
+import { Card, Empty, Page, PageHeader, Stat } from "@/components/ui/Bits";
+import { MemberAvatar } from "@/components/team/MemberAvatar";
 import { Popover, MenuItem, MenuLabel, MenuSep } from "@/components/ui/Menu";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { StatusMenu, StatusPill } from "@/components/loads/StatusMenu";
@@ -631,7 +632,7 @@ function DispatcherTag({ id }: { id: string | null }) {
   const name = memberName(id);
   return (
     <span className="flex min-w-0 items-center gap-2" title={name}>
-      <Avatar name={name} className="h-6 w-6 text-[10px]" />
+      <MemberAvatar id={id} name={name} className="h-6 w-6 text-[10px]" />
       <span className="truncate text-[13px] text-fg-2">{id === me.id ? "You" : name.split(/\s+/)[0]}</span>
     </span>
   );

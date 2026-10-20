@@ -34,8 +34,8 @@ const BUILT_IN: Rule[] = [
   ["drug_test", "Drug & Alcohol Test", "driver", null, false, false, 40],
   ["driver_application", "Driver Application", "driver", null, false, false, 50],
   ["driver_agreement", "Driver / Lease Agreement", "driver", null, false, false, 60],
-  ["registration", "Registration", "truck", "always", true, false, 10],
-  ["inspection", "Annual Inspection", "truck", "always", true, false, 20],
+  ["registration", "Truck Registration (Cab Card)", "truck", "always", true, false, 10],
+  ["inspection", "Annual Truck Inspection", "truck", "always", true, false, 20],
   ["cab_card", "IRP Cab Card", "truck", null, true, false, 30],
   ["ifta", "IFTA License", "truck", null, true, false, 40],
   ["form_2290", "Form 2290 (Schedule 1)", "truck", null, true, false, 50],
@@ -97,8 +97,12 @@ export function docsOf(documents: DocumentItem[], t: DocTarget) {
 export const scopeOf = (d: DocumentItem): Exclude<DocScope, "any"> =>
   d.load_id ? "load" : d.driver_id ? "driver" : d.truck_id ? "truck" : d.trailer_id ? "trailer" : "company";
 
+/** Trailer photo slots (migration 0008) are shown in the photo gallery, not with documents. */
+export const isPhotoDoc = (key: string) => key.startsWith("trailer_photo_");
+
 /** Types offered for a scope, its own first, "any" types last. */
 export function typesFor(docTypes: DocType[], scope: DocScope) {
+  docTypes = docTypes.filter((t) => !isPhotoDoc(t.key));
   return [...docTypes.filter((t) => t.scope === scope).sort(byTypeOrder), ...docTypes.filter((t) => t.scope === "any").sort(byTypeOrder)];
 }
 

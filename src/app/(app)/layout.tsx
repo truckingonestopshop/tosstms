@@ -4,6 +4,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { NoAccess } from "@/components/layout/NoAccess";
 import { currentUser } from "@/lib/supabase/server";
 import { PREVIEW_COOKIE, previewAllowed } from "@/lib/preview";
+import { ArrivalCurtain } from "@/components/auth/AppSwitch";
+import { ARRIVE_COOKIE } from "@/lib/appSwitch";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await currentUser();
@@ -19,5 +21,12 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     redirect("/login");
   }
   if (!user.role) return <NoAccess email={user.email} />;
-  return <AppShell me={{ id: user.id, email: user.email, fullName: user.fullName, role: user.role }}>{children}</AppShell>;
+  // Just switched over from TOSS Lead Hunter: start under the brand card and fade it out.
+  const arriving = (await cookies()).get(ARRIVE_COOKIE)?.value === "1";
+  return (
+    <>
+      {arriving && <ArrivalCurtain app="cloud" />}
+      <AppShell me={{ id: user.id, email: user.email, fullName: user.fullName, role: user.role }}>{children}</AppShell>
+    </>
+  );
 }

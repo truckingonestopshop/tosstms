@@ -14,22 +14,24 @@ import { TrailerPicker } from "./Trailers";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { ACTIVE_STATUSES, cn, fmtDay, lane, num, uid } from "@/lib/format";
-import { availability, defaultPitch, equipmentLine, pitchFor } from "@/lib/pitch";
+import { availability, defaultPitch, equipmentLine, pitchFor, truckModelLine } from "@/lib/pitch";
 import type { DeskBlock, Truck } from "@/lib/types";
 
 /** Everything a dispatcher needs on a broker call, one tap to copy. */
 export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; onClose: () => void; onEdit: (t: Truck) => void }) {
-  const { companyById, driverById, trailerById, updateTruck, loads } = useStore();
+  const { companyById, driverById, trailerById, memberById, me, updateTruck, loads } = useStore();
   const [pitchEdit, setPitchEdit] = useState(false);
   const [pitch, setPitch] = useState("");
   const [loc, setLoc] = useState("");
   const [avail, setAvail] = useState("");
+  const [availTime, setAvailTime] = useState("");
   const [gearName, setGearName] = useState("");
 
   useEffect(() => {
     if (!truck) return;
     setLoc(truck.current_location || "");
     setAvail(truck.available_date || "");
+    setAvailTime(truck.available_time || "");
     setPitchEdit(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [truck?.id]);
@@ -38,7 +40,7 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
   const company = companyById(truck.company_id);
   const driver = driverById(truck.assigned_driver_id);
   const trailer = trailerById(truck.trailer_id);
-  const text = pitchFor(truck, company, driver, trailer);
+  const text = pitchFor(truck, company, driver, trailer, memberById(me.id));
   const truckLoads = loads
     .filter((l) => l.truck_id === truck.id && ACTIVE_STATUSES.includes(l.status))
     .sort((a, b) => (a.pickup_date || "").localeCompare(b.pickup_date || ""));
@@ -49,6 +51,7 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
     ["MC", company?.mc_number],
     ["DOT", company?.dot_number],
     ["Truck #", truck.unit_number],
+    ["Year / make / model", truckModelLine(truck) || null],
     ["Trailer #", truck.trailer_number],
     ["Equipment", equipmentLine(truck)],
     ["Max weight", truck.max_weight ? `${num(truck.max_weight)} lbs` : null],
@@ -118,7 +121,7 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
             <div className="space-y-2">
               <Textarea value={pitch} onChange={(e) => setPitch(e.target.value)} rows={8} className="font-mono text-[13px]" />
               <div className="flex flex-wrap justify-end gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setPitch(defaultPitch(truck, company, driver, trailer))}>
+                <Button size="sm" variant="ghost" onClick={() => setPitch(defaultPitch(truck, company, driver, trailer, memberById(me.id)))}>
                   Reset to auto
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setPitchEdit(false)}>
@@ -168,11 +171,12 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input value={loc} onChange={(e) => setLoc(e.target.value)} placeholder="City, ST" className="flex-1" />
             <Input type="date" value={avail} onChange={(e) => setAvail(e.target.value)} className="sm:w-44" />
+            <Input type="time" value={availTime} onChange={(e) => setAvailTime(e.target.value)} disabled={!avail} aria-label="Available from time" className="sm:w-32" />
             <Button
               variant="outline"
-              disabled={loc === (truck.current_location || "") && avail === (truck.available_date || "")}
+              disabled={loc === (truck.current_location || "") && avail === (truck.available_date || "") && availTime === (truck.available_time || "")}
               onClick={async () => {
-                if (await updateTruck(truck.id, { current_location: loc, available_date: avail || null })) toast.success("Location updated");
+                if (await updateTruck(truck.id, { current_location: loc, available_date: avail || null, available_time: avail && availTime ? availTime : null })) toast.success("Location updated");
               }}
             >
               Update

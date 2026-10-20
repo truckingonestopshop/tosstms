@@ -29,7 +29,7 @@ import { useStore } from "@/lib/store";
 import { openDocument, errMsg } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn, daysUntil, fileSize, fmtDay, relTime } from "@/lib/format";
-import { checklist, docsOf, guessType, scopeOf, supersededIds, typesFor, type CheckItem, type DocTarget } from "@/lib/docs";
+import { checklist, docsOf, guessType, isPhotoDoc, scopeOf, supersededIds, typesFor, type CheckItem, type DocTarget } from "@/lib/docs";
 import type { DocumentItem } from "@/lib/types";
 import { DocTypesModal } from "./DocTypesModal";
 
@@ -83,7 +83,9 @@ export function DocumentsPanel({
   const slotType = useRef<string | null>(null);
 
   const list = useMemo(() => {
-    const own = includeAll && scope === "company" ? documents.filter((d) => d.company_id === target.companyId) : docsOf(documents, target);
+    const own = (includeAll && scope === "company" ? documents.filter((d) => d.company_id === target.companyId) : docsOf(documents, target)).filter(
+      (d) => !isPhotoDoc(d.doc_type),
+    );
     return [...own].sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
   }, [documents, target, includeAll, scope]);
   const old = useMemo(() => supersededIds(list), [list]);
@@ -450,7 +452,7 @@ function EditDocModal({ d, onClose, focusExpiry }: { d: DocumentItem; onClose: (
   const [saving, setSaving] = useState(false);
   const t = docTypes.find((x) => x.key === type);
   const own = typesFor(docTypes, scope);
-  const rest = docTypes.filter((x) => !own.includes(x));
+  const rest = docTypes.filter((x) => !own.includes(x) && !isPhotoDoc(x.key));
   return (
     <Modal
       open

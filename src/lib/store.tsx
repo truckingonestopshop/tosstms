@@ -13,6 +13,7 @@ import type {
   Load,
   LoadStatus,
   Member,
+  MemberProfile,
   Role,
   Settings,
   Truck,
@@ -20,6 +21,7 @@ import type {
 } from "./types";
 import {
   BUCKET,
+  AVATARS,
   clean,
   docPath,
   errMsg,
@@ -32,7 +34,8 @@ import {
   sb,
 } from "./db";
 import { byTypeOrder, withRules } from "./docs";
-import { addDays, cut, fmtDay, lane, today } from "./format";
+import { totals, type InvoiceDraft } from "./invoice";
+import { addDays, cut, fmtDay, today } from "./format";
 import { toast } from "./toast";
 
 export interface Me {
@@ -57,6 +60,10 @@ interface Store {
   ready: boolean;
   me: Me;
   isOwner: boolean;
+  /** Can open the admin panel (people & access for TMS and Leads). */
+  isSuperAdmin: boolean;
+  /** Has TOSS Lead Hunter access (for the app switcher). */
+  hasLeads: boolean;
   members: Member[];
   companies: Company[];
   drivers: Driver[];
@@ -81,6 +88,11 @@ interface Store {
   truckById: (id: string | null | undefined) => Truck | undefined;
   trailerById: (id: string | null | undefined) => Trailer | undefined;
   memberName: (id: string | null | undefined) => string;
+  memberById: (id: string | null | undefined) => Member | undefined;
+  /** Save profile fields (your own, or anyone's if you're an owner). */
+  updateProfile: (userId: string, patch: Partial<MemberProfile>) => Promise<boolean>;
+  /** Upload a new profile photo (already cropped); null removes it. */
+  setAvatar: (userId: string, file: Blob | null) => Promise<boolean>;
   docTypeName: (key: string) => string;
 
   refresh: () => Promise<void>;
@@ -126,7 +138,17 @@ interface Store {
   createInvoiceFromLoads: (
     companyId: string,
     loadIds: string[],
-    opts: { issue_date?: string; due_date?: string; period_start?: string; period_end?: string; notes?: string; amounts?: Record<string, number>; titles?: Record<string, string> },
+    opts: {
+      issue_date?: string;
+      due_date?: string;
+      period_start?: string;
+      period_end?: string;
+      notes?: string;
+      amounts?: Record<string, number>;
+      titles?: Record<string, string>;
+      /** billing adjustments: additional charges (+) and credits (−) */
+      adjustments?: { kind: "charge" | "credit"; description: string; amount: number }[];
+    },
   ) => Promise<Invoice | null>;
   createCustomInvoice: (draft: InvoiceDraftInput) => Promise<Invoice | null>;
   saveInvoice: (id: string, draft: InvoiceDraftInput) => Promise<boolean>;
@@ -160,12 +182,15 @@ function fail(e: unknown, what: string) {
 }
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
+const normMember = (r: Member): Member => ({ ...r, languages: Array.isArray(r.languages) ? r.languages : [] });
 const byPaidOn = (a: InvoicePayment, b: InvoicePayment) => a.paid_on.localeCompare(b.paid_on) || a.created_at.localeCompare(b.created_at);
 const normPayment = (r: InvoicePayment): InvoicePayment => ({ ...r, amount: Number(r.amount) || 0 });
 
 export function StoreProvider({ me, preview = false, children }: { me: Me; preview?: boolean; children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const [isSuperAdmin, setSuperAdmin] = useState(false);
+  const [hasLeads, setHasLeads] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [trucks, setTrucks] = useState<Truck[]>([]);
@@ -179,14 +204,16 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   const [scope, setScopeState] = useState<Scope>("all");
 
   // Latest state for async callbacks without re-creating them.
-  const ref = useRef({ companies, drivers, trucks, trailers, loads, documents, invoices, docTypes, payments });
-  ref.current = { companies, drivers, trucks, trailers, loads, documents, invoices, docTypes, payments };
+  const ref = useRef({ companies, drivers, trucks, trailers, loads, documents, invoices, docTypes, payments, members });
+  ref.current = { companies, drivers, trucks, trailers, loads, documents, invoices, docTypes, payments, members };
 
   const refresh = useCallback(async () => {
     if (preview && process.env.NODE_ENV !== "production") {
       const { demoData } = await import("./demo");
       const d = demoData();
       setMembers(d.members);
+      setSuperAdmin(true);
+      setHasLeads(true);
       setCompanies(d.companies);
       setDrivers(d.drivers);
       setTrucks(d.trucks);
@@ -235,7 +262,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     inv.data?.sort((a, b) => b.created_at.localeCompare(a.created_at));
     const firstErr = [m, co, dr, tr, lo, docs, inv, lines, dt].find((r) => r.error)?.error;
     if (firstErr) fail(firstErr, "Couldn't load data");
-    if (m.data) setMembers(m.data as Member[]);
+    if (m.data) setMembers((m.data as Member[]).map(normMember));
     if (co.data) setCompanies((co.data as Company[]).map(normCompany));
     if (dr.data) setDrivers(dr.data as Driver[]);
     if (tr.data) setTrucks((tr.data as Truck[]).map(normTruck));
@@ -250,6 +277,9 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     if (dt.data) setDocTypes((dt.data as DocType[]).map(withRules).sort(byTypeOrder));
     if (st.data) setSettings(st.data as Settings);
     if (pay.data) setPayments((pay.data as InvoicePayment[]).map(normPayment).sort(byPaidOn));
+    // Admin panel and app switcher (both are fine to fail quietly).
+    c.rpc("toss_is_super_admin").then(({ data }) => setSuperAdmin(data === true));
+    c.from("workspace_members").select("user_id").eq("user_id", me.id).limit(1).then(({ data }) => setHasLeads(!!data?.length));
     setReady(true);
   }, []);
 
@@ -260,6 +290,24 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     } catch {}
     refresh();
   }, [refresh]);
+
+  // Access can change while the app is open (an admin grants or removes super admin /
+  // Leads access): check again whenever the tab comes back into view.
+  useEffect(() => {
+    if (preview) return;
+    const recheck = () => {
+      if (document.visibilityState !== "visible") return;
+      const c = sb();
+      c.rpc("toss_is_super_admin").then(({ data, error }) => !error && setSuperAdmin(data === true));
+      c.from("workspace_members").select("user_id").eq("user_id", me.id).limit(1).then(({ data, error }) => !error && setHasLeads(!!data?.length));
+    };
+    document.addEventListener("visibilitychange", recheck);
+    window.addEventListener("focus", recheck);
+    return () => {
+      document.removeEventListener("visibilitychange", recheck);
+      window.removeEventListener("focus", recheck);
+    };
+  }, [preview, me.id]);
 
   // A deleted company can't stay selected.
   useEffect(() => {
@@ -290,6 +338,15 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
       .channel("tms-sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_companies" }, apply("tms_companies", setCompanies, normCompany))
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_drivers" }, apply("tms_drivers", setDrivers))
+      .on("postgres_changes", { event: "*", schema: "public", table: "tms_members" }, async (p: Payload) => {
+        const uid = ((p.new && p.new.user_id) || (p.old && p.old.user_id)) as string | undefined;
+        if (!uid) return;
+        if (p.eventType === "DELETE") return setMembers((l) => l.filter((m) => m.user_id !== uid));
+        const { data } = await c.from("tms_members").select("*").eq("user_id", uid).maybeSingle();
+        if (!data) return setMembers((l) => l.filter((m) => m.user_id !== uid));
+        const row = normMember(data as Member);
+        setMembers((l) => (l.some((m) => m.user_id === uid) ? l.map((m) => (m.user_id === uid ? row : m)) : [...l, row]));
+      })
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_trucks" }, apply("tms_trucks", setTrucks, normTruck))
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_trailers" }, apply("tms_trailers", setTrailers, normTrailer))
       .on("postgres_changes", { event: "*", schema: "public", table: "tms_loads" }, apply("tms_loads", setLoads, normLoad))
@@ -339,6 +396,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   const driverById = useCallback((id: string | null | undefined) => (id ? drivers.find((c) => c.id === id) : undefined), [drivers]);
   const truckById = useCallback((id: string | null | undefined) => (id ? trucks.find((c) => c.id === id) : undefined), [trucks]);
   const trailerById = useCallback((id: string | null | undefined) => (id ? trailers.find((c) => c.id === id) : undefined), [trailers]);
+  const memberById = useCallback((id: string | null | undefined) => (id ? members.find((m) => m.user_id === id) : undefined), [members]);
   const memberName = useCallback(
     (id: string | null | undefined) => {
       const m = id ? members.find((x) => x.user_id === id) : undefined;
@@ -375,6 +433,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     setCompanies((l) => l.filter((x) => x.id !== id));
     setDrivers((l) => l.filter((x) => x.company_id !== id));
     setTrucks((l) => l.filter((x) => x.company_id !== id));
+    setTrailers((l) => l.filter((x) => x.company_id !== id));
     setLoads((l) => l.filter((x) => x.company_id !== id));
     setDocuments((l) => l.filter((x) => x.company_id !== id));
     setInvoices((l) => l.map((x) => (x.company_id === id ? { ...x, company_id: null } : x)));
@@ -394,9 +453,16 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     setDrivers((l) => upsert(l, data as Driver));
     return true;
   }, []);
+  /** Storage files of documents that the database deleted along with their owner. */
+  const removeFiles = async (paths: string[]) => {
+    if (paths.length) await sb().storage.from(BUCKET).remove(paths);
+  };
+
   const deleteDriver = useCallback(async (id: string) => {
+    const paths = ref.current.documents.filter((d) => d.driver_id === id).map((d) => d.file_path);
     const { error } = await sb().from("tms_drivers").delete().eq("id", id);
     if (error) return fail(error, "Couldn't delete the driver"), false;
+    await removeFiles(paths);
     setDrivers((l) => l.filter((x) => x.id !== id));
     setTrucks((l) => l.map((t) => (t.assigned_driver_id === id ? { ...t, assigned_driver_id: null } : t)));
     setLoads((l) => l.map((t) => (t.driver_id === id ? { ...t, driver_id: null } : t)));
@@ -424,8 +490,10 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     return true;
   }, []);
   const deleteTruck = useCallback(async (id: string) => {
+    const paths = ref.current.documents.filter((d) => d.truck_id === id).map((d) => d.file_path);
     const { error } = await sb().from("tms_trucks").delete().eq("id", id);
     if (error) return fail(error, "Couldn't delete the truck"), false;
+    await removeFiles(paths);
     setTrucks((l) => l.filter((x) => x.id !== id));
     setLoads((l) => l.map((t) => (t.truck_id === id ? { ...t, truck_id: null } : t)));
     setDocuments((l) => l.filter((x) => x.truck_id !== id));
@@ -461,10 +529,14 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   }, []);
   const deleteTrailer = useCallback(async (id: string) => {
     const holders = ref.current.trucks.filter((t) => t.trailer_id === id).map((t) => t.id);
+    const paths = ref.current.documents.filter((d) => d.trailer_id === id).map((d) => d.file_path);
     const { error } = await sb().from("tms_trailers").delete().eq("id", id);
     if (error) return fail(error, "Couldn't delete the trailer"), false;
+    await removeFiles(paths);
     setTrailers((l) => l.filter((x) => x.id !== id));
     setDocuments((l) => l.filter((x) => x.trailer_id !== id));
+    // Loads keep their history without the trailer (the database clears the link too).
+    setLoads((l) => l.map((x) => (x.trailer_id === id ? { ...x, trailer_id: null } : x)));
     await reloadTrucks(holders);
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -719,7 +791,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
         const driver = ref.current.drivers.find((d) => d.id === l.driver_id);
         return {
           load_id: l.id,
-          description: opts.titles?.[l.id] || `${lane(l)}${l.load_number ? ` · Load #${l.load_number}` : ""}`,
+          description: opts.titles?.[l.id] || `${l.origin_city}, ${l.origin_state} — ${l.destination_city}, ${l.destination_state}${l.load_number ? ` · Load #${l.load_number}` : ""}`,
           line_date: l.delivery_date || l.pickup_date,
           quantity: 1,
           unit_price: amount,
@@ -729,14 +801,31 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
           rate_con_number: l.rate_con_number,
           broker_name: l.broker_name,
           driver_name: driver?.name || null,
+          truck_number: ref.current.trucks.find((t) => t.id === l.truck_id)?.unit_number || null,
+          loaded_miles: l.loaded_miles || null,
+          kind: "item" as const,
           origin: `${l.origin_city}, ${l.origin_state}`,
           destination: `${l.destination_city}, ${l.destination_state}`,
           pickup_date: l.pickup_date,
           delivery_date: l.delivery_date,
         } satisfies Partial<InvoiceLine>;
       });
-      const totalGross = chosen.reduce((s, l) => s + l.gross_amount, 0);
-      const totalDue = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
+      // Billing adjustments go after the load lines.
+      const adjustments = (opts.adjustments || [])
+        .filter((a) => a.description.trim() && Number(a.amount) > 0)
+        .map((a) => ({
+          load_id: null,
+          kind: a.kind,
+          description: a.description.trim(),
+          line_date: issue,
+          quantity: 1,
+          unit_price: Math.round(Number(a.amount) * 100) / 100,
+          gross_amount: 0,
+          amount: Math.round(Number(a.amount) * 100) / 100,
+        }));
+      const t = totals({ invoice_type: "load", lines: [...lines, ...adjustments] as InvoiceDraft["lines"] });
+      const totalGross = t.gross;
+      const totalDue = t.due;
       const st = settings;
       const billTo = [
         [company.mc_number && `MC ${company.mc_number}`, company.dot_number && `DOT ${company.dot_number}`].filter(Boolean).join(" · "),
@@ -762,18 +851,21 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
         issuer_address: st?.issuer_address || "",
         issuer_email: st?.issuer_email || "",
         issuer_phone: st?.issuer_phone || "",
+        issuer_website: st?.issuer_website || "",
         bill_to_name: company.name,
         bill_to_details: billTo,
         doc_overrides: {
           terms_title: "Dispatch agreement",
           terms_text: `${company.commission_percent}% of gross carrier revenue · ${company.billing_cadence === "weekly" ? "weekly" : "monthly"} settlement · net ${company.payment_terms_days} days`,
+          remittance_title: "Payment notice",
           remittance_text: st?.remittance_text || "",
-          footer_text: st?.footer_text || "",
+          footer_text: st?.footer_text || "Thank you for your business.",
+          tagline: st?.issuer_tagline || "All your trucking needs in one place",
         },
       };
       const { data, error } = await sb().from("tms_invoices").insert(clean(inv)).select().single();
       if (error) return fail(error, "Couldn't create the invoice"), null;
-      const ins = await insertLines(data.id, lines);
+      const ins = await insertLines(data.id, [...lines, ...adjustments] as InvoiceDraftInput["lines"]);
       if (ins.error) {
         await sb().from("tms_invoices").delete().eq("id", data.id);
         return fail(ins.error, "Couldn't create the invoice"), null;
@@ -915,6 +1007,37 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     setMembers((l) => [...l.filter((m) => m.user_id !== (data as Member).user_id), data as Member]);
     return true;
   }, []);
+  const updateProfile = useCallback(async (userId: string, patch: Partial<MemberProfile>) => {
+    const prev = ref.current.members.find((m) => m.user_id === userId);
+    if (prev) setMembers((l) => l.map((m) => (m.user_id === userId ? { ...m, ...patch } : m)));
+    const { data, error } = await sb().from("tms_members").update(clean(patch as Record<string, unknown>)).eq("user_id", userId).select().single();
+    if (error) {
+      if (prev) setMembers((l) => l.map((m) => (m.user_id === userId ? prev : m)));
+      return fail(error, "Couldn't save the profile"), false;
+    }
+    setMembers((l) => l.map((m) => (m.user_id === userId ? normMember(data as Member) : m)));
+    return true;
+  }, []);
+
+  const setAvatar = useCallback(async (userId: string, file: Blob | null) => {
+    const prev = ref.current.members.find((m) => m.user_id === userId);
+    let path: string | null = null;
+    if (file) {
+      // New name each time so browsers and the CDN never show the old photo.
+      path = `${userId}/${Date.now()}.jpg`;
+      const up = await sb().storage.from(AVATARS).upload(path, file, { contentType: "image/jpeg", upsert: false, cacheControl: "31536000" });
+      if (up.error) return fail(up.error, "Couldn't upload the photo"), false;
+    }
+    const { error } = await sb().from("tms_members").update({ avatar_path: path }).eq("user_id", userId);
+    if (error) {
+      if (path) await sb().storage.from(AVATARS).remove([path]);
+      return fail(error, "Couldn't save the photo"), false;
+    }
+    if (prev?.avatar_path) await sb().storage.from(AVATARS).remove([prev.avatar_path]);
+    setMembers((l) => l.map((m) => (m.user_id === userId ? { ...m, avatar_path: path } : m)));
+    return true;
+  }, []);
+
   const setMemberRole = useCallback(async (userId: string, role: Role) => {
     const { error } = await sb().from("tms_members").update({ role }).eq("user_id", userId);
     if (error) return fail(error, "Couldn't change the role"), false;
@@ -932,6 +1055,8 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     ready,
     me,
     isOwner: me.role === "owner",
+    isSuperAdmin,
+    hasLeads,
     members,
     companies,
     drivers,
@@ -952,6 +1077,9 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     truckById,
     trailerById,
     memberName,
+    memberById,
+    updateProfile,
+    setAvatar,
     docTypeName,
     refresh,
     createCompany,

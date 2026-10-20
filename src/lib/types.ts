@@ -9,7 +9,24 @@ export interface Member {
   full_name: string;
   role: Role;
   created_at: string;
+  /** job title shown to the team, brokers and drivers */
+  position?: string | null;
+  phone?: string | null;
+  phone_ext?: string | null;
+  mobile?: string | null;
+  /** IANA zone, e.g. America/Chicago */
+  timezone?: string | null;
+  work_hours?: string | null;
+  languages?: string[];
+  bio?: string | null;
+  email_signature?: string | null;
+  /** path in the public tms-avatars bucket */
+  avatar_path?: string | null;
+  updated_at?: string;
 }
+
+/** The fields a member edits on their profile. */
+export type MemberProfile = Pick<Member, "full_name" | "position" | "phone" | "phone_ext" | "mobile" | "timezone" | "work_hours" | "languages" | "bio" | "email_signature">;
 
 export type BillingCadence = "weekly" | "monthly";
 
@@ -103,6 +120,8 @@ export interface Truck {
   vin_number: string | null;
   year: number | null;
   make: string | null;
+  /** e.g. T680 (make Peterbilt) */
+  model?: string | null;
   trailer_type: string | null;
   trailer_length: string | null;
   max_weight: number | null;
@@ -115,6 +134,8 @@ export interface Truck {
   assigned_driver_id: string | null;
   current_location: string | null;
   available_date: string | null;
+  /** "HH:MM", with available_date */
+  available_time?: string | null;
   status: TruckStatus;
   notes: string | null;
   created_at: string;
@@ -251,16 +272,25 @@ export interface InvoiceOverrides {
   terms_title?: string;
   terms_text?: string;
   remittance_title?: string;
+  /** letterhead line next to the logo */
+  tagline?: string;
   remittance_text?: string;
   total_label?: string;
   footer_text?: string;
 }
+
+/** item = load fee or custom line · charge = added to the total · credit = taken off the total */
+export type LineKind = "item" | "charge" | "credit";
 
 export interface InvoiceLine {
   id: string;
   invoice_id: string;
   load_id: string | null;
   position: number;
+  kind: LineKind;
+  /** load lines: truck and loaded miles at the time of billing (shown under the lane) */
+  truck_number?: string | null;
+  loaded_miles?: number | null;
   description: string;
   line_date: string | null;
   quantity: number;
@@ -311,6 +341,7 @@ export interface Invoice {
   issuer_address: string | null;
   issuer_email: string | null;
   issuer_phone: string | null;
+  issuer_website?: string | null;
   bill_to_name: string | null;
   bill_to_details: string | null;
   doc_overrides: InvoiceOverrides;
@@ -349,6 +380,9 @@ export interface Settings {
   issuer_address: string;
   issuer_email: string;
   issuer_phone: string;
+  issuer_website: string;
+  /** line next to the logo, e.g. "All your trucking needs in one place" */
+  issuer_tagline: string;
   invoice_prefix: string;
   remittance_text: string;
   footer_text: string;

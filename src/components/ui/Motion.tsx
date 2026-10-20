@@ -26,8 +26,15 @@ export function CountUp({ value, format = (n) => String(Math.round(n)), duration
       else from.current = value;
     };
     raf = requestAnimationFrame(tick);
+    // Background tabs pause animation frames: land on the real number regardless.
+    const done = setTimeout(() => {
+      cancelAnimationFrame(raf);
+      from.current = value;
+      setShown(value);
+    }, duration + 150);
     return () => {
       cancelAnimationFrame(raf);
+      clearTimeout(done);
       from.current = value;
     };
   }, [value, duration]);

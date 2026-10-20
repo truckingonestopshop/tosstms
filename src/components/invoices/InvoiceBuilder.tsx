@@ -7,6 +7,7 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/Field"
 import { Modal } from "@/components/ui/Modal";
 import { Empty } from "@/components/ui/Bits";
 import { CountUp, stagger } from "@/components/ui/Motion";
+import { AdjustmentsEditor, adjustmentsTotal, type Adjustment } from "./AdjustmentsEditor";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { addDays, cut, fmtDay, lane, money, today } from "@/lib/format";
@@ -38,6 +39,7 @@ export function InvoiceBuilder({ open, onClose, companyId: initial }: { open: bo
   const [issue, setIssue] = useState(today());
   const [due, setDue] = useState("");
   const [notes, setNotes] = useState("");
+  const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [saving, setSaving] = useState(false);
   const company = companyById(companyId);
 
@@ -56,6 +58,7 @@ export function InvoiceBuilder({ open, onClose, companyId: initial }: { open: bo
     setShowAll(false);
     setIssue(today());
     setNotes("");
+    setAdjustments([]);
   }, [open, initial, companies]);
 
   useEffect(() => {
@@ -67,17 +70,21 @@ export function InvoiceBuilder({ open, onClose, companyId: initial }: { open: bo
 
   const fee = (l: Load) => (amounts[l.id] !== undefined ? Number(amounts[l.id]) || 0 : cut(l.gross_amount, l.commission_percent));
   const chosen = candidates.filter((l) => picked.has(l.id));
-  const total = chosen.reduce((s, l) => s + fee(l), 0);
+  const fees = chosen.reduce((s, l) => s + fee(l), 0);
+  const total = Math.max(0, fees + adjustmentsTotal(adjustments));
   const gross = chosen.reduce((s, l) => s + l.gross_amount, 0);
 
   const create = async () => {
     if (!companyId || !chosen.length) return;
+    if (adjustments.some((a) => !a.description.trim() || !(Number(a.amount) > 0)))
+      return toast.error("Each billing adjustment needs a description and an amount (or remove it).");
     setSaving(true);
     const inv = await createInvoiceFromLoads(companyId, chosen.map((l) => l.id), {
       issue_date: issue,
       due_date: due || undefined,
       notes: notes || undefined,
       amounts: Object.fromEntries(chosen.map((l) => [l.id, fee(l)])),
+      adjustments: adjustments.map((a) => ({ kind: a.kind, description: a.description, amount: Number(a.amount) || 0 })),
     });
     setSaving(false);
     if (inv) {
@@ -185,11 +192,13 @@ export function InvoiceBuilder({ open, onClose, companyId: initial }: { open: bo
             )}
             {chosen.length > 0 && (
               <div className="tnum mt-2 text-right text-xs text-fg-3">
-                <CountUp value={gross} format={(v) => money(v)} /> gross → <span className="font-semibold text-fg"><CountUp value={total} format={(v) => money(v)} /></span> fee
+                <CountUp value={gross} format={(v) => money(v)} /> gross → <CountUp value={fees} format={(v) => money(v)} /> fees
+                {adjustments.length > 0 && <> → <span className="font-semibold text-fg"><CountUp value={total} format={(v) => money(v)} /></span> due</>}
               </div>
             )}
           </div>
         )}
+        {companyId && <AdjustmentsEditor value={adjustments} onChange={setAdjustments} />}
         <Field label="Note on the invoice" hint="Leave empty for the standard note">
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
         </Field>

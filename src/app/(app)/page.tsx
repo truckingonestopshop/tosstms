@@ -153,7 +153,7 @@ export default function Dashboard() {
         <Card>
           <Empty
             icon={Building2}
-            title="Welcome to TOSS TMS"
+            title="Welcome to TOSS Cloud"
             body="Start by adding a carrier you dispatch for. Then add its trucks and drivers and book loads from rate confirmations."
             action={
               <ButtonLink href="/fleet?new=company" variant="primary">

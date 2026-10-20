@@ -11,7 +11,7 @@ import { stagger } from "@/components/ui/Motion";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
-import { availability } from "@/lib/pitch";
+import { availability, truckModelLine } from "@/lib/pitch";
 import { specsLine } from "@/lib/trailerSpecs";
 import type { Company, Driver, Trailer, Truck } from "@/lib/types";
 import { TrailerForm, trailerLine } from "./Trailers";
@@ -203,7 +203,7 @@ function RigRow({
           <span className="min-w-0">
             <span className="block truncate text-sm font-semibold text-fg group-hover:underline">Unit {truck.unit_number}</span>
             <span className="block truncate text-xs text-fg-3">
-              {[truck.year, truck.make].filter(Boolean).join(" ") || "Truck"} · {availability(truck)}
+              {truckModelLine(truck) || "Truck"} · {availability(truck)}
             </span>
           </span>
         </button>

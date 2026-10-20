@@ -7,7 +7,7 @@ import { Checkbox, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { useStore } from "@/lib/store";
-import { byTypeOrder } from "@/lib/docs";
+import { byTypeOrder, isPhotoDoc } from "@/lib/docs";
 import { cn } from "@/lib/format";
 import type { DocRequired, DocScope, DocType } from "@/lib/types";
 
@@ -158,7 +158,7 @@ export function DocTypesModal({ open, onClose }: { open: boolean; onClose: () =>
       </form>
       <div className="space-y-4">
         {SCOPES.map((s) => {
-          const list = docTypes.filter((t) => t.scope === s.v).sort(byTypeOrder);
+          const list = docTypes.filter((t) => t.scope === s.v && !isPhotoDoc(t.key)).sort(byTypeOrder);
           if (!list.length) return null;
           return (
             <section key={s.v}>

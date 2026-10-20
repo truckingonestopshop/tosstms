@@ -31,6 +31,7 @@ import { StatusPill } from "@/components/loads/StatusMenu";
 import { InvoiceDoc } from "@/components/invoices/InvoiceDoc";
 import { useBillable } from "@/components/invoices/InvoiceBuilder";
 import { useStore } from "@/lib/store";
+import { signatureOf } from "@/lib/profile";
 import { toast } from "@/lib/toast";
 import { saveElementPdf } from "@/lib/pdf";
 import { METHODS, PAY_META, balance, draftOf, draftToRow, methodLabel, payState, type InvoiceDraft } from "@/lib/invoice";
@@ -55,7 +56,7 @@ export default function InvoicePage({ params }: PageProps<"/invoices/[id]">) {
 
 function InvoiceView({ id }: { id: string }) {
   const router = useRouter();
-  const { invoices, loads, payments, saveInvoice, setInvoiceStatus, deleteInvoice, deletePayment, driverById, companyById } = useStore();
+  const { me, memberById, invoices, loads, payments, saveInvoice, setInvoiceStatus, deleteInvoice, deletePayment, driverById, companyById } = useStore();
   const inv = invoices.find((i) => i.id === id)!;
   const [editing, setEditing] = useState(false);
   const [d, setD] = useState<InvoiceDraft>(() => draftOf(inv));
@@ -126,7 +127,7 @@ function InvoiceView({ id }: { id: string }) {
       inv.period_start ? `Service period: ${fmtDay(inv.period_start, true)} – ${fmtDay(inv.period_end, true)} · ${inv.lines.length} line${inv.lines.length === 1 ? "" : "s"}.` : "",
       "",
       "Thank you,",
-      inv.issuer_name || "",
+      signatureOf(memberById(me.id), inv.issuer_name || undefined) || inv.issuer_name || "",
     ]
       .filter((x, i, a) => x !== "" || a[i - 1] !== "")
       .join("\n");
@@ -535,7 +536,7 @@ function AddLoadsModal({
   onAdd: (lines: InvoiceDraft["lines"]) => void;
 }) {
   const billable = useBillable();
-  const { driverById } = useStore();
+  const { driverById, truckById } = useStore();
   const options = billable.filter((l) => l.company_id === companyId && !existing.includes(l.id));
   const [picked, setPicked] = useState<Set<string>>(new Set());
   return (
@@ -561,8 +562,11 @@ function AddLoadsModal({
                     return {
                       id: crypto.randomUUID(),
                       load_id: l.id,
+                      kind: "item" as const,
+                      truck_number: truckById(l.truck_id)?.unit_number || null,
+                      loaded_miles: l.loaded_miles || null,
                       position: 999 + i,
-                      description: `${lane(l)}${l.load_number ? ` · Load #${l.load_number}` : ""}`,
+                      description: `${l.origin_city}, ${l.origin_state} — ${l.destination_city}, ${l.destination_state}${l.load_number ? ` · Load #${l.load_number}` : ""}`,
                       line_date: l.delivery_date || l.pickup_date,
                       quantity: 1,
                       unit_price: fee,

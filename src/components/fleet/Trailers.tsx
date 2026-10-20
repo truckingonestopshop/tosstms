@@ -14,6 +14,9 @@ import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { DOOR_TYPES, TRAILER_GROUPS, TRAILER_LENGTHS, TRAILER_TYPES, cn, num } from "@/lib/format";
 import { specGroupsFor, specsFor, specsLine, type SpecGroup, type Specs } from "@/lib/trailerSpecs";
+import { photoSlotsFor } from "@/lib/trailerPhotos";
+import { TrailerPhotos, type PendingPhoto } from "./TrailerPhotos";
+import { TrailerDocs, type PendingDoc } from "./TrailerDocs";
 import type { Company, Trailer, TruckStatus } from "@/lib/types";
 
 const OTHER = "__other";
@@ -147,13 +150,23 @@ export function TrailerForm({
   hookTo?: string | null;
   onSaved?: (t: Trailer) => void;
 }) {
-  const { createTrailer, updateTrailer, hookTrailer, trailers } = useStore();
+  const { createTrailer, updateTrailer, hookTrailer, trailers, uploadDocument } = useStore();
   const [d, setD] = useState<Draft>(toDraft(trailer));
   const [saving, setSaving] = useState(false);
+  // Photos picked before a new trailer exists; uploaded right after it's created.
+  const [photos, setPhotos] = useState<PendingPhoto[]>([]);
+  // Registration / inspection picked before the trailer exists.
+  const [docs, setDocs] = useState<PendingDoc[]>([]);
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
 
   useEffect(() => {
     if (open) setD(toDraft(trailer));
+    if (!open) setDocs([]);
+    if (!open)
+      setPhotos((p) => {
+        p.forEach((x) => URL.revokeObjectURL(x.url));
+        return [];
+      });
   }, [open, trailer]);
 
   const save = async () => {
@@ -178,6 +191,18 @@ export function TrailerForm({
     } else {
       saved = await createTrailer({ ...row, company_id: companyId });
       if (saved && hookTo) await hookTrailer(hookTo, saved.id);
+      if (saved) {
+        // Only the slots that fit the final type (reefer photos are dropped if it's not a reefer).
+        const keep = new Set(photoSlotsFor(d.trailer_type).map((x) => x.key));
+        const todo = photos.filter((p) => keep.has(p.slot));
+        let up = 0;
+        for (const p of todo) if (await uploadDocument(p.file, { company_id: companyId, trailer_id: saved.id, doc_type: p.slot })) up++;
+        if (todo.length && up < todo.length) toast.error(`${todo.length - up} photo(s) didn't upload. Add them from the trailer.`);
+        let docUp = 0;
+        for (const p of docs)
+          if (await uploadDocument(p.file, { company_id: companyId, trailer_id: saved.id, doc_type: p.slot, expires_on: p.expires || null })) docUp++;
+        if (docs.length && docUp < docs.length) toast.error(`${docs.length - docUp} document(s) didn't upload. Add them from the trailer.`);
+      }
     }
     setSaving(false);
     if (saved) {
@@ -250,6 +275,10 @@ export function TrailerForm({
         {specGroupsFor(d.trailer_type).map((g) => (
           <SpecSection key={g.id} group={g} specs={d.specs} onChange={(specs) => set({ specs })} />
         ))}
+
+        <TrailerDocs trailerId={trailer?.id} companyId={companyId} pending={docs} onPending={setDocs} />
+
+        <TrailerPhotos trailerId={trailer?.id} companyId={companyId} trailerType={d.trailer_type} pending={photos} onPending={setPhotos} />
 
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Registration</div>
@@ -400,6 +429,9 @@ export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | 
           {recent > 0 && <p className="mt-2 text-xs text-fg-4">Used on {recent} load{recent === 1 ? "" : "s"}</p>}
         </section>
         <section>
+          <TrailerPhotos trailerId={trailer.id} companyId={trailer.company_id} trailerType={trailer.trailer_type} compact />
+        </section>
+        <section>
           <Eyebrow className="mb-2">Trailer documents</Eyebrow>
           <DocumentsPanel target={{ scope: "trailer", id: trailer.id, companyId: trailer.company_id }} compact emptyText="No trailer files yet." />
         </section>
@@ -409,7 +441,8 @@ export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | 
 }
 
 function TrailerCard({ t, onOpen, i }: { t: Trailer; onOpen: () => void; i: number }) {
-  const { trucks } = useStore();
+  const { trucks, documents } = useStore();
+  const photoCount = documents.filter((x) => x.trailer_id === t.id && x.doc_type.startsWith("trailer_photo_")).length;
   const holder = trucks.find((x) => x.trailer_id === t.id);
   return (
     <button
@@ -428,6 +461,7 @@ function TrailerCard({ t, onOpen, i }: { t: Trailer; onOpen: () => void; i: numb
           </div>
           <div className="truncate text-xs text-fg-3">{trailerLine(t)}</div>
           {specsLine(t.trailer_type, t.specs) && <div className="mt-0.5 line-clamp-2 text-[11px] text-fg-4">{specsLine(t.trailer_type, t.specs)}</div>}
+          {photoCount > 0 && <div className="mt-0.5 text-[11px] text-fg-4">{photoCount} photo{photoCount === 1 ? "" : "s"}</div>}
         </div>
       </div>
       <div className="mt-3 flex items-center gap-1.5 border-t border-line pt-2.5 text-xs">

@@ -200,7 +200,7 @@ export function KV({ label, children, className }: { label: React.ReactNode; chi
   );
 }
 
-export function Avatar({ name, className }: { name: string; className?: string }) {
+export function Avatar({ name, className, src }: { name: string; className?: string; src?: string | null }) {
   const initials = name
     .split(/\s+/)
     .filter(Boolean)
@@ -208,8 +208,12 @@ export function Avatar({ name, className }: { name: string; className?: string }
     .map((p) => p[0]?.toUpperCase())
     .join("");
   return (
-    <span className={cn("inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[11px] font-bold text-fg-2", className)}>
+    <span className={cn("relative inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-3 text-[11px] font-bold text-fg-2", className)}>
       {initials || "?"}
+      {src && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" onError={(e) => (e.currentTarget.style.display = "none")} />
+      )}
     </span>
   );
 }

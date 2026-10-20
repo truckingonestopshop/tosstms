@@ -10,6 +10,9 @@ import { toast } from "@/lib/toast";
 import { cn, uid } from "@/lib/format";
 import { GEAR_PRESETS } from "@/lib/pitch";
 import { TrailerPicker } from "./Trailers";
+import { TruckDocs, type PendingDoc } from "./TrailerDocs";
+
+const TRUCK_MAKES = ["Freightliner", "Peterbilt", "Kenworth", "Volvo", "International", "Mack", "Western Star", "Ford", "Isuzu", "Hino", "Ram"];
 import type { Truck, TruckAccessory, TruckStatus } from "@/lib/types";
 
 type Draft = {
@@ -19,10 +22,12 @@ type Draft = {
   vin_number: string;
   year: string;
   make: string;
+  model: string;
   important_info: string;
   assigned_driver_id: string;
   current_location: string;
   available_date: string;
+  available_time: string;
   status: TruckStatus;
   notes: string;
   accessories: TruckAccessory[];
@@ -35,10 +40,12 @@ const toDraft = (t?: Truck | null): Draft => ({
   vin_number: t?.vin_number ?? "",
   year: t?.year ? String(t.year) : "",
   make: t?.make ?? "",
+  model: t?.model ?? "",
   important_info: t?.important_info ?? "",
   assigned_driver_id: t?.assigned_driver_id ?? "",
   current_location: t?.current_location ?? "",
   available_date: t?.available_date ?? "",
+  available_time: t?.available_time ?? "",
   status: t?.status ?? "active",
   notes: t?.notes ?? "",
   accessories: t?.accessories ?? [],
@@ -55,15 +62,18 @@ export function TruckForm({
   companyId: string;
   truck?: Truck | null;
 }) {
-  const { drivers, createTruck, updateTruck } = useStore();
+  const { drivers, createTruck, updateTruck, uploadDocument } = useStore();
   const [d, setD] = useState<Draft>(toDraft(truck));
   const [saving, setSaving] = useState(false);
+  // Registration / inspection picked before a new truck exists; uploaded right after it's created.
+  const [docs, setDocs] = useState<PendingDoc[]>([]);
   const [gearName, setGearName] = useState("");
   const [gearQty, setGearQty] = useState("1");
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
 
   useEffect(() => {
     if (open) setD(toDraft(truck));
+    if (!open) setDocs([]);
   }, [open, truck]);
 
   const companyDrivers = drivers.filter((x) => x.company_id === companyId);
@@ -86,9 +96,21 @@ export function TruckForm({
       year: d.year ? Number(d.year) : null,
       assigned_driver_id: d.assigned_driver_id || null,
       available_date: d.available_date || null,
+      // A time only means something with a date.
+      available_time: d.available_date && d.available_time ? d.available_time : null,
       vin_number: d.vin_number.toUpperCase(),
     };
-    const ok = truck ? await updateTruck(truck.id, row) : !!(await createTruck({ ...row, company_id: companyId }));
+    let ok = false;
+    if (truck) ok = await updateTruck(truck.id, row);
+    else {
+      const created = await createTruck({ ...row, company_id: companyId });
+      ok = !!created;
+      if (created && docs.length) {
+        let up = 0;
+        for (const p of docs) if (await uploadDocument(p.file, { company_id: companyId, truck_id: created.id, doc_type: p.slot, expires_on: p.expires || null })) up++;
+        if (up < docs.length) toast.error(`${docs.length - up} document(s) didn't upload. Add them from the truck.`);
+      }
+    }
     setSaving(false);
     if (ok) {
       toast.success(truck ? "Truck saved" : `Unit ${d.unit_number} added`);
@@ -129,14 +151,22 @@ export function TruckForm({
               <option value="inactive">Inactive</option>
             </Select>
           </Field>
+          <Field label="Year">
+            <Input value={d.year} onChange={(e) => set({ year: e.target.value })} inputMode="numeric" maxLength={4} placeholder="2022" />
+          </Field>
           <Field label="Make">
-            <Input value={d.make} onChange={(e) => set({ make: e.target.value })} placeholder="Freightliner" />
+            <Input list="truck-makes" value={d.make} onChange={(e) => set({ make: e.target.value })} placeholder="Peterbilt" />
+            <datalist id="truck-makes">
+              {TRUCK_MAKES.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label="Model">
+            <Input value={d.model} onChange={(e) => set({ model: e.target.value })} placeholder="T680" />
           </Field>
           <Field label="VIN" className="col-span-2">
             <Input value={d.vin_number} onChange={(e) => set({ vin_number: e.target.value })} maxLength={17} className="uppercase" />
-          </Field>
-          <Field label="Year">
-            <Input value={d.year} onChange={(e) => set({ year: e.target.value })} inputMode="numeric" maxLength={4} />
           </Field>
         </div>
 
@@ -154,7 +184,7 @@ export function TruckForm({
 
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Driver & availability</div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.55fr)]">
             <Field label="Assigned driver">
               <Select value={d.assigned_driver_id} onChange={(e) => set({ assigned_driver_id: e.target.value })}>
                 <option value="">Unassigned</option>
@@ -168,11 +198,16 @@ export function TruckForm({
             <Field label="Current location">
               <Input value={d.current_location} onChange={(e) => set({ current_location: e.target.value })} placeholder="Dallas, TX" />
             </Field>
-            <Field label="Available from" hint="Empty = ready now">
-              <Input type="date" value={d.available_date} onChange={(e) => set({ available_date: e.target.value })} />
+            <Field label="Available from" hint={d.available_date ? (d.available_time ? undefined : "Add a time if it matters") : "Empty = ready now"}>
+              <div className="flex gap-2">
+                <Input type="date" value={d.available_date} onChange={(e) => set({ available_date: e.target.value, available_time: e.target.value ? d.available_time : "" })} className="min-w-0 flex-1" />
+                <Input type="time" value={d.available_time} onChange={(e) => set({ available_time: e.target.value })} disabled={!d.available_date} aria-label="Available from time" className="w-[112px]" />
+              </div>
             </Field>
           </div>
         </div>
+
+        <TruckDocs truckId={truck?.id} companyId={companyId} pending={docs} onPending={setDocs} />
 
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Onboard gear</div>

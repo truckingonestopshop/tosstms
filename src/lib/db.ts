@@ -5,6 +5,11 @@ import type { Company, Driver, Invoice, InvoiceLine, Load, Trailer, Truck } from
 
 export const sb = () => supabaseBrowser();
 export const BUCKET = "tms-docs";
+/** Profile photos (public links; each member writes only their own folder). */
+export const AVATARS = "tms-avatars";
+
+/** Public link of a profile photo (null when none). */
+export const avatarUrl = (path: string | null | undefined) => (path ? sb().storage.from(AVATARS).getPublicUrl(path).data.publicUrl : null);
 
 /** Columns where an empty form value must be stored as NULL (dates, ids, numbers). */
 const NULLABLE = /(_date|_expiry|_id|^expires_on|_on|^year|^max_weight|^weight_lbs)$/;
@@ -36,6 +41,8 @@ export const normCompany = (r: Company): Company => ({
 export const normDriver = (r: Driver): Driver => r;
 export const normTruck = (r: Truck): Truck => ({
   ...r,
+  // Postgres time comes back as "HH:MM:SS"; the form and labels use "HH:MM".
+  available_time: r.available_time ? String(r.available_time).slice(0, 5) : null,
   max_weight: nn(r.max_weight),
   year: nn(r.year),
   accessories: Array.isArray(r.accessories) ? r.accessories : [],
@@ -59,6 +66,8 @@ export const normLoad = (r: Load): Load => ({
 });
 export const normLine = (r: InvoiceLine): InvoiceLine => ({
   ...r,
+  kind: r.kind || "item",
+  loaded_miles: r.loaded_miles === null || r.loaded_miles === undefined ? null : Number(r.loaded_miles),
   quantity: n(r.quantity),
   unit_price: n(r.unit_price),
   gross_amount: n(r.gross_amount),
@@ -88,6 +97,16 @@ export function docPath(companyId: string, folder: string, fileName: string) {
   const safe = fileName.normalize("NFKD").replace(/[^\w.\-]+/g, "_").slice(-120);
   const rand = Math.random().toString(36).slice(2, 8);
   return `${companyId}/${folder}/${Date.now()}-${rand}-${safe}`;
+}
+
+/** Short-lived links for many files at once (photo thumbnails). Missing files are left out. */
+export async function signedUrls(paths: string[]): Promise<Record<string, string>> {
+  if (!paths.length) return {};
+  const { data, error } = await sb().storage.from(BUCKET).createSignedUrls(paths, 60 * 30);
+  if (error || !data) return {};
+  const out: Record<string, string> = {};
+  for (const r of data) if (r.path && r.signedUrl) out[r.path] = r.signedUrl;
+  return out;
 }
 
 /** Short-lived link to view or download a private document. */

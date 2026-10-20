@@ -3,10 +3,10 @@ import "./globals.css";
 import { ThemeProvider, themeScript } from "@/lib/theme";
 
 export const metadata: Metadata = {
-  title: { default: "TOSS TMS", template: "%s · TOSS TMS" },
+  title: { default: "TOSS Cloud", template: "%s · TOSS Cloud" },
   description: "Trucking One Stop Shop — dispatch, fleet and billing",
   robots: { index: false, follow: false },
-  appleWebApp: { capable: true, title: "TOSS TMS", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: "TOSS Cloud", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {

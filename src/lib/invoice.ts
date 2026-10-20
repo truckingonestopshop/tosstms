@@ -105,6 +105,7 @@ export function blankDraft(s: Settings | null, number: string): InvoiceDraft {
     issuer_address: s?.issuer_address || "",
     issuer_email: s?.issuer_email || "",
     issuer_phone: s?.issuer_phone || "",
+    issuer_website: s?.issuer_website || "",
     bill_to_name: "",
     bill_to_details: "",
     doc_overrides: {},
@@ -116,6 +117,9 @@ export const blankLine = (position: number): InvoiceDraft["lines"][number] => ({
   id: uid(),
   load_id: null,
   position,
+  kind: "item",
+  truck_number: null,
+  loaded_miles: null,
   description: "",
   line_date: today(),
   quantity: 1,
@@ -132,11 +136,36 @@ export const blankLine = (position: number): InvoiceDraft["lines"][number] => ({
   delivery_date: null,
 });
 
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const sum = (lines: { amount: number }[]) => r2(lines.reduce((s, l) => s + (Number(l.amount) || 0), 0));
+
+/**
+ * Invoice math: line items (load fees / custom lines) + additional charges − credits.
+ * Credits are stored as positive amounts with kind "credit".
+ */
 export const totals = (d: Pick<InvoiceDraft, "lines" | "invoice_type">) => {
-  const due = Math.round(d.lines.reduce((s, l) => s + (Number(l.amount) || 0), 0) * 100) / 100;
-  const gross = Math.round(d.lines.reduce((s, l) => s + (Number(l.gross_amount) || 0), 0) * 100) / 100;
-  return { due, gross: d.invoice_type === "load" ? gross : due };
+  const items = d.lines.filter((l) => (l.kind || "item") === "item");
+  const subtotal = sum(items);
+  const charges = sum(d.lines.filter((l) => l.kind === "charge"));
+  const credits = sum(d.lines.filter((l) => l.kind === "credit"));
+  const due = Math.max(0, r2(subtotal + charges - credits));
+  const gross = r2(items.reduce((s, l) => s + (Number(l.gross_amount) || 0), 0));
+  return { subtotal, charges, credits, due, gross: d.invoice_type === "load" ? gross : subtotal };
 };
+
+export const CHARGE_PRESETS = ["Late payment fee", "Additional dispatch service", "Detention / layover handling", "Factoring setup fee", "Paperwork & document handling"];
+export const CREDIT_PRESETS = ["Discount", "Credit from previous invoice", "Fee waived", "Overpayment credit", "Canceled load credit"];
+
+/** A billing adjustment line (additional charge or credit). */
+export const adjustmentLine = (kind: "charge" | "credit", position: number, description = "", amount = 0): InvoiceDraft["lines"][number] => ({
+  ...blankLine(position),
+  kind,
+  description,
+  quantity: 1,
+  unit_price: amount,
+  amount,
+  gross_amount: 0,
+});
 
 /** Header row for saving (totals recomputed from lines). */
 export function draftToRow(d: InvoiceDraft) {

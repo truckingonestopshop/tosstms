@@ -258,7 +258,7 @@ function CompanyView({ company }: { company: Company }) {
 function TrucksTab({ company, trucks }: { company: Company; trucks: Truck[] }) {
   const params = useSearchParams();
   const router = useRouter();
-  const { driverById, trailerById, loads, deleteTruck } = useStore();
+  const { driverById, trailerById, memberById, me, loads, deleteTruck } = useStore();
   const [q, setQ] = useState("");
   const [f, setF] = useState<"all" | "ready" | "loaded" | "oos">("all");
   const [form, setForm] = useState<{ open: boolean; truck?: Truck | null }>({ open: false });
@@ -407,7 +407,7 @@ function TrucksTab({ company, trucks }: { company: Company; trucks: Truck[] }) {
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      navigator.clipboard.writeText(pitchFor(t, company, driver, trailerById(t.trailer_id)));
+                      navigator.clipboard.writeText(pitchFor(t, company, driver, trailerById(t.trailer_id), memberById(me.id)));
                       toast.success("Pitch copied");
                     }}
                   >

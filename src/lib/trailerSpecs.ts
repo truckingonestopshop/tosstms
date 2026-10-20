@@ -45,7 +45,7 @@ export const SPEC_GROUPS: SpecGroup[] = [
         short: "Downloadable",
         hint: "Temperature history can be downloaded (brokers often ask for it on food and pharma loads)",
       },
-      { key: "floor", label: "Floor", kind: "select", options: ["Duct floor (grooved aluminum)", "Flat floor"] },
+      { key: "floor", label: "Floor", kind: "select", options: ["Duct floor (grooved aluminum)", "Flat floor", "Wood floor"] },
       {
         key: "reefer_extras",
         label: "Equipment",

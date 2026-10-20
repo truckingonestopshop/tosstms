@@ -10,8 +10,8 @@ const C2 = "demo-c2";
 
 export function demoData() {
   const members: Member[] = [
-    { user_id: "demo-me", email: "dispatch@truckingonestopshop.net", full_name: "Preview Dispatcher", role: "owner", created_at: now },
-    { user_id: "demo-2", email: "dayana@truckingonestopshop.net", full_name: "Dayana Villa", role: "dispatcher", created_at: now },
+    { user_id: "demo-me", email: "dispatch@truckingonestopshop.net", full_name: "Preview Dispatcher", role: "owner", created_at: now, position: "Dispatch Manager", phone: "(312) 555-0100", phone_ext: "204", mobile: "(312) 555-0199", timezone: "America/Chicago", work_hours: "Mon–Fri 7am–5pm CT", languages: ["English", "Romanian"], bio: null, email_signature: null, avatar_path: null },
+    { user_id: "demo-2", email: "dayana@truckingonestopshop.net", full_name: "Dayana Villa", role: "dispatcher", created_at: now, position: "Senior Dispatcher", phone: "(312) 555-0110", timezone: "Europe/Chisinau", work_hours: "Night shift 6pm–6am CT", languages: ["English", "Spanish"] },
   ];
   const co = (id: string, name: string, mc: string, pct: number, cad: "weekly" | "monthly"): Company => ({
     id, name, mc_number: mc, dot_number: `3${mc}`, contact_name: "Owner", contact_phone: "(312) 555-0144", contact_email: "ops@example.com",
@@ -30,7 +30,7 @@ export function demoData() {
     dr("d4", C2, "Tariq Sterling", addDays(t, 500), addDays(t, 365)),
   ];
   const tr = (id: string, c: string, unit: string, type: string, drv: string | null, loc: string, status: Truck["status"] = "active"): Truck => ({
-    id, company_id: c, unit_number: unit, trailer_id: `trl-${id}`, trailer_number: `TR-${unit}0`, plate: "IL-P88291", vin_number: "1FUJGLDR8NLBP1019", year: 2022, make: "Freightliner",
+    id, company_id: c, unit_number: unit, trailer_id: `trl-${id}`, trailer_number: `TR-${unit}0`, plate: "IL-P88291", vin_number: "1FUJGLDR8NLBP1019", year: 2022, make: "Freightliner", model: "Cascadia",
     trailer_type: type, trailer_length: "53 ft", max_weight: 45000, door_type: "Swing doors", suspension: "Air ride", important_info: "TWIC, team capable",
     accessories: [{ id: "a1", name: "Straps", quantity: 12 }, { id: "a2", name: "Load bars", quantity: 2 }], desk_blocks: [], custom_pitch: null,
     assigned_driver_id: drv, current_location: loc, available_date: null, status, notes: null, created_at: now, updated_at: now,
@@ -99,7 +99,7 @@ export function demoData() {
     issuer_name: "Trucking One Stop Shop LLC", issuer_address: "Chicago, IL", issuer_email: "billing@truckingonestopshop.net", issuer_phone: "",
     bill_to_name: companies.find((c) => c.id === l.company_id)!.name, bill_to_details: "MC 1428592 · DOT 31428592", doc_overrides: { terms_title: "Dispatch agreement", terms_text: "10% of gross · weekly" },
     sent_at: now, paid_at: status === "paid" ? now : null, created_at: now, updated_at: now,
-    lines: [{ id: `${id}-1`, invoice_id: id, load_id: l.id, position: 0, description: `${l.origin_city}, ${l.origin_state} → ${l.destination_city}, ${l.destination_state}`, line_date: l.delivery_date, quantity: 1, unit_price: l.dispatcher_cut, gross_amount: l.gross_amount, amount: l.dispatcher_cut, load_number: l.load_number, rate_con_number: l.rate_con_number, broker_name: l.broker_name, driver_name: null, origin: null, destination: null, pickup_date: l.pickup_date, delivery_date: l.delivery_date }],
+    lines: [{ id: `${id}-1`, invoice_id: id, load_id: l.id, position: 0, kind: "item", truck_number: "101", loaded_miles: l.loaded_miles, description: `${l.origin_city}, ${l.origin_state} → ${l.destination_city}, ${l.destination_state}`, line_date: l.delivery_date, quantity: 1, unit_price: l.dispatcher_cut, gross_amount: l.gross_amount, amount: l.dispatcher_cut, load_number: l.load_number, rate_con_number: l.rate_con_number, broker_name: l.broker_name, driver_name: null, origin: null, destination: null, pickup_date: l.pickup_date, delivery_date: l.delivery_date }],
   });
   const invoices = [inv("i1", loads[5], "sent", -14), inv("i2", loads[6], "paid", -25)];
   // i1 is part-paid, i2 paid in full.
@@ -111,7 +111,7 @@ export function demoData() {
   const docTypes: DocType[] = BUILT_IN_TYPES.map((t) => ({ ...t }));
   const settings: Settings = {
     id: 1, issuer_name: "Trucking One Stop Shop LLC", issuer_address: "Chicago, IL", issuer_email: "billing@truckingonestopshop.net",
-    issuer_phone: "", invoice_prefix: "TOSS", remittance_text: "ACH / Zelle within terms.", footer_text: "Thank you for your business.",
+    issuer_phone: "(888) 777-1839", issuer_website: "www.truckingonestopshop.net", issuer_tagline: "All your trucking needs in one place", invoice_prefix: "TOSS", remittance_text: "ACH / Zelle within terms.", footer_text: "Thank you for your business.",
   };
   return { members, companies, drivers, trucks, trailers, loads, documents, invoices, payments, docTypes, settings };
 }

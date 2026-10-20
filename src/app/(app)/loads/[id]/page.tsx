@@ -18,7 +18,9 @@ import {
 } from "lucide-react";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Field";
-import { Avatar, Card, CardHeader, CopyButton, Empty, Eyebrow, KV, Page } from "@/components/ui/Bits";
+import { Card, CardHeader, CopyButton, Empty, Eyebrow, KV, Page } from "@/components/ui/Bits";
+import { MemberAvatar } from "@/components/team/MemberAvatar";
+import { contactLine } from "@/lib/profile";
 import { Popover, MenuItem, MenuSep } from "@/components/ui/Menu";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { StatusMenu } from "@/components/loads/StatusMenu";
@@ -57,7 +59,7 @@ export default function LoadPage({ params }: PageProps<"/loads/[id]">) {
   return <LoadView load={load} />;
 }
 
-function driverSheet(l: Load, company?: string, driver?: string, truck?: string) {
+function driverSheet(l: Load, company?: string, driver?: string, truck?: string, dispatcher?: string) {
   const stops = l.stops
     .map(
       (s, i) =>
@@ -71,6 +73,7 @@ function driverSheet(l: Load, company?: string, driver?: string, truck?: string)
     "",
     stops,
     l.broker_notes ? `\nRequirements: ${l.broker_notes}` : "",
+    dispatcher ? `\nDispatcher: ${dispatcher}` : "",
   ]
     .join("\n")
     .trim();
@@ -94,6 +97,7 @@ function LoadView({ load }: { load: Load }) {
     deleteLoads,
     duplicateLoad,
     memberName,
+    memberById,
     members,
     me,
   } = useStore();
@@ -167,7 +171,15 @@ function LoadView({ load }: { load: Load }) {
             size="sm"
             variant="outline"
             onClick={() => {
-              navigator.clipboard.writeText(driverSheet(load, company?.name, driver?.name, [truck?.unit_number, trailerById(load.trailer_id) && `trailer ${trailerById(load.trailer_id)!.unit_number}`].filter(Boolean).join(" · ") || undefined));
+              navigator.clipboard.writeText(
+                driverSheet(
+                  load,
+                  company?.name,
+                  driver?.name,
+                  [truck?.unit_number, trailerById(load.trailer_id) && `trailer ${trailerById(load.trailer_id)!.unit_number}`].filter(Boolean).join(" · ") || undefined,
+                  contactLine(memberById(load.dispatcher_id)) || undefined,
+                ),
+              );
               toast.success("Driver dispatch copied");
             }}
           >
@@ -463,7 +475,7 @@ function LoadView({ load }: { load: Load }) {
                 </Select>
               </label>
               <div className="flex items-center gap-2 border-t border-line pt-3 text-xs text-fg-3">
-                <Avatar name={memberName(load.created_by)} className="h-6 w-6 text-[10px]" />
+                <MemberAvatar id={load.created_by} className="h-6 w-6 text-[10px]" />
                 <span>
                   Added by <b className="font-semibold text-fg-2">{load.created_by === me.id ? "you" : memberName(load.created_by)}</b> · {fmtDateTime(load.created_at)}
                 </span>
