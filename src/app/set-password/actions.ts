@@ -1,9 +1,9 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
 
-export type PwState = { error?: string };
+/** done: saved; the page opens the app with a full page load (Lead Hunter-only people are sent on). */
+export type PwState = { error?: string; done?: boolean };
 
 export async function setPassword(_prev: PwState, form: FormData): Promise<PwState> {
   const password = String(form.get("password") ?? "");
@@ -14,5 +14,5 @@ export async function setPassword(_prev: PwState, form: FormData): Promise<PwSta
   if (!data?.claims) return { error: "This link has expired. Ask for a new invite or reset link." };
   const { error } = await sb.auth.updateUser({ password });
   if (error) return { error: error.message };
-  redirect("/");
+  return { done: true };
 }

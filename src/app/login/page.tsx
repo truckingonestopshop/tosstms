@@ -18,10 +18,13 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
   const [reset, resetAction, resetting] = useActionState<AuthState, FormData>(sendReset, {});
   const { go, curtain, leaving } = useAppLeave();
 
-  // Signed in, Lead Hunter chosen: the action answers with the one-time link.
+  // Signed in: TOSS Cloud opens with a full page load; Lead Hunter through its one-time link,
+  // behind the transition.
   useEffect(() => {
-    if (state.go) go("leads", state.go);
-  }, [state.go]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!state.go) return;
+    if (state.leads) go("leads", state.go);
+    else window.location.assign(state.go);
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const choose = (k: string) => {
     const a = k === "leads" ? "leads" : "cloud";
@@ -60,8 +63,8 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
         {state.error && <p className="text-sm text-red-400">{state.error}</p>}
         {reset.error && <p className="text-sm text-red-400">{reset.error}</p>}
         {reset.info && <p className="text-sm text-zinc-300">{reset.info}</p>}
-        <button disabled={pending || !!leaving} className={authButton}>
-          {pending || leaving ? "Signing in…" : "Sign in"}
+        <button disabled={pending || !!leaving || !!state.go} className={authButton}>
+          {pending || leaving || state.go ? "Signing in…" : "Sign in"}
         </button>
         <button
           formAction={resetAction}

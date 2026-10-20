@@ -1,6 +1,7 @@
 import "server-only";
 import { adminClient, AdminError } from "./admin";
 import { safeNext } from "@/lib/links";
+import { LEADS_URL } from "./urls";
 
 // Moving a signed-in person between TOSS Cloud and TOSS Lead Hunter without a second sign-in.
 // The two sites are different domains, so they can't share the login cookie. Instead this
@@ -11,7 +12,7 @@ import { safeNext } from "@/lib/links";
 
 export type Product = "cloud" | "leads";
 
-export const LEADS_URL = (process.env.NEXT_PUBLIC_LEADS_URL || "https://tossleadhunter.tech").replace(/\/+$/, "");
+export { LEADS_URL };
 
 /** Does this person have access to the product? (Checked with the secret key.) */
 async function hasAccess(userId: string, target: Product) {

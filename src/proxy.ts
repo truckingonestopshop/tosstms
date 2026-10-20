@@ -34,14 +34,26 @@ export async function proxy(request: NextRequest) {
   const preview = process.env.NODE_ENV === "development" && request.cookies.get("tms_ui_preview")?.value === "1";
   // /api/handoff checks its own bearer token (TOSS Lead Hunter → TOSS Cloud).
   const isPublic = path.startsWith("/login") || path.startsWith("/auth/") || path.startsWith("/preview-ui") || path === "/api/handoff" || path === "/logout" || preview;
-  // Already signed in here and asked for TOSS Lead Hunter (e.g. opened tossleadhunter.tech): go straight there.
-  if (data?.claims && path === "/login" && request.nextUrl.searchParams.get("app") === "leads") {
+  // Already signed in and opening the sign-in page: go straight on. Lead Hunter (e.g. someone
+  // opened tossleadhunter.tech) through /go/leads; TOSS Cloud to the page asked for. Only plain
+  // page loads: the sign-in form's own POSTs to /login must reach it.
+  if (data?.claims && path === "/login" && request.method === "GET") {
+    const params = request.nextUrl.searchParams;
+    const next = params.get("next");
     const url = request.nextUrl.clone();
-    url.pathname = "/go/leads";
     url.search = "";
-    const next = request.nextUrl.searchParams.get("next");
-    if (next) url.searchParams.set("next", next);
-    return NextResponse.redirect(url);
+    if (params.get("app") === "leads") {
+      url.pathname = "/go/leads";
+      if (next) url.searchParams.set("next", next);
+    } else {
+      url.pathname = "/";
+      if (next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/login")) {
+        const target = new URL(next, request.nextUrl.origin);
+        url.pathname = target.pathname;
+        url.search = target.search;
+      }
+    }
+    return withCookies(NextResponse.redirect(url), response);
   }
   if (!data?.claims && !isPublic) {
     if (path.startsWith("/api/")) {
@@ -54,6 +66,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
   return response;
+}
+
+/** Keep a refreshed session cookie when answering with a redirect instead. */
+function withCookies(res: NextResponse, from: NextResponse) {
+  for (const c of from.cookies.getAll()) res.cookies.set(c);
+  return res;
 }
 
 export const config = {

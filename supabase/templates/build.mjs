@@ -3,7 +3,9 @@
 //   supabase/templates/*.html          paste into Supabase → Authentication → Emails → Templates
 //   supabase/templates/preview/*.html  the same with sample data, to look at locally
 //   public/brand/email-logo.png        the logo the emails load (Gmail doesn't show SVG)
-// Links stay {{ .ConfirmationURL }}, so every sign-in flow works exactly as before.
+// Buttons go to TOSS Cloud (/auth/confirm → a Continue page), never to Supabase's own verify link:
+// they work on any device, don't depend on the Redirect URLs list, and a mail scanner opening
+// the link can't use up the one-time code.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -19,14 +21,17 @@ const LOGO = `${SITE}/brand/email-logo.png`;
 const C = { ink: "#0a0a0d", text: "#3f3f46", muted: "#71717a", line: "#e4e4e7", bg: "#f4f4f5", card: "#ffffff", orange: "#f28c38" };
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
+/** Our confirm page with the one-time code; type is Supabase's verify type. */
+const confirmLink = (type, next) => `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=${type}&next=${next}`;
+
 const hi = `{{ if .Data.full_name }}Hi {{ .Data.full_name }},{{ else }}Hi,{{ end }}`;
 
 /** One email: heading, paragraphs, optional button, fine print. Table layout for Outlook. */
-function layout({ preheader, heading, body, button, after = [], code }) {
+function layout({ preheader, heading, body, button, link, after = [], code }) {
   const p = (t, style = "") => `<p style="margin:0 0 16px;font:15px/1.6 ${FONT};color:${C.text};${style}">${t}</p>`;
   const btn = button
     ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 28px"><tr><td style="border-radius:999px;background:${C.orange}">
-<a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:13px 26px;font:600 15px/1 ${FONT};color:${C.ink};text-decoration:none;border-radius:999px">${button}</a>
+<a href="${link}" style="display:inline-block;padding:13px 26px;font:600 15px/1 ${FONT};color:${C.ink};text-decoration:none;border-radius:999px">${button}</a>
 </td></tr></table>`
     : "";
   const codeBox = code
@@ -34,7 +39,7 @@ function layout({ preheader, heading, body, button, after = [], code }) {
     : "";
   const fallback = button
     ? `<p style="margin:0 0 6px;font:13px/1.6 ${FONT};color:${C.muted}">If the button doesn't work, copy this link into your browser:</p>
-<p style="margin:0 0 4px;font:12px/1.6 ${FONT};word-break:break-all"><a href="{{ .ConfirmationURL }}" style="color:${C.muted};text-decoration:underline">{{ .ConfirmationURL }}</a></p>`
+<p style="margin:0 0 4px;font:12px/1.6 ${FONT};word-break:break-all"><a href="${link}" style="color:${C.muted};text-decoration:underline">${link}</a></p>`
     : "";
   return `<!doctype html>
 <html lang="en">
@@ -84,6 +89,7 @@ const EMAILS = {
         "Accept the invite to set your password.",
       ],
       button: "Accept invite",
+      link: confirmLink("invite", "/set-password"),
       after: ["The link works once and expires in 24 hours. If it expires, ask your TOSS admin to send a new one."],
     }),
   },
@@ -94,6 +100,7 @@ const EMAILS = {
       heading: "Reset your password",
       body: [hi, "We got a request to reset the password for your TOSS account ({{ .Email }}). The new password works for both TOSS Cloud and TOSS Lead Hunter."],
       button: "Choose a new password",
+      link: confirmLink("recovery", "/set-password"),
       after: ["The link works once and expires in 1 hour. If you didn't ask for this, ignore this email: your password stays the same."],
     }),
   },
@@ -104,6 +111,7 @@ const EMAILS = {
       heading: "Sign in to TOSS",
       body: [hi, "Use the button below to sign in to your TOSS account ({{ .Email }})."],
       button: "Sign in",
+      link: confirmLink("magiclink", "/"),
       after: ["The link works once and expires in 1 hour. If you didn't ask for it, ignore this email."],
     }),
   },
@@ -114,6 +122,9 @@ const EMAILS = {
       heading: "Confirm your new email",
       body: [hi, "Confirm that <b style=\"color:" + C.ink + "\">{{ .NewEmail }}</b> should be the new email for your TOSS account (now {{ .Email }})."],
       button: "Confirm new email",
+      // Supabase sends this to both the old and the new address, each with its own code;
+      // its own link picks the right one.
+      link: "{{ .ConfirmationURL }}",
       after: ["If you didn't ask for this change, ignore this email and tell your TOSS admin."],
     }),
   },
@@ -124,6 +135,7 @@ const EMAILS = {
       heading: "Confirm your email",
       body: [hi, "Confirm {{ .Email }} to finish setting up your TOSS account."],
       button: "Confirm email",
+      link: confirmLink("signup", "/"),
       after: ["If you didn't create a TOSS account, ignore this email."],
     }),
   },
@@ -145,7 +157,9 @@ function preview(html) {
     .replace(/\{\{ if \.Data\.full_name \}\}Hi \{\{ \.Data\.full_name \}\},\{\{ else \}\}Hi,\{\{ end \}\}/g, "Hi Maria Lopez,")
     .replace(/\{\{ if \.Data\.position \}\}(.*?)\{\{ end \}\}/g, "$1")
     .replaceAll("{{ .Data.position }}", "Dispatcher")
-    .replaceAll("{{ .ConfirmationURL }}", "https://grvuqxxjjiebnxnwcmxu.supabase.co/auth/v1/verify?token=preview&type=invite&redirect_to=https://www.tosscloud.tech/login")
+    .replaceAll("{{ .ConfirmationURL }}", "https://grvuqxxjjiebnxnwcmxu.supabase.co/auth/v1/verify?token=preview&type=email_change")
+    .replaceAll("{{ .SiteURL }}", "https://www.tosscloud.tech")
+    .replaceAll("{{ .TokenHash }}", "pkce_preview0123456789abcdef")
     .replaceAll("{{ .Email }}", "maria@truckingonestopshop.net")
     .replaceAll("{{ .NewEmail }}", "maria.lopez@truckingonestopshop.net")
     .replaceAll("{{ .Token }}", "482915")

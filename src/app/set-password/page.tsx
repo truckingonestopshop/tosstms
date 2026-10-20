@@ -1,11 +1,16 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { AuthShell, authButton, authInput, authLabel, authLabelText } from "@/components/auth/AuthShell";
 import { setPassword, type PwState } from "./actions";
 
 export default function SetPasswordPage() {
   const [state, action, pending] = useActionState<PwState, FormData>(setPassword, {});
+  useEffect(() => {
+    // Full load on purpose: "/" may send Lead Hunter-only people on to /go/leads (a redirect).
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    if (state.done) window.location.assign("/");
+  }, [state.done]);
   return (
     <AuthShell>
       <form action={action} className="space-y-5">
@@ -22,8 +27,8 @@ export default function SetPasswordPage() {
           <input name="confirm" type="password" autoComplete="new-password" minLength={12} required className={authInput} />
         </label>
         {state.error && <p className="text-sm text-red-400">{state.error}</p>}
-        <button disabled={pending} className={authButton}>
-          {pending ? "Saving…" : "Save and continue"}
+        <button disabled={pending || state.done} className={authButton}>
+          {pending || state.done ? "Saving…" : "Save and continue"}
         </button>
       </form>
     </AuthShell>

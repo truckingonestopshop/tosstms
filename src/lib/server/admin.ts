@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { currentUser } from "@/lib/supabase/server";
+import { LEADS_URL } from "./urls";
 import { supabaseServer } from "@/lib/supabase/server";
 
 // Admin panel server: one place that manages people across TOSS Cloud and TOSS Lead Hunter.
@@ -241,8 +242,8 @@ export async function inviteUser(actor: { id: string; email: string }, input: In
   const existing = (await listUsers()).find((u) => u.email.toLowerCase() === email);
   if (existing) throw new AdminError(`${email} already has a TOSS login. Open them in the list to change their access.`, 409);
 
-  // Land on the app they can use: TMS when granted, else Leads.
-  const base = input.tms || !origins.leads ? origins.tms : origins.leads;
+  // Everyone starts at TOSS Cloud (the one front door); Lead Hunter-only people are sent on from there.
+  const base = origins.tms;
   const { data, error } = await a.auth.admin.inviteUserByEmail(email, {
     data: { full_name, position: input.position || null, phone: input.phone || null },
     redirectTo: `${base}/login`,
@@ -308,8 +309,7 @@ export async function setDisabled(actor: { id: string; email: string }, id: stri
 export async function sendLink(actor: { id: string; email: string }, id: string, origins: { tms: string; leads: string | null }) {
   const u = await getUser(id);
   if (!u.email) throw new AdminError("This login has no email.");
-  const before = (await listUsers()).find((x) => x.id === id);
-  const base = before?.tms || !origins.leads ? origins.tms : origins.leads;
+  const base = origins.tms;
   const a = adminClient();
   if (!u.email_confirmed_at && !u.last_sign_in_at) {
     const { error } = await a.auth.admin.inviteUserByEmail(u.email, { redirectTo: `${base}/login` });
@@ -350,7 +350,7 @@ export function origins(req: Request) {
   const here = new URL(req.url);
   const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(here.hostname);
   const tms = (local && process.env.NEXT_PUBLIC_APP_URL ? process.env.NEXT_PUBLIC_APP_URL : here.origin).replace(/\/+$/, "");
-  const leads = (process.env.NEXT_PUBLIC_LEADS_URL || "").replace(/\/+$/, "") || null;
+  const leads = LEADS_URL;
   return { tms, leads };
 }
 

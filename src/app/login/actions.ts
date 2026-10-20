@@ -6,8 +6,12 @@ import { safeNext } from "@/lib/links";
 import { supabaseServer } from "@/lib/supabase/server";
 import { handoffUrl } from "@/lib/server/handoff";
 
-/** go: one-time link that opens TOSS Lead Hunter signed in (the page plays the transition first). */
-export type AuthState = { error?: string; info?: string; go?: string };
+/**
+ * go: where the browser goes next, by a full page load. Signed in, the next stop can be a
+ * redirect (the app sends Lead Hunter-only people on, /go/leads) that a server-action
+ * redirect can't follow. leads: go is the one-time Lead Hunter link (play the transition).
+ */
+export type AuthState = { error?: string; info?: string; go?: string; leads?: boolean };
 
 export async function signIn(_prev: AuthState, form: FormData): Promise<AuthState> {
   const email = String(form.get("email") ?? "").trim();
@@ -28,12 +32,12 @@ export async function signIn(_prev: AuthState, form: FormData): Promise<AuthStat
     try {
       const h = await headers();
       const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
-      return { go: await handoffUrl({ id: data.user.id, email: data.user.email ?? email }, "leads", next, origin) };
+      return { go: await handoffUrl({ id: data.user.id, email: data.user.email ?? email }, "leads", next, origin), leads: true };
     } catch (e) {
       return { error: e instanceof Error ? e.message : "Couldn't open TOSS Lead Hunter. Try again." };
     }
   }
-  redirect(safeNext(form.get("next")));
+  return { go: safeNext(form.get("next")) };
 }
 
 export async function sendReset(_prev: AuthState, form: FormData): Promise<AuthState> {
