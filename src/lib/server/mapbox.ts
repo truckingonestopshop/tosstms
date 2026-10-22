@@ -209,7 +209,7 @@ export async function suggestPlaces(q: string): Promise<string[]> {
   const key = text.toLowerCase();
   const hit = suggestCache.get(key);
   if (hit) return hit;
-  const url = `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(text)}&country=us,ca,mx&types=place,postcode&autocomplete=true&limit=6&access_token=${TOKEN}`;
+  const url = `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(text)}&country=us,ca,mx&types=place,postcode&autocomplete=true&limit=10&access_token=${TOKEN}`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return [];

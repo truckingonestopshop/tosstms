@@ -40,7 +40,7 @@ export function PlaceInput({
         const res = await fetch(`/api/places?q=${encodeURIComponent(q)}`, { signal: ctl.signal });
         if (!res.ok) return;
         const data = (await res.json()) as { places?: string[] };
-        const places = (data.places || []).filter((p) => p.toLowerCase() !== q.toLowerCase());
+        const places = data.places || [];
         setList(places);
         setI(0);
         setOpen(places.length > 0);

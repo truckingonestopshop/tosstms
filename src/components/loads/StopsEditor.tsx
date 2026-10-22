@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { PlaceInput } from "@/components/ui/PlaceInput";
+import { splitPlace } from "@/lib/place";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { cn, uid, US_STATES } from "@/lib/format";
 import type { LoadStop } from "@/lib/types";
@@ -109,8 +110,8 @@ export function StopsEditor({
                     onChange={(v) => set(s.id, { city: v })}
                     onPick={(p) => {
                       // "Chicago, IL" / "Chicago, IL 60607" fill city, state and ZIP.
-                      const m = p.match(/^(.+?),\s*([A-Za-z]{2,3})(?:\s+(\S+))?$/);
-                      set(s.id, m ? { city: m[1], state: m[2].toUpperCase(), ...(m[3] ? { zip: m[3] } : {}) } : { city: p });
+                      const x = splitPlace(p);
+                      set(s.id, { city: x.city, state: x.state, ...(x.zip ? { zip: x.zip } : {}) });
                     }}
                   />
                 </Field>
