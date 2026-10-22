@@ -4,8 +4,16 @@ import { ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/format";
 import { LEADS_ROLES, TMS_ROLES, type LeadsRole, type TmsRole } from "./shared";
 
+export type TmsView = "dispatch" | "office";
+
+const VIEWS: { v: TmsView; label: string; hint: string }[] = [
+  { v: "dispatch", label: "Dispatch", hint: "Loads and units first" },
+  { v: "office", label: "Office", hint: "Carrier profile first, lists" },
+];
+
 export interface Access {
   tms: TmsRole | null;
+  tms_view: TmsView;
   leads: LeadsRole | null;
   super_admin: boolean;
 }
@@ -23,6 +31,12 @@ export function AccessEditor({ value, onChange, lockSelf }: { value: Access; onC
         locked={lockSelf || value.super_admin}
         lockedWhy={lockSelf ? "You can't remove your own TOSS Cloud access." : "Super admins keep TOSS Cloud access (the admin panel is in TOSS Cloud)."}
         onRole={(r) => onChange({ ...value, tms: r as TmsRole | null })}
+        extra={
+          <div className="mt-3">
+            <div className="mb-1.5 text-[11px] font-semibold text-fg-3">View</div>
+            <Choices options={VIEWS} value={value.tms_view} onPick={(v) => onChange({ ...value, tms_view: v as TmsView })} />
+          </div>
+        }
       />
       <AppCard
         name="TOSS Lead Hunter"
@@ -68,6 +82,7 @@ function AppCard({
   onRole,
   locked,
   lockedWhy,
+  extra,
 }: {
   name: string;
   about: string;
@@ -77,6 +92,8 @@ function AppCard({
   onRole: (r: string | null) => void;
   locked?: boolean;
   lockedWhy?: string;
+  /** more settings for the app, shown while it's on */
+  extra?: React.ReactNode;
 }) {
   const on = !!role;
   return (
@@ -101,24 +118,33 @@ function AppCard({
         </button>
       </div>
       {on && (
-        <div className="animate-rise mt-3 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${roles.length}, minmax(0, 1fr))` }}>
-          {roles.map((r) => (
-            <button
-              key={r.v}
-              type="button"
-              aria-pressed={role === r.v}
-              onClick={() => onRole(r.v)}
-              className={cn(
-                "rounded-lg border px-2 py-1.5 text-left transition-colors",
-                role === r.v ? "border-transparent bg-inverse text-inverse-fg" : "border-line text-fg-2 hover:border-line-strong",
-              )}
-            >
-              <span className="block text-xs font-semibold">{r.label}</span>
-              <span className={cn("block text-[10px] leading-tight", role === r.v ? "opacity-75" : "text-fg-4")}>{r.hint}</span>
-            </button>
-          ))}
+        <div className="animate-rise mt-3">
+          <Choices options={roles} value={role} onPick={onRole} />
+          {extra}
         </div>
       )}
+    </div>
+  );
+}
+
+function Choices({ options, value, onPick }: { options: { v: string; label: string; hint: string }[]; value: string | null; onPick: (v: string) => void }) {
+  return (
+    <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+      {options.map((r) => (
+        <button
+          key={r.v}
+          type="button"
+          aria-pressed={value === r.v}
+          onClick={() => onPick(r.v)}
+          className={cn(
+            "rounded-lg border px-2 py-1.5 text-left transition-colors",
+            value === r.v ? "border-transparent bg-inverse text-inverse-fg" : "border-line text-fg-2 hover:border-line-strong",
+          )}
+        >
+          <span className="block text-xs font-semibold">{r.label}</span>
+          <span className={cn("block text-[10px] leading-tight", value === r.v ? "opacity-75" : "text-fg-4")}>{r.hint}</span>
+        </button>
+      ))}
     </div>
   );
 }

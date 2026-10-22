@@ -37,6 +37,8 @@ export const normCompany = (r: Company): Company => ({
   ...r,
   commission_percent: n(r.commission_percent),
   payment_terms_days: n(r.payment_terms_days),
+  services: r.services && typeof r.services === "object" ? r.services : {},
+  compliance: r.compliance && typeof r.compliance === "object" ? r.compliance : {},
 });
 export const normDriver = (r: Driver): Driver => r;
 export const normTruck = (r: Truck): Truck => ({

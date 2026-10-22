@@ -32,6 +32,7 @@ export interface CurrentUser {
   fullName: string;
   /** null = signed in to TOSS but not added to the TMS team. */
   role: TmsRole | null;
+  view: "dispatch" | "office";
 }
 
 /** The signed-in user and their TMS role, or null. Cached per request. */
@@ -41,12 +42,13 @@ export const currentUser = cache(async function currentUser(): Promise<CurrentUs
   if (error || !data?.claims?.sub) return null;
   const id = data.claims.sub as string;
   const email = (data.claims.email as string | undefined) ?? "";
-  const { data: member } = await sb.from("tms_members").select("full_name, role").eq("user_id", id).maybeSingle();
+  const { data: member } = await sb.from("tms_members").select("full_name, role, workspace_view").eq("user_id", id).maybeSingle();
   return {
     id,
     email,
     fullName: member?.full_name || email.split("@")[0],
     role: (member?.role as TmsRole | undefined) ?? null,
+    view: member?.workspace_view === "office" ? "office" : "dispatch",
   };
 });
 
@@ -56,7 +58,7 @@ export async function requireMember() {
   if (!user || !user.role) {
     // Development-only sample-data preview (see /preview-ui).
     if (process.env.NODE_ENV === "development" && (await cookies()).get("tms_ui_preview")?.value === "1") {
-      return { id: "demo-me", email: "preview@localhost", fullName: "Preview", role: "owner" as TmsRole };
+      return { id: "demo-me", email: "preview@localhost", fullName: "Preview", role: "owner" as TmsRole, view: "dispatch" as const };
     }
     return null;
   }

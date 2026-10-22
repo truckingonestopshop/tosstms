@@ -18,6 +18,7 @@ import type {
   Settings,
   Truck,
   Trailer,
+  WorkspaceView,
 } from "./types";
 import {
   BUCKET,
@@ -43,6 +44,7 @@ export interface Me {
   email: string;
   fullName: string;
   role: Role;
+  view?: WorkspaceView;
 }
 
 type Scope = "all" | string;
@@ -60,6 +62,8 @@ interface Store {
   ready: boolean;
   me: Me;
   isOwner: boolean;
+  /** "office" = carrier profile first and list screens; set per person in the admin panel */
+  view: WorkspaceView;
   /** Can open the admin panel (people & access for TMS and Leads). */
   isSuperAdmin: boolean;
   /** Has TOSS Lead Hunter access (for the app switcher). */
@@ -124,7 +128,7 @@ interface Store {
 
   uploadDocument: (
     file: File,
-    meta: { company_id: string; doc_type: string; load_id?: string | null; driver_id?: string | null; truck_id?: string | null; trailer_id?: string | null; expires_on?: string | null; notes?: string | null },
+    meta: { company_id: string; doc_type: string; load_id?: string | null; driver_id?: string | null; truck_id?: string | null; trailer_id?: string | null; expires_on?: string | null; issued_on?: string | null; notes?: string | null },
   ) => Promise<DocumentItem | null>;
   updateDocument: (id: string, patch: Partial<DocumentItem>) => Promise<boolean>;
   replaceDocumentFile: (id: string, file: File) => Promise<boolean>;
@@ -1055,6 +1059,8 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     ready,
     me,
     isOwner: me.role === "owner",
+    // The team row follows admin changes live; the sign-in value covers the first paint.
+    view: members.find((m) => m.user_id === me.id)?.workspace_view ?? me.view ?? "dispatch",
     isSuperAdmin,
     hasLeads,
     members,

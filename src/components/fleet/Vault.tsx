@@ -12,16 +12,24 @@ import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
 import type { VaultCategory, VaultItem } from "@/lib/types";
 
+/** The logins the team keeps for most carriers (picked from a list; "Other" is typed). */
 const PRESETS: { title: string; category: VaultCategory; url?: string }[] = [
-  { title: "DAT", category: "login", url: "https://one.dat.com" },
-  { title: "Truckstop", category: "login", url: "https://truckstop.com" },
-  { title: "FMCSA portal", category: "login", url: "https://portal.fmcsa.dot.gov" },
-  { title: "Factoring portal", category: "login" },
-  { title: "ELD", category: "login" },
-  { title: "Fuel card", category: "login" },
-  { title: "Insurance agent", category: "contact" },
-  { title: "Factoring rep", category: "contact" },
+  { title: "DMV", category: "login" },
+  { title: "DMV IFTA", category: "login" },
+  { title: "DMV IRP", category: "login" },
+  { title: "MOTUS", category: "login" },
+  { title: "LOGIN.GOV", category: "login", url: "https://secure.login.gov" },
+  { title: "FMCSA PORTAL", category: "login", url: "https://portal.fmcsa.dot.gov" },
+  { title: "CLEARINGHOUSE", category: "login", url: "https://clearinghouse.fmcsa.dot.gov" },
+  { title: "DOT PIN", category: "login" },
+  { title: "NY TAXATION", category: "login", url: "https://www.tax.ny.gov" },
+  { title: "NY OSCAR", category: "login" },
+  { title: "CT PERMIT", category: "login" },
+  { title: "NM PERMIT", category: "login" },
+  { title: "KYID PERMIT", category: "login" },
+  { title: "OR PERMIT", category: "login" },
 ];
+const OTHER = "__other";
 
 type Draft = Omit<VaultItem, "id" | "created_at" | "updated_at" | "sort_order" | "company_id">;
 const blank = (v?: Partial<VaultItem>): Draft => ({
@@ -259,6 +267,7 @@ function VaultForm({
 }) {
   const [d, setD] = useState<Draft>(blank(item || preset));
   const [saving, setSaving] = useState(false);
+  const [kind, setKind] = useState(() => PRESETS.find((p) => p.title === (item || preset)?.title)?.title ?? (item ? OTHER : ""));
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
 
   const save = async () => {
@@ -291,9 +300,34 @@ function VaultForm({
       }
     >
       <div className="space-y-3">
+        <Field label="Credential" required>
+          <Select
+            value={kind}
+            onChange={(e) => {
+              const v = e.target.value;
+              setKind(v);
+              const p = PRESETS.find((x) => x.title === v);
+              // Swap what the previous pick filled in; keep anything typed by hand.
+              const prev = PRESETS.find((x) => x.title === d.title);
+              const url = d.url && d.url !== prev?.url ? d.url : "";
+              if (p) set({ title: p.title, category: p.category, url: url || p.url || "" });
+              else if (prev) set({ title: "", url });
+            }}
+          >
+            <option value="" disabled>
+              Choose…
+            </option>
+            {PRESETS.map((p) => (
+              <option key={p.title} value={p.title}>
+                {p.title}
+              </option>
+            ))}
+            <option value={OTHER}>OTHER</option>
+          </Select>
+        </Field>
         <div className="grid grid-cols-3 gap-3">
-          <Field label="Title" required className="col-span-2">
-            <Input value={d.title} onChange={(e) => set({ title: e.target.value })} autoFocus />
+          <Field label={kind === OTHER ? "Name" : "Title"} required className="col-span-2">
+            <Input value={d.title} onChange={(e) => set({ title: e.target.value })} placeholder={kind === OTHER ? "e.g. ELD, fuel card portal" : undefined} />
           </Field>
           <Field label="Kind">
             <Select value={d.category} onChange={(e) => set({ category: e.target.value as VaultCategory })}>

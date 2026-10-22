@@ -19,6 +19,7 @@ export interface AdminUser {
   status: Status;
   super_admin: boolean;
   tms: TmsRole | null;
+  tms_view: "dispatch" | "office";
   leads: LeadsRole | null;
 }
 

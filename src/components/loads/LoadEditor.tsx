@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { PlaceInput } from "@/components/ui/PlaceInput";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Card, CardHeader } from "@/components/ui/Bits";
 import { RateConDrop } from "./RateConDrop";
@@ -123,7 +124,6 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
   const [rcFile, setRcFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [dhAuto, setDhAuto] = useState(!load || !load.deadhead_miles);
-  const dhTouched = useRef(!!load?.deadhead_from);
   const pctTouched = useRef(editing);
 
   const company = companyById(d.company_id);
@@ -207,14 +207,12 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
     return prev ? `${prev.destination_city}, ${prev.destination_state}` : null;
   }, [d.truck_id, loads, load?.id]);
 
-  // Where the truck is empty: its location on file, else its last drop. Typing wins.
+  // Where the truck may be empty, offered as buttons (never filled in on its own).
   const truckLoc = truckById(d.truck_id)?.current_location || "";
-  useEffect(() => {
-    if (dhTouched.current) return;
-    const guess = truckLoc || lastDrop || "";
-    if (guess !== d.deadhead_from) set({ deadhead_from: guess });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [truckLoc, lastDrop]);
+  const emptyAt = (v: string) => {
+    setDhAuto(true);
+    set({ deadhead_from: v });
+  };
 
   const save = async () => {
     if (!d.company_id) return toast.error("Pick the carrier company.");
@@ -512,34 +510,23 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
                 />
               </Field>
             </div>
-            <Field label="Truck empty at" hint={lastDrop && d.deadhead_from !== lastDrop ? `Last drop: ${lastDrop}` : "City, ST or ZIP — deadhead is routed from here"}>
-              <div className="flex gap-2">
-                <Input
-                  value={d.deadhead_from}
-                  onChange={(e) => {
-                    dhTouched.current = true;
-                    setDhAuto(true);
-                    set({ deadhead_from: e.target.value });
-                  }}
-                  placeholder={lastDrop || "e.g. Chicago, IL"}
-                  className="flex-1"
-                />
-                {lastDrop && d.deadhead_from !== lastDrop && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-9"
-                    onClick={() => {
-                      dhTouched.current = true;
-                      setDhAuto(true);
-                      set({ deadhead_from: lastDrop });
-                    }}
-                  >
-                    Last drop
-                  </Button>
+            <Field label="Truck empty at" hint="City, ST or ZIP. Deadhead is routed from here">
+              <PlaceInput value={d.deadhead_from} onChange={emptyAt} placeholder="e.g. Chicago, IL" />
+            </Field>
+            {((truckLoc && d.deadhead_from !== truckLoc) || (lastDrop && lastDrop !== truckLoc && d.deadhead_from !== lastDrop)) && (
+              <div className="-mt-1 flex flex-wrap gap-1.5">
+                {truckLoc && d.deadhead_from !== truckLoc && (
+                  <button type="button" onClick={() => emptyAt(truckLoc)} className="inline-flex max-w-full items-center gap-1 rounded-full border border-line px-2.5 py-1 text-xs text-fg-2 hover:bg-surface-2">
+                    <span className="text-fg-4">Truck at</span> <span className="truncate">{truckLoc}</span>
+                  </button>
+                )}
+                {lastDrop && lastDrop !== truckLoc && d.deadhead_from !== lastDrop && (
+                  <button type="button" onClick={() => emptyAt(lastDrop)} className="inline-flex max-w-full items-center gap-1 rounded-full border border-line px-2.5 py-1 text-xs text-fg-2 hover:bg-surface-2">
+                    <span className="text-fg-4">Last drop</span> <span className="truncate">{lastDrop}</span>
+                  </button>
                 )}
               </div>
-            </Field>
+            )}
             <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-line text-center">
               {[
                 ["Total mi", num(loaded + dh)],

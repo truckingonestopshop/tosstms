@@ -21,17 +21,24 @@ import {
   KeyRound,
   Settings2,
   PanelRightOpen,
+  ShieldCheck,
+  Stamp,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Segmented } from "@/components/ui/Field";
+import { hasService } from "@/lib/services";
 import { Card, CopyButton, Empty, Page, PageHeader, Pill, Tabs, neutralPill } from "@/components/ui/Bits";
 import { Popover, MenuItem, MenuSep } from "@/components/ui/Menu";
 import { confirmDialog } from "@/components/ui/Confirm";
-import { CompanyFields, NewCompanyModal, fromDraft, toDraft, type CompanyDraft } from "@/components/fleet/CompanyForm";
+import { CompanyFields, NewCompanyModal, draftProblem, fromDraft, toDraft, type CompanyDraft } from "@/components/fleet/CompanyForm";
 import { TruckForm } from "@/components/fleet/TruckForm";
 import { TruckSheet } from "@/components/fleet/TruckSheet";
 import { DriverCard, DriverForm, DriverSheet, driverAlert } from "@/components/fleet/Drivers";
+import { DriversTable } from "@/components/fleet/DriversTable";
+import { DotComplianceTab, McptTab } from "@/components/fleet/Compliance";
 import { Vault } from "@/components/fleet/Vault";
+import { CompanyLinks, CompanySummary, ServicesOverview } from "@/components/fleet/CompanyProfile";
 import { TrailersTab } from "@/components/fleet/Trailers";
 import { UnitsTab } from "@/components/fleet/Units";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
@@ -42,7 +49,7 @@ import { ACTIVE_STATUSES, daysUntil, lane, money, num, today } from "@/lib/forma
 import { availability, equipmentLine, pitchFor } from "@/lib/pitch";
 import type { Company, Driver, Truck } from "@/lib/types";
 
-type Tab = "units" | "trucks" | "trailers" | "drivers" | "docs" | "vault" | "profile";
+type Tab = "units" | "trucks" | "trailers" | "drivers" | "docs" | "vault" | "profile" | "services" | "dot" | "mcpt";
 
 export default function FleetPage() {
   return (
@@ -196,14 +203,34 @@ function CompaniesOverview({ onAdd }: { onAdd: () => void }) {
 function CompanyView({ company }: { company: Company }) {
   const params = useSearchParams();
   const router = useRouter();
-  const { trucks, trailers, drivers, documents } = useStore();
-  const tab = (params.get("tab") as Tab) || "units";
+  const { trucks, trailers, drivers, documents, view } = useStore();
+  const office = view === "office";
+  const tab = (params.get("tab") as Tab) || (office ? "profile" : "units");
   const setTab = (t: Tab) => router.replace(`/fleet?tab=${t}`, { scroll: false });
 
   const t = trucks.filter((x) => x.company_id === company.id);
   const tl = trailers.filter((x) => x.company_id === company.id);
   const d = drivers.filter((x) => x.company_id === company.id);
   const docs = documents.filter((x) => x.company_id === company.id);
+
+  const all: Record<Tab, { value: Tab; label: React.ReactNode; count?: number }> = {
+    units: { value: "units", label: <><Network className="h-4 w-4" /> Units</>, count: t.filter((x) => x.status !== "inactive").length },
+    trucks: { value: "trucks", label: <><TruckIcon className="h-4 w-4" /> Trucks</>, count: t.length },
+    trailers: { value: "trailers", label: <><Container className="h-4 w-4" /> Trailers</>, count: tl.length },
+    drivers: { value: "drivers", label: <><Users className="h-4 w-4" /> Drivers</>, count: d.length },
+    docs: { value: "docs", label: <><FileText className="h-4 w-4" /> Documents</>, count: docs.length },
+    vault: { value: "vault", label: <><KeyRound className="h-4 w-4" /> Credentials</> },
+    profile: { value: "profile", label: <><Settings2 className="h-4 w-4" /> Profile</> },
+    services: { value: "services", label: <><Layers className="h-4 w-4" /> Services</> },
+    dot: { value: "dot", label: <><ShieldCheck className="h-4 w-4" /> DOT Compliance</> },
+    mcpt: { value: "mcpt", label: <><Stamp className="h-4 w-4" /> MCPT</> },
+  };
+  const order: Tab[] = office
+    ? ["profile", "services", "dot", "mcpt", "drivers", "trucks", "trailers", "docs", "vault", "units"]
+    : ["units", "trucks", "trailers", "drivers", "docs", "vault", "services", "dot", "mcpt", "profile"];
+  const tabs = order
+    .filter((k) => (k === "dot" ? hasService(company, "dot_compliance") : k === "mcpt" ? hasService(company, "mcpt") : true))
+    .map((k) => all[k]);
 
   return (
     <>
@@ -224,9 +251,11 @@ function CompanyView({ company }: { company: Company }) {
                 <CopyButton text={company.dot_number} />
               </span>
             )}
-            <span className="rounded-lg border border-line px-2 py-1.5">
-              {company.commission_percent}% · {company.billing_cadence}
-            </span>
+            {hasService(company, "dispatch") && (
+              <span className="rounded-lg border border-line px-2 py-1.5">
+                {company.commission_percent}% · {company.billing_cadence}
+              </span>
+            )}
           </div>
         }
       />
@@ -234,15 +263,7 @@ function CompanyView({ company }: { company: Company }) {
         value={tab}
         onChange={setTab}
         className="mb-5"
-        tabs={[
-          { value: "units", label: <><Network className="h-4 w-4" /> Units</>, count: t.filter((x) => x.status !== "inactive").length },
-          { value: "trucks", label: <><TruckIcon className="h-4 w-4" /> Trucks</>, count: t.length },
-          { value: "trailers", label: <><Container className="h-4 w-4" /> Trailers</>, count: tl.length },
-          { value: "drivers", label: <><Users className="h-4 w-4" /> Drivers</>, count: d.length },
-          { value: "docs", label: <><FileText className="h-4 w-4" /> Documents</>, count: docs.length },
-          { value: "vault", label: <><KeyRound className="h-4 w-4" /> Credentials</> },
-          { value: "profile", label: <><Settings2 className="h-4 w-4" /> Profile</> },
-        ]}
+        tabs={tabs}
       />
       {tab === "units" && <UnitsTab company={company} />}
       {tab === "trucks" && <TrucksTab company={company} trucks={t} />}
@@ -250,6 +271,9 @@ function CompanyView({ company }: { company: Company }) {
       {tab === "drivers" && <DriversTab company={company} drivers={d} />}
       {tab === "docs" && <DocsTab company={company} />}
       {tab === "vault" && <Vault companyId={company.id} />}
+      {tab === "dot" && <DotComplianceTab key={company.id} company={company} />}
+      {tab === "mcpt" && <McptTab key={company.id} company={company} />}
+      {tab === "services" && <ServicesOverview company={company} onMore={setTab} />}
       {tab === "profile" && <ProfileTab company={company} />}
     </>
   );
@@ -429,11 +453,16 @@ function TrucksTab({ company, trucks }: { company: Company; trucks: Truck[] }) {
 function DriversTab({ company, drivers }: { company: Company; drivers: Driver[] }) {
   const params = useSearchParams();
   const router = useRouter();
+  const { view } = useStore();
+  const office = view === "office";
   const [q, setQ] = useState("");
+  const [shown, setShown] = useState<"active" | "terminated" | "all">("active");
   const [form, setForm] = useState<{ open: boolean; driver?: Driver | null }>({ open: false });
   const sheet = drivers.find((x) => x.id === params.get("driver")) || null;
   const openSheet = (id: string | null) => router.replace(id ? `/fleet?tab=drivers&driver=${id}` : "/fleet?tab=drivers", { scroll: false });
-  const list = drivers.filter((d) => !q || `${d.name} ${d.phone} ${d.email} ${d.cdl_number}`.toLowerCase().includes(q.toLowerCase()));
+  const list = drivers
+    .filter((d) => !office || shown === "all" || (shown === "terminated") === !!d.termination_date)
+    .filter((d) => !q || `${d.name} ${d.phone} ${d.email} ${d.cdl_number}`.toLowerCase().includes(q.toLowerCase()));
   const alerts = drivers.filter(driverAlert).length;
 
   return (
@@ -441,12 +470,23 @@ function DriversTab({ company, drivers }: { company: Company; drivers: Driver[] 
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-4" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, phone, email, CDL" className="pl-9" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, phone, email, license #" className="pl-9" />
         </div>
         {alerts > 0 && (
           <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
-            <AlertTriangle className="h-3.5 w-3.5" /> {alerts} with CDL or medical expiring
+            <AlertTriangle className="h-3.5 w-3.5" /> {alerts} with license or medical card expiring
           </span>
+        )}
+        {office && (
+          <Segmented
+            value={shown}
+            onChange={setShown}
+            options={[
+              { value: "active", label: `Active ${drivers.filter((d) => !d.termination_date).length}` },
+              { value: "terminated", label: `Terminated ${drivers.filter((d) => d.termination_date).length}` },
+              { value: "all", label: "All" },
+            ]}
+          />
         )}
         <Button variant="secondary" onClick={() => setForm({ open: true, driver: null })}>
           <Plus className="h-4 w-4" /> Add driver
@@ -456,6 +496,8 @@ function DriversTab({ company, drivers }: { company: Company; drivers: Driver[] 
         <Card>
           <Empty icon={Users} title={drivers.length ? "No drivers match" : "No drivers yet"} />
         </Card>
+      ) : office ? (
+        <DriversTable drivers={list} onOpen={openSheet} />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {list.map((d) => (
@@ -484,7 +526,8 @@ function DocsTab({ company }: { company: Company }) {
 }
 
 function ProfileTab({ company }: { company: Company }) {
-  const { updateCompany, deleteCompany, isOwner, loads, setScope } = useStore();
+  const { updateCompany, deleteCompany, isOwner, loads, setScope, view } = useStore();
+  const [sub, setSub] = useState<"overview" | "details" | "links">(view === "office" ? "overview" : "details");
   const [d, setD] = useState<CompanyDraft>(toDraft(company));
   const [saving, setSaving] = useState(false);
   useEffect(() => setD(toDraft(company)), [company]);
@@ -492,69 +535,96 @@ function ProfileTab({ company }: { company: Company }) {
   const loadCount = loads.filter((l) => l.company_id === company.id).length;
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
-      <Card className="p-4 sm:p-6">
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (!d.name.trim()) return toast.error("Company name is required.");
-            setSaving(true);
-            const ok = await updateCompany(company.id, fromDraft(d));
-            setSaving(false);
-            if (ok) toast.success("Company saved");
-          }}
-        >
-          <CompanyFields d={d} set={(p) => setD((x) => ({ ...x, ...p }))} />
-          <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
-            <Button variant="ghost" disabled={!dirty} onClick={() => setD(toDraft(company))}>
-              Discard
-            </Button>
-            <Button type="submit" variant="primary" disabled={!dirty} loading={saving}>
-              Save changes
-            </Button>
-          </div>
-        </form>
-      </Card>
-      <div className="space-y-4">
-        <Card className="p-4 text-[13px] text-fg-2">
-          <div className="font-semibold text-fg">How the dispatch fee works</div>
-          <p className="mt-1.5 leading-relaxed text-fg-3">
-            Every new load for {company.name} takes {company.commission_percent}% of its gross as TOSS&apos;s fee. You can change the
-            percentage on any single load. Delivered loads are billed {company.billing_cadence} from Invoices.
-          </p>
-        </Card>
-        {isOwner && (
-          <Card className="border-red-500/25 p-4">
-            <div className="text-[13px] font-semibold text-fg">Delete company</div>
-            <p className="mt-1 text-[13px] text-fg-3">
-              Removes {company.name} with its trucks, drivers, {loadCount} load{loadCount === 1 ? "" : "s"}, documents and credentials. Invoices stay.
-            </p>
-            <Button
-              variant="danger"
-              size="sm"
-              className="mt-3"
-              onClick={async () => {
-                if (
-                  await confirmDialog({
-                    title: `Delete ${company.name}?`,
-                    body: "This can't be undone.",
-                    confirmLabel: "Delete company",
-                    danger: true,
-                    typeToConfirm: company.name,
-                  })
-                ) {
-                  if (await deleteCompany(company.id)) {
-                    toast.success("Company deleted");
-                    setScope("all");
-                  }
-                }
+    <>
+      <Segmented
+        value={sub}
+        onChange={setSub}
+        className="mb-4"
+        options={[
+          { value: "overview", label: "Overview" },
+          { value: "details", label: "Details" },
+          { value: "links", label: "Links" },
+        ]}
+      />
+      {sub === "overview" && (
+        <div className="max-w-2xl">
+          <CompanySummary company={company} />
+        </div>
+      )}
+      {sub === "links" && (
+        <div className="max-w-xl">
+          <CompanyLinks company={company} />
+        </div>
+      )}
+      {sub === "details" && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
+          <Card className="p-4 sm:p-6">
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const problem = draftProblem(d);
+                if (problem) return toast.error(problem);
+                setSaving(true);
+                const ok = await updateCompany(company.id, fromDraft(d));
+                setSaving(false);
+                if (ok) toast.success("Company saved");
               }}
             >
-              <Trash2 className="h-3.5 w-3.5" /> Delete company
-            </Button>
+              <CompanyFields key={company.id} d={d} set={(p) => setD((x) => ({ ...x, ...p }))} companyId={company.id} />
+              <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
+                <Button variant="ghost" disabled={!dirty} onClick={() => setD(toDraft(company))}>
+                  Discard
+                </Button>
+                <Button type="submit" variant="primary" disabled={!dirty} loading={saving}>
+                  Save changes
+                </Button>
+              </div>
+            </form>
           </Card>
-        )}
-      </div>
-    </div>
+          <div className="space-y-4">
+            {company.services?.dispatch?.on && (
+              <Card className="p-4 text-[13px] text-fg-2">
+                <div className="font-semibold text-fg">How the dispatch fee works</div>
+                <p className="mt-1.5 leading-relaxed text-fg-3">
+                  Every new load for {company.name} takes {company.commission_percent}% of its gross as TOSS&apos;s fee. You can change the
+                  percentage on any single load. Delivered loads are billed {company.billing_cadence} from Invoices.
+                </p>
+              </Card>
+            )}
+            {isOwner && (
+              <Card className="border-red-500/25 p-4">
+                <div className="text-[13px] font-semibold text-fg">Delete company</div>
+                <p className="mt-1 text-[13px] text-fg-3">
+                  Removes {company.name} with its trucks, drivers, {loadCount} load{loadCount === 1 ? "" : "s"}, documents and credentials. Invoices stay.
+                </p>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="mt-3"
+                  onClick={async () => {
+                    if (
+                      await confirmDialog({
+                        title: `Delete ${company.name}?`,
+                        body: "This can't be undone.",
+                        confirmLabel: "Delete company",
+                        danger: true,
+                        typeToConfirm: company.name,
+                      })
+                    ) {
+                      if (await deleteCompany(company.id)) {
+                        toast.success("Company deleted");
+                        setScope("all");
+                      }
+                    }
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete company
+                </Button>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

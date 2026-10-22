@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Camera, CheckCircle2, ChevronLeft, ChevronRight, ImageOff, Loader2, X } from "lucide-react";
+import { Camera, CheckCircle2, ChevronLeft, ChevronRight, FileText, ImageOff, Loader2, X } from "lucide-react";
 import { Progress, stagger } from "@/components/ui/Motion";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { useStore } from "@/lib/store";
@@ -19,7 +19,9 @@ export interface PendingPhoto {
   url: string;
 }
 
-type Shot = { id: string; slot: string; src: string | null; name: string; pending?: boolean; docId?: string };
+type Shot = { id: string; slot: string; src: string | null; name: string; pending?: boolean; docId?: string; pdf?: boolean };
+
+const isPdf = (name: string, type?: string | null) => type === "application/pdf" || /\.pdf$/i.test(name);
 
 type PhotoProps = { companyId: string; pending?: PendingPhoto[]; onPending?: (p: PendingPhoto[]) => void; compact?: boolean };
 
@@ -71,14 +73,14 @@ function EquipmentPhotos({
   }, [pathsKey]);
 
   const shotsFor = (slot: string): Shot[] => [
-    ...saved.filter((d) => d.doc_type === slot).map((d) => ({ id: d.id, docId: d.id, slot, src: urls[d.file_path] ?? null, name: d.file_name })),
-    ...pending.filter((p) => p.slot === slot).map((p) => ({ id: p.id, slot, src: p.url, name: p.file.name, pending: true })),
+    ...saved.filter((d) => d.doc_type === slot).map((d) => ({ id: d.id, docId: d.id, slot, src: urls[d.file_path] ?? null, name: d.file_name, pdf: isPdf(d.file_name, d.mime_type) })),
+    ...pending.filter((p) => p.slot === slot).map((p) => ({ id: p.id, slot, src: p.url, name: p.file.name, pending: true, pdf: isPdf(p.file.name, p.file.type) })),
   ];
   const filled = slots.filter((s) => shotsFor(s.key).length > 0).length;
 
   const add = async (slot: PhotoSlot, files: FileList) => {
-    const list = Array.from(files).filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name));
-    if (!list.length) return toast.error("Choose a photo (JPG, PNG, HEIC).");
+    const list = Array.from(files).filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name) || (slot.pdf && isPdf(f.name, f.type)));
+    if (!list.length) return toast.error(slot.pdf ? "Choose a photo or a PDF." : "Choose a photo (JPG, PNG, HEIC).");
     const picked = slot.many ? list : list.slice(0, 1);
     setBusy(slot.key);
     const ready = await Promise.all(picked.map((f) => compressImage(f)));
@@ -114,7 +116,7 @@ function EquipmentPhotos({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <span className="text-xs font-semibold uppercase tracking-wider text-fg-3">{owner === "truck" ? "Truck photos" : owner === "driver" ? "License & medical card" : "Trailer photos"}</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-fg-3">{owner === "truck" ? "Truck photos" : owner === "driver" ? "Driving license" : "Trailer photos"}</span>
         <span className={cn("tnum text-xs font-semibold", filled === slots.length ? "text-emerald-700 dark:text-emerald-300" : "text-fg-4")}>
           {filled}/{slots.length}
         </span>
@@ -131,7 +133,14 @@ function EquipmentPhotos({
             busy={busy === slot.key}
             onAdd={(files) => add(slot, files)}
             onRemove={remove}
-            onView={(shot) => setView({ list: all, i: Math.max(0, all.findIndex((s) => s.id === shot.id)) })}
+            onView={(shot) => {
+              if (shot.pdf) {
+                if (shot.src) window.open(shot.src, "_blank", "noopener");
+                return;
+              }
+              const photos = all.filter((s) => !s.pdf);
+              setView({ list: photos, i: Math.max(0, photos.findIndex((s) => s.id === shot.id)) });
+            }}
           />
         ))}
       </div>
@@ -146,7 +155,6 @@ const PHOTO_INDEX: Record<string, number> = {
   truck_photo_front: 2,
   driver_photo_license_front: 1,
   driver_photo_license_back: 2,
-  driver_photo_medical_card: 3,
   trailer_photo_side: 1,
   trailer_photo_reefer_unit: 2,
   trailer_photo_interior: 3,
@@ -208,7 +216,12 @@ function Slot({
         {shots.map((s) => (
           <div key={s.id} className="group relative h-16 w-20 overflow-hidden rounded-lg border border-line bg-surface-2">
             <button type="button" onClick={() => onView(s)} className="h-full w-full" aria-label={`View ${s.name}`}>
-              {s.src ? (
+              {s.pdf ? (
+                <span className="flex h-full w-full flex-col items-center justify-center gap-0.5 text-fg-3">
+                  <FileText className="h-5 w-5" />
+                  <span className="text-[9px] font-semibold uppercase">PDF</span>
+                </span>
+              ) : s.src ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={s.src} alt={slot.title} className="animate-fade h-full w-full object-cover" />
               ) : (
@@ -236,7 +249,7 @@ function Slot({
             className="flex h-16 w-20 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-line-strong text-fg-3 transition-colors hover:border-brand hover:text-fg disabled:opacity-60"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-            <span className="text-[10px] font-medium">{busy ? "Saving" : done ? "Add more" : "Add photo"}</span>
+            <span className="text-[10px] font-medium">{busy ? "Saving" : done ? "Add more" : slot.pdf ? "Add file" : "Add photo"}</span>
           </button>
         )}
         {!slot.many && done && (
@@ -248,7 +261,7 @@ function Slot({
       <input
         ref={input}
         type="file"
-        accept="image/*,.heic,.heif"
+        accept={slot.pdf ? "image/*,.heic,.heif,application/pdf,.pdf" : "image/*,.heic,.heif"}
         multiple={slot.many}
         className="hidden"
         onChange={(e) => {

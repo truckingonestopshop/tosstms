@@ -3,11 +3,15 @@
 
 export type Role = "owner" | "dispatcher";
 
+/** Dispatch: the dispatch screens. Office: everyone else (carrier profile first, lists). */
+export type WorkspaceView = "dispatch" | "office";
+
 export interface Member {
   user_id: string;
   email: string;
   full_name: string;
   role: Role;
+  workspace_view?: WorkspaceView;
   created_at: string;
   /** job title shown to the team, brokers and drivers */
   position?: string | null;
@@ -48,6 +52,55 @@ export interface Company {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  dba_name?: string | null;
+  ein?: string | null;
+  /** address parts; `address` is composed from them (database trigger) */
+  street?: string | null;
+  city?: string | null;
+  county?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  /** owner name; `contact_name` follows first + last (database trigger) */
+  contact_first_name?: string | null;
+  contact_last_name?: string | null;
+  secondary_first_name?: string | null;
+  secondary_last_name?: string | null;
+  secondary_title?: string | null;
+  secondary_phone?: string | null;
+  secondary_email?: string | null;
+  services?: Services;
+  compliance?: Compliance;
+}
+
+export type ServiceKey = "dispatch" | "dot_compliance" | "mcpt" | "accounting" | "factoring" | "fuel_card" | "insurance";
+export type ServiceSource = "call_list" | "instagram" | "facebook" | "x" | "email" | "text" | "referral" | "cross_sale";
+/** One service the carrier is active in, with what the team tracks for it. */
+export interface ServiceInfo {
+  on?: boolean;
+  source?: ServiceSource | null;
+  referred_by?: string | null;
+  sold_by?: string | null;
+  /** dispatch: assigned dispatcher */
+  dispatcher?: string | null;
+  /** DOT compliance: safety account manager */
+  sam?: string | null;
+  /** MCPT / factoring / fuel card / insurance agent */
+  agent?: string | null;
+  activation_date?: string | null;
+  percent?: number | null;
+  cards?: number | null;
+  /** insurance provider, or the factoring company used through accounting */
+  provider?: string | null;
+  fuel_taxes?: boolean;
+}
+export type Services = Partial<Record<ServiceKey, ServiceInfo>>;
+
+/** DOT compliance numbers typed by the team. */
+export interface Compliance {
+  safety_rating?: string | null;
+  iss_score?: number | null;
+  basics?: Record<string, { score?: number | null; threshold?: number | null }>;
+  updated_on?: string | null;
 }
 
 export interface Driver {
@@ -58,6 +111,9 @@ export interface Driver {
   first_name?: string | null;
   last_name?: string | null;
   license_type?: LicenseType | null;
+  hire_date?: string | null;
+  /** set = terminated (from that day) */
+  termination_date?: string | null;
   phone: string | null;
   email: string | null;
   cdl_number: string | null;
@@ -267,6 +323,8 @@ export interface DocumentItem {
   file_size: number | null;
   mime_type: string | null;
   expires_on: string | null;
+  /** the date on the document (e.g. the inspection day) */
+  issued_on?: string | null;
   notes: string | null;
   uploaded_by: string | null;
   uploaded_at: string;

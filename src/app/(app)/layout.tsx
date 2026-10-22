@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { NoAccess } from "@/components/layout/NoAccess";
 import { currentUser, supabaseServer } from "@/lib/supabase/server";
-import { PREVIEW_COOKIE, previewAllowed } from "@/lib/preview";
+import { PREVIEW_COOKIE, PREVIEW_VIEW_COOKIE, previewAllowed } from "@/lib/preview";
 import { ArrivalCurtain } from "@/components/auth/AppSwitch";
 import { ARRIVE_COOKIE } from "@/lib/appSwitch";
 
@@ -11,9 +11,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await currentUser();
   if (!user) {
     // Development-only sample-data preview (see /preview-ui).
-    if (previewAllowed() && (await cookies()).get(PREVIEW_COOKIE)?.value === "1") {
+    const jar = await cookies();
+    if (previewAllowed() && jar.get(PREVIEW_COOKIE)?.value === "1") {
+      const view = jar.get(PREVIEW_VIEW_COOKIE)?.value === "office" ? "office" : "dispatch";
       return (
-        <AppShell preview me={{ id: "demo-me", email: "dispatch@truckingonestopshop.net", fullName: "Preview Dispatcher", role: "owner" }}>
+        <AppShell preview me={{ id: "demo-me", email: "dispatch@truckingonestopshop.net", fullName: "Preview Dispatcher", role: "owner", view }}>
           {children}
         </AppShell>
       );
@@ -33,7 +35,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <>
       {arriving && <ArrivalCurtain app="cloud" />}
-      <AppShell me={{ id: user.id, email: user.email, fullName: user.fullName, role: user.role }}>{children}</AppShell>
+      <AppShell me={{ id: user.id, email: user.email, fullName: user.fullName, role: user.role, view: user.view }}>{children}</AppShell>
     </>
   );
 }

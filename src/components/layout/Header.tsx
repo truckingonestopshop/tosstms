@@ -30,6 +30,7 @@ import { cn } from "@/lib/format";
 import { signOut } from "@/app/login/actions";
 import { NAV } from "./nav";
 import { SearchPalette } from "./SearchPalette";
+import { CompanySearch } from "./CompanySearch";
 import { HeaderAppSwitch, useAppLeave } from "@/components/auth/AppSwitch";
 import { toast } from "@/lib/toast";
 
@@ -77,6 +78,7 @@ export function Header() {
 
         <div className="mx-1 hidden h-5 w-px bg-line sm:block" />
         <CompanySwitcher />
+        <CompanySearch />
 
         <nav className="ml-2 hidden items-center gap-0.5 lg:flex">
           {NAV.map((n) => {

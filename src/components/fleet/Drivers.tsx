@@ -14,8 +14,8 @@ import { DriverPhotos, type PendingPhoto } from "./TrailerPhotos";
 import { StatusPill } from "@/components/loads/StatusMenu";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
-import { daysUntil, fmtDay, lane, LICENSE_REGIONS, licenseRegionLabel } from "@/lib/format";
-import { groupTypes, typesFor } from "@/lib/docs";
+import { cn, daysUntil, fmtDay, lane, LICENSE_REGIONS, licenseRegionLabel } from "@/lib/format";
+import { CUSTOM, DocTypeSelect, useResolveType } from "@/components/docs/DocTypeSelect";
 import type { Driver, LicenseType } from "@/lib/types";
 
 const LICENSE_TYPES: LicenseType[] = ["CDL", "DL", "International CDL"];
@@ -57,6 +57,8 @@ const blank = (d?: Driver | null): Draft => ({
   cdl_expiry: d?.cdl_expiry ?? "",
   medical_card_expiry: d?.medical_card_expiry ?? "",
   status: d?.status ?? "active",
+  hire_date: d?.hire_date ?? "",
+  termination_date: d?.termination_date ?? "",
   notes: d?.notes ?? "",
 });
 
@@ -81,7 +83,16 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
   const save = async () => {
     if (!String(d.first_name || "").trim()) return toast.error("First name is required.");
     setSaving(true);
-    const row = { ...d, first_name: String(d.first_name || "").trim(), last_name: String(d.last_name || "").trim() || null, name: fullName };
+    const row = {
+      ...d,
+      first_name: String(d.first_name || "").trim(),
+      last_name: String(d.last_name || "").trim() || null,
+      name: fullName,
+      hire_date: d.hire_date || null,
+      termination_date: d.termination_date || null,
+      // A termination date makes the driver inactive.
+      status: d.termination_date ? ("inactive" as const) : d.status,
+    };
     let ok = false;
     if (driver) ok = await updateDriver(driver.id, row);
     else {
@@ -172,11 +183,23 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
             <Field label="Medical card expires">
               <Input type="date" value={d.medical_card_expiry || ""} onChange={(e) => set({ medical_card_expiry: e.target.value })} />
             </Field>
-            <Field label="Status">
-              <Select value={d.status} onChange={(e) => set({ status: e.target.value as Driver["status"] })}>
+            <Field label="Status" hint={d.termination_date ? "Terminated drivers are inactive" : undefined}>
+              <Select value={d.termination_date ? "inactive" : d.status} disabled={!!d.termination_date} onChange={(e) => set({ status: e.target.value as Driver["status"] })}>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </Select>
+            </Field>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Employment</div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Date of hire">
+              <Input type="date" value={String(d.hire_date || "")} onChange={(e) => set({ hire_date: e.target.value })} />
+            </Field>
+            <Field label="Date of termination" hint="Optional">
+              <Input type="date" value={String(d.termination_date || "")} onChange={(e) => set({ termination_date: e.target.value })} />
             </Field>
           </div>
         </div>
@@ -186,7 +209,7 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Other documents</div>
           {driver ? (
-            <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId }} compact emptyText="No driver files yet." />
+            <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId, licenseExpiry: driver.cdl_expiry }} compact emptyText="No driver files yet." />
           ) : (
             <PendingFiles files={files} onChange={setFiles} />
           )}
@@ -203,44 +226,53 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
 /** Documents for a driver that doesn't exist yet: type, optional expiry, file. */
 function PendingFiles({ files, onChange }: { files: PendingFile[]; onChange: (f: PendingFile[]) => void }) {
   const { docTypes } = useStore();
-  const groups = useMemo(() => groupTypes(typesFor(docTypes, "driver")), [docTypes]);
   const nameOf = (k: string) => docTypes.find((t) => t.key === k)?.name || k;
-  const [type, setType] = useState("drug_test");
+  const [type, setType] = useState("driver_application");
+  const [custom, setCustom] = useState("");
+  const resolveType = useResolveType("driver");
   const [expires, setExpires] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  const add = (list: FileList | null) => {
-    if (!list?.length) return;
-    onChange([...files, ...Array.from(list).map((file) => ({ id: crypto.randomUUID(), file, type, expires }))]);
+  const [drag, setDrag] = useState(false);
+  const chosen = docTypes.find((t) => t.key === type);
+  /** Checked before the file picker opens (and on drop). */
+  const ready = () => {
+    if (type === CUSTOM && !custom.trim()) return toast.error("Type the document name first."), false;
+    if (chosen?.has_expiry && !expires) return toast.error(`${chosen.name} expires: enter the expiration date first.`), false;
+    return true;
+  };
+  const add = async (list: FileList | null) => {
+    if (!list?.length || !ready()) return;
+    let key = type;
+    if (type === CUSTOM) {
+      const t = await resolveType(custom);
+      if (!t) return;
+      key = t.key;
+      setType(t.key);
+      setCustom("");
+    }
+    onChange([...files, ...Array.from(list).map((file) => ({ id: crypto.randomUUID(), file, type: key, expires }))]);
     setExpires("");
   };
   return (
-    <div className="space-y-2.5 rounded-xl border border-dashed border-line-strong bg-surface-2/40 p-3">
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDrag(true);
+      }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDrag(false);
+        add(e.dataTransfer.files);
+      }}
+      className={cn("space-y-2.5 rounded-xl border border-dashed p-3 transition-colors", drag ? "border-brand bg-brand/5" : "border-line-strong bg-surface-2/40")}
+    >
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_150px_auto] sm:items-end">
-        <Field label="Type">
-          <Select value={type} onChange={(e) => setType(e.target.value)}>
-            {groups.map((g) =>
-              g.label ? (
-                <optgroup key={g.label} label={g.label}>
-                  {g.types.map((t) => (
-                    <option key={t.key} value={t.key}>
-                      {t.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : (
-                g.types.map((t) => (
-                  <option key={t.key} value={t.key}>
-                    {t.name}
-                  </option>
-                ))
-              ),
-            )}
-          </Select>
-        </Field>
-        <Field label="Expires (optional)">
+        <DocTypeSelect scope="driver" value={type} onChange={setType} custom={custom} onCustom={setCustom} className={type === CUSTOM ? "sm:col-span-3" : undefined} />
+        <Field label={chosen?.has_expiry ? "Expires (required)" : "Expires (optional)"}>
           <Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
         </Field>
-        <Button variant="secondary" onClick={() => input.current?.click()}>
+        <Button variant="secondary" onClick={() => ready() && input.current?.click()}>
           <FilePlus2 className="h-4 w-4" /> Add file
         </Button>
       </div>
@@ -273,7 +305,7 @@ function PendingFiles({ files, onChange }: { files: PendingFile[]; onChange: (f:
           ))}
         </ul>
       ) : (
-        <p className="text-[12px] text-fg-4">Drug and alcohol tests, employment application, MVR, clearinghouse, passport, ID, driver photo… Uploaded when you add the driver.</p>
+        <p className="text-[12px] text-fg-4">Drop files here or use Add file. PDF, photos or Word. Uploaded when you add the driver.</p>
       )}
     </div>
   );
@@ -385,7 +417,7 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
 
         <section>
           <Eyebrow className="mb-2">Driver documents</Eyebrow>
-          <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId: driver.company_id }} compact emptyText="No driver files yet." />
+          <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId: driver.company_id, licenseExpiry: driver.cdl_expiry }} compact emptyText="No driver files yet." />
         </section>
       </div>
     </Drawer>

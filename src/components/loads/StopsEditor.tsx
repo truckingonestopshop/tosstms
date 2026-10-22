@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { PlaceInput } from "@/components/ui/PlaceInput";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { cn, uid, US_STATES } from "@/lib/format";
 import type { LoadStop } from "@/lib/types";
@@ -103,7 +104,15 @@ export function StopsEditor({
                   <Input value={s.address} onChange={(e) => set(s.id, { address: e.target.value })} />
                 </Field>
                 <Field label="City" required className="col-span-3 sm:col-span-2">
-                  <Input value={s.city} onChange={(e) => set(s.id, { city: e.target.value })} />
+                  <PlaceInput
+                    value={s.city}
+                    onChange={(v) => set(s.id, { city: v })}
+                    onPick={(p) => {
+                      // "Chicago, IL" / "Chicago, IL 60607" fill city, state and ZIP.
+                      const m = p.match(/^(.+?),\s*([A-Za-z]{2,3})(?:\s+(\S+))?$/);
+                      set(s.id, m ? { city: m[1], state: m[2].toUpperCase(), ...(m[3] ? { zip: m[3] } : {}) } : { city: p });
+                    }}
+                  />
                 </Field>
                 <Field label="State" required className="col-span-3 sm:col-span-2">
                   <Input

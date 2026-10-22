@@ -199,3 +199,35 @@ export async function routeStops(stops: StopQuery[], from?: StopQuery | null): P
   }
   return out;
 }
+
+const suggestCache = new Map<string, string[]>();
+
+/** Cities and ZIPs matching what's typed so far, as "City, ST" / "City, ST 12345" (US, Canada, Mexico). */
+export async function suggestPlaces(q: string): Promise<string[]> {
+  const text = q.trim();
+  if (text.length < 2 || !TOKEN) return [];
+  const key = text.toLowerCase();
+  const hit = suggestCache.get(key);
+  if (hit) return hit;
+  const url = `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(text)}&country=us,ca,mx&types=place,postcode&autocomplete=true&limit=6&access_token=${TOKEN}`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return [];
+    const data = await res.json();
+    type Ctx = { place?: { name?: string }; region?: { region_code?: string; name?: string } };
+    const feats: { properties?: { name?: string; feature_type?: string; context?: Ctx } }[] = data?.features || [];
+    const out: string[] = [];
+    for (const f of feats) {
+      const p = f.properties;
+      const st = p?.context?.region?.region_code || p?.context?.region?.name || "";
+      const label =
+        p?.feature_type === "postcode" ? [p.context?.place?.name, [st, p.name].filter(Boolean).join(" ")].filter(Boolean).join(", ") : [p?.name, st].filter(Boolean).join(", ");
+      if (label && !out.includes(label)) out.push(label);
+    }
+    if (suggestCache.size > 1000) suggestCache.clear();
+    if (out.length) suggestCache.set(key, out);
+    return out;
+  } catch {
+    return [];
+  }
+}

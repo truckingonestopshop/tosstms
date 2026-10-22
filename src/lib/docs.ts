@@ -4,7 +4,7 @@
 // change them in Settings.
 
 import { daysUntil } from "./format";
-import type { DocGroup, DocRequired, DocScope, DocType, DocumentItem, LoadStatus } from "./types";
+import type { DocRequired, DocScope, DocType, DocumentItem, LoadStatus } from "./types";
 
 type Rule = [key: string, name: string, scope: DocScope, required: DocRequired | null, expires: boolean, packet: boolean, sort: number];
 
@@ -27,15 +27,17 @@ const BUILT_IN: Rule[] = [
   ["boc3", "BOC-3", "company", null, false, false, 70],
   ["ucr", "UCR Registration", "company", null, true, false, 80],
   ["carrier_packet", "Carrier Packet", "company", null, false, false, 90],
-  ["factoring_agreement", "Factoring Agreement", "company", null, false, false, 95],
+  ["dot_compliance_agreement", "DOT compliance agreement", "company", null, false, false, 46],
+  ["inspection_report", "Inspection report", "company", null, false, false, 47],
+  ["factoring_agreement", "Factoring contract", "company", null, false, false, 95],
   ["cdl", "Driving license", "driver", "always", true, false, 10],
   ["medical_card", "Medical Card", "driver", "always", true, false, 20],
-  ["mvr", "MVR · Annual", "driver", null, true, false, 30],
-  ["clearinghouse_limited_query", "Clearinghouse limited query · Annual", "driver", null, true, false, 32],
-  ["driver_application", "Employment application", "driver", null, false, false, 50],
-  ["pre_employment_drug_test", "Pre-employment drug test", "driver", null, false, false, 52],
-  ["past_employment_verification", "Past employment verification", "driver", null, false, false, 54],
-  ["clearinghouse_full_query", "Clearinghouse full query", "driver", null, false, false, 56],
+  ["mvr", "MVR", "driver", "always", true, false, 30],
+  ["clearinghouse_full_query", "Clearinghouse query", "driver", null, true, false, 32],
+  ["driver_application", "Employment application", "driver", "always", false, false, 50],
+  ["pre_employment_drug_test", "Pre-employment drug test", "driver", "always", false, false, 52],
+  ["past_employment_verification", "Past employment verification", "driver", "always", false, false, 54],
+  ["psp", "PSP (Pre-employment Screening Program)", "driver", null, false, false, 58],
   ["driver_agreement", "Driver / Lease Agreement", "driver", null, false, false, 60],
   ["drug_test", "Drug and alcohol testing", "driver", null, false, false, 70],
   ["driver_policies", "Policies", "driver", null, false, false, 72],
@@ -43,6 +45,7 @@ const BUILT_IN: Rule[] = [
   ["passport", "Passport", "driver", null, true, false, 90],
   ["government_id", "ID card", "driver", null, true, false, 92],
   ["driver_headshot", "Driver photo", "driver", null, false, false, 94],
+  ["termination_letter", "Termination letter", "driver", null, false, false, 96],
   ["registration", "Truck Registration (Cab Card)", "truck", "always", true, false, 10],
   ["inspection", "Annual Truck Inspection", "truck", "always", true, false, 20],
   ["ifta", "IFTA License", "truck", null, true, false, 40],
@@ -62,38 +65,6 @@ const BUILT_IN: Rule[] = [
   ["other", "Other", "any", null, false, false, 999],
 ];
 
-/** Headings in the Type picker (same as migration 0015). */
-const GROUP: Record<string, DocGroup> = {
-  driver_application: "no_expiry",
-  pre_employment_drug_test: "no_expiry",
-  past_employment_verification: "no_expiry",
-  clearinghouse_full_query: "no_expiry",
-  cdl: "expiry",
-  medical_card: "expiry",
-  mvr: "expiry",
-  clearinghouse_limited_query: "expiry",
-  drug_test: "per_request",
-  driver_policies: "per_request",
-  driver_trainings: "per_request",
-  truck_title: "no_expiry",
-  registration: "expiry",
-  inspection: "expiry",
-  ifta: "expiry",
-  form_2290: "expiry",
-  physical_damage: "expiry",
-  ny_hut_permit: "expiry",
-  nm_state_permit: "expiry",
-  ky_state_permit: "expiry",
-  or_state_permit: "expiry",
-  ct_state_permit: "expiry",
-};
-
-export const DOC_GROUPS: { key: DocGroup; label: string }[] = [
-  { key: "no_expiry", label: "No expiration" },
-  { key: "expiry", label: "Expiration" },
-  { key: "per_request", label: "Per request" },
-];
-
 export const BUILT_IN_TYPES: DocType[] = BUILT_IN.map(([key, name, scope, required_from, has_expiry, in_packet, sort]) => ({
   key,
   name,
@@ -103,15 +74,7 @@ export const BUILT_IN_TYPES: DocType[] = BUILT_IN.map(([key, name, scope, requir
   has_expiry,
   in_packet,
   sort,
-  doc_group: GROUP[key] ?? null,
 }));
-
-/** Types arranged under their headings (No expiration / Expiration / Per request), then the rest. */
-export function groupTypes(types: DocType[]) {
-  const out: { label: string | null; types: DocType[] }[] = DOC_GROUPS.map((g) => ({ label: g.label, types: types.filter((t) => t.doc_group === g.key) }));
-  out.push({ label: out.some((g) => g.types.length) ? "Other documents" : null, types: types.filter((t) => !t.doc_group) });
-  return out.filter((g) => g.types.length);
-}
 
 /** Fills in rule fields for rows from before the rules existed. */
 export function withRules(t: Partial<DocType> & Pick<DocType, "key" | "name" | "scope">): DocType {
@@ -123,7 +86,6 @@ export function withRules(t: Partial<DocType> & Pick<DocType, "key" | "name" | "
     has_expiry: t.has_expiry ?? b?.has_expiry ?? false,
     in_packet: t.in_packet ?? b?.in_packet ?? false,
     sort: t.sort ?? b?.sort ?? 100,
-    doc_group: t.doc_group !== undefined ? t.doc_group : (b?.doc_group ?? null),
   } as DocType;
 }
 
@@ -133,7 +95,7 @@ export const byTypeOrder = (a: DocType, b: DocType) => a.sort - b.sort || a.name
 export type DocTarget =
   | { scope: "company"; companyId: string }
   | { scope: "load"; id: string; companyId: string; status?: LoadStatus }
-  | { scope: "driver"; id: string; companyId: string }
+  | { scope: "driver"; id: string; companyId: string; /** typed on the driver (License expires) */ licenseExpiry?: string | null }
   | { scope: "truck"; id: string; companyId: string }
   | { scope: "trailer"; id: string; companyId: string };
 
@@ -182,6 +144,9 @@ export function latestByType(docs: DocumentItem[]) {
 }
 
 /** Older files of a type that has a newer upload for the same load / driver / truck / carrier. */
+/** Types where every file counts (each training, policy or test), not just the newest. */
+const MANY = new Set(["other", "freight_photos", "driver_trainings", "driver_policies", "drug_test", "inspection_report"]);
+
 export function supersededIds(docs: DocumentItem[]) {
   const groups = new Map<string, DocumentItem[]>();
   for (const d of docs) {
@@ -191,7 +156,7 @@ export function supersededIds(docs: DocumentItem[]) {
   const out = new Set<string>();
   for (const g of groups.values()) {
     const latest = latestByType(g);
-    for (const d of g) if (latest.get(d.doc_type)?.id !== d.id && d.doc_type !== "other" && d.doc_type !== "freight_photos") out.add(d.id);
+    for (const d of g) if (latest.get(d.doc_type)?.id !== d.id && !MANY.has(d.doc_type) && !isPhotoDoc(d.doc_type)) out.add(d.id);
   }
   return out;
 }
@@ -222,6 +187,13 @@ export interface CheckItem {
 export function checklist(docTypes: DocType[], documents: DocumentItem[], target: DocTarget): CheckItem[] {
   const own = docsOf(documents, target);
   const latest = latestByType(own);
+  if (target.scope === "driver") {
+    // The license photographed in the driver form's slots counts as the driving license,
+    // dated from the license expiry typed on the driver.
+    const photo = own.filter((d) => d.doc_type.startsWith("driver_photo_license")).sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at))[0];
+    const cdl = latest.get("cdl") ?? photo;
+    if (cdl) latest.set("cdl", cdl.expires_on || !target.licenseExpiry ? cdl : { ...cdl, expires_on: target.licenseExpiry });
+  }
   return typesFor(docTypes, target.scope)
     .filter((t) => t.key !== "other" && (isRequired(t, target) || latest.has(t.key)))
     .map((t) => ({ type: t, doc: latest.get(t.key), state: expiryState(latest.get(t.key), t), required: isRequired(t, target) }));
@@ -255,8 +227,10 @@ const GUESS: [RegExp, string][] = [
   [/carrier (packet|setup)|setup packet/, "carrier_packet"],
   [/factoring/, "factoring_agreement"],
   [/\bmvr\b|motor vehicle record|driving record/, "mvr"],
-  [/clearinghouse.*(limited|annual)/, "clearinghouse_limited_query"],
   [/clearinghouse/, "clearinghouse_full_query"],
+  [/\bpsp\b|pre.?employment screening/, "psp"],
+  [/termination/, "termination_letter"],
+  [/inspection report|roadside/, "inspection_report"],
   [/pre.?employment/, "pre_employment_drug_test"],
   [/employment verification|past employ|previous employ/, "past_employment_verification"],
   [/passport/, "passport"],

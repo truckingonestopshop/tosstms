@@ -33,7 +33,7 @@ export function UserSheet({
   const [name, setName] = useState("");
   const [position, setPosition] = useState("");
   const [phone, setPhone] = useState("");
-  const [access, setAccess] = useState<Access>({ tms: null, leads: null, super_admin: false });
+  const [access, setAccess] = useState<Access>({ tms: null, tms_view: "dispatch", leads: null, super_admin: false });
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [del, setDel] = useState(false);
@@ -43,7 +43,7 @@ export function UserSheet({
     setName(user.full_name);
     setPosition(user.position || "");
     setPhone(user.phone || "");
-    setAccess({ tms: user.tms, leads: user.leads, super_admin: user.super_admin });
+    setAccess({ tms: user.tms, tms_view: user.tms_view, leads: user.leads, super_admin: user.super_admin });
   }, [user]);
 
   const history = useMemo(() => (user ? audit.filter((a) => a.target_email?.toLowerCase() === user.email.toLowerCase()).slice(0, 8) : []), [audit, user]);
@@ -54,6 +54,7 @@ export function UserSheet({
     position !== (user.position || "") ||
     phone !== (user.phone || "") ||
     access.tms !== user.tms ||
+    (!!access.tms && access.tms_view !== user.tms_view) ||
     access.leads !== user.leads ||
     access.super_admin !== user.super_admin;
   const st = STATUS_UI[user.status];
@@ -65,7 +66,7 @@ export function UserSheet({
     try {
       await api(`/api/admin/users/${user.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ full_name: name, position: position || null, phone: phone || null, tms: access.tms, leads: access.leads, super_admin: access.super_admin }),
+        body: JSON.stringify({ full_name: name, position: position || null, phone: phone || null, tms: access.tms, tms_view: access.tms_view, leads: access.leads, super_admin: access.super_admin }),
       });
       toast.success("Changes saved");
       onChanged();
@@ -106,7 +107,7 @@ export function UserSheet({
         dirty ? (
           <div className="flex w-full items-center justify-end gap-2">
             <span className="mr-auto text-xs text-fg-3">Unsaved changes</span>
-            <Button variant="ghost" onClick={() => user && (setName(user.full_name), setPosition(user.position || ""), setPhone(user.phone || ""), setAccess({ tms: user.tms, leads: user.leads, super_admin: user.super_admin }))}>
+            <Button variant="ghost" onClick={() => user && (setName(user.full_name), setPosition(user.position || ""), setPhone(user.phone || ""), setAccess({ tms: user.tms, tms_view: user.tms_view, leads: user.leads, super_admin: user.super_admin }))}>
               Discard
             </Button>
             <Button variant="primary" onClick={save} loading={saving}>

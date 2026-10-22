@@ -18,17 +18,26 @@ export function demoData() {
     id, name, mc_number: mc, dot_number: `3${mc}`, contact_name: "Owner", contact_phone: "(312) 555-0144", contact_email: "ops@example.com",
     address: "1420 W Carroll Ave, Chicago, IL 60607", commission_percent: pct, billing_cadence: cad, payment_terms_days: cad === "weekly" ? 7 : 30,
     factoring_company: "RTS Financial", factoring_email: null, status: "active", notes: null, created_at: now, updated_at: now,
+    street: "1420 W Carroll Ave", city: "Chicago", county: "Cook", state: "IL", zip: "60607", contact_first_name: "Owner", contact_last_name: null,
+    services: {
+      dispatch: { on: true, dispatcher: "Dayana Villa", sold_by: "Dayana Villa", source: "call_list" },
+      dot_compliance: { on: true, sam: "Dayana Villa", source: "cross_sale" },
+      mcpt: { on: true, agent: "Dayana Villa", fuel_taxes: true, source: "cross_sale" },
+    },
+    compliance: {},
   });
   const companies = [co(C1, "Apex Hauling LLC", "1428592", 10, "weekly"), co(C2, "Silverline Express Inc", "981244", 8, "monthly")];
   const dr = (id: string, c: string, name: string, cdl: string, med: string): Driver => ({
     id, company_id: c, name, phone: "(708) 555-8291", email: null, cdl_number: "IL-CDL-8839201", cdl_state: "IL", cdl_expiry: cdl,
     medical_card_expiry: med, status: "active", notes: null, created_at: now, updated_at: now,
+    first_name: name.split(" ")[0], last_name: name.split(" ").slice(1).join(" ") || null, hire_date: addDays(t, -420), termination_date: null,
   });
   const drivers = [
     dr("d1", C1, "Darius Miller", addDays(t, 400), addDays(t, 20)),
     dr("d2", C1, "Petru Duca", addDays(t, 700), addDays(t, 300)),
     dr("d3", C2, "Alexei Voronov", addDays(t, -3), addDays(t, 200)),
     dr("d4", C2, "Tariq Sterling", addDays(t, 500), addDays(t, 365)),
+    { ...dr("d5", C1, "Marcus Hale", addDays(t, 300), addDays(t, 90)), status: "inactive" as const, termination_date: addDays(t, -30) },
   ];
   const tr = (id: string, c: string, unit: string, type: string, drv: string | null, loc: string, status: Truck["status"] = "active"): Truck => ({
     id, company_id: c, unit_number: unit, trailer_id: `trl-${id}`, trailer_number: `TR-${unit}0`, plate: "IL-P88291", vin_number: "1FUJGLDR8NLBP1019", year: 2022, make: "Freightliner", model: "Cascadia",
@@ -92,6 +101,18 @@ export function demoData() {
     { id: "doc1", company_id: C1, load_id: null, driver_id: null, truck_id: null, doc_type: "insurance", file_path: "x", file_name: "COI_Apex_2026.pdf", file_size: 382910, mime_type: "application/pdf", expires_on: addDays(t, 18), notes: null, uploaded_by: null, uploaded_at: now },
     { id: "doc2", company_id: C1, load_id: null, driver_id: null, truck_id: null, doc_type: "authority", file_path: "x", file_name: "MC_Authority.pdf", file_size: 142091, mime_type: "application/pdf", expires_on: null, notes: null, uploaded_by: null, uploaded_at: now },
     { id: "doc3", company_id: C1, load_id: "l1", driver_id: null, truck_id: null, doc_type: "rate_confirmation", file_path: "x", file_name: "RC-7701.pdf", file_size: 98120, mime_type: "application/pdf", expires_on: null, notes: null, uploaded_by: null, uploaded_at: now },
+    // Darius: license photo (no license document), an MVR, and repeated trainings / tests.
+    ...([
+      ["dd1", "driver_photo_license_front", "license_front.jpg", null, -30],
+      ["dd2", "mvr", "MVR_2026.pdf", addDays(t, 200), -20],
+      ["dd3", "driver_trainings", "Hazmat_training.pdf", null, -15],
+      ["dd4", "driver_trainings", "Defensive_driving.pdf", null, -10],
+      ["dd5", "drug_test", "Random_test_Q1.pdf", null, -60],
+      ["dd6", "drug_test", "Random_test_Q3.pdf", null, -5],
+    ] as const).map(([id, doc_type, file_name, expires_on, ago]): DocumentItem => ({
+      id, company_id: C1, load_id: null, driver_id: "d1", truck_id: null, doc_type, file_path: "x", file_name, file_size: 120000,
+      mime_type: file_name.endsWith(".jpg") ? "image/jpeg" : "application/pdf", expires_on, notes: null, uploaded_by: null, uploaded_at: new Date(Date.now() + ago * 864e5).toISOString(),
+    })),
   ];
   const inv = (id: string, l: Load, status: Invoice["status"], issued: number): Invoice => ({
     id, company_id: l.company_id, invoice_number: `TOSS-2026-${1000 + Number(id.slice(-1))}`, invoice_type: "load", status, currency: "USD",

@@ -17,7 +17,7 @@ export function InviteDialog({ open, onClose, onDone }: { open: boolean; onClose
   const [name, setName] = useState("");
   const [position, setPosition] = useState("Dispatcher");
   const [phone, setPhone] = useState("");
-  const [access, setAccess] = useState<Access>({ tms: "dispatcher", leads: "member", super_admin: false });
+  const [access, setAccess] = useState<Access>({ tms: "dispatcher", tms_view: "dispatch", leads: "member", super_admin: false });
   const [busy, setBusy] = useState(false);
 
   const reset = () => {
@@ -25,7 +25,7 @@ export function InviteDialog({ open, onClose, onDone }: { open: boolean; onClose
     setName("");
     setPosition("Dispatcher");
     setPhone("");
-    setAccess({ tms: "dispatcher", leads: "member", super_admin: false });
+    setAccess({ tms: "dispatcher", tms_view: "dispatch", leads: "member", super_admin: false });
   };
 
   const apps = [access.tms && "TOSS Cloud", access.leads && "TOSS Lead Hunter"].filter(Boolean).join(" and ");
@@ -37,7 +37,7 @@ export function InviteDialog({ open, onClose, onDone }: { open: boolean; onClose
     try {
       await api("/api/admin/users", {
         method: "POST",
-        body: JSON.stringify({ email, full_name: name, position, phone, tms: access.tms, leads: access.leads, super_admin: access.super_admin }),
+        body: JSON.stringify({ email, full_name: name, position, phone, tms: access.tms, tms_view: access.tms_view, leads: access.leads, super_admin: access.super_admin }),
       });
       toast.success(`Invite sent to ${email.trim()}`);
       reset();

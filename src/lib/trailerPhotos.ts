@@ -11,6 +11,8 @@ export interface PhotoSlot {
   reefer?: boolean;
   /** more than one photo makes sense (both sides, several angles) */
   many?: boolean;
+  /** a scan as PDF is fine too (license) */
+  pdf?: boolean;
 }
 
 export const PHOTO_SLOTS: PhotoSlot[] = [
@@ -28,11 +30,10 @@ export const TRUCK_PHOTO_SLOTS: PhotoSlot[] = [
   { key: "truck_photo_front", title: "Truck exterior · front view", hint: "License plate clearly visible" },
 ];
 
-/** The driver's license (both sides) and medical card. */
+/** The driver's license, both sides (photo or PDF scan). */
 export const DRIVER_PHOTO_SLOTS: PhotoSlot[] = [
-  { key: "driver_photo_license_front", title: "Driving license · front", hint: "Whole card in frame, number and expiry readable" },
-  { key: "driver_photo_license_back", title: "Driving license · back", hint: "Endorsements and restrictions readable" },
-  { key: "driver_photo_medical_card", title: "Medical card", hint: "Examiner, date and expiry readable" },
+  { key: "driver_photo_license_front", title: "Driving license · front", hint: "Whole card in frame, number and expiry readable · photo or PDF", pdf: true },
+  { key: "driver_photo_license_back", title: "Driving license · back", hint: "Endorsements and restrictions readable · photo or PDF", pdf: true },
 ];
 
 export const isPhotoType = (key: string) => key.startsWith("trailer_photo_") || key.startsWith("truck_photo_") || key.startsWith("driver_photo_");

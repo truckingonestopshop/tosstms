@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  ChevronRight,
   Circle,
   Download,
   ExternalLink,
@@ -29,9 +30,10 @@ import { useStore } from "@/lib/store";
 import { openDocument, errMsg } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn, daysUntil, fileSize, fmtDay, relTime } from "@/lib/format";
-import { checklist, docsOf, groupTypes, guessType, isPhotoDoc, scopeOf, supersededIds, typesFor, type CheckItem, type DocTarget } from "@/lib/docs";
-import type { DocumentItem } from "@/lib/types";
+import { checklist, docsOf, guessType, isPhotoDoc, scopeOf, supersededIds, typesFor, type CheckItem, type DocTarget } from "@/lib/docs";
+import type { DocType, DocumentItem } from "@/lib/types";
 import { DocTypesModal } from "./DocTypesModal";
+import { AUTO, CUSTOM, DocTypeSelect, useResolveType } from "./DocTypeSelect";
 
 export function ExpiryBadge({ date }: { date: string | null }) {
   const d = daysUntil(date);
@@ -44,8 +46,6 @@ export function ExpiryBadge({ date }: { date: string | null }) {
 /** Same list as the file picker; drag-and-drop skips the picker's filter. */
 const ALLOWED = /\.(pdf|png|jpe?g|webp|heic|heif|gif|tiff?|doc|docx|xls|xlsx|csv|txt)$/i;
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.gif,.tif,.tiff,.doc,.docx,.xls,.xlsx,.csv,.txt";
-const AUTO = "__auto";
-
 const isImage = (d: DocumentItem) => (d.mime_type || "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic)$/i.test(d.file_name);
 
 /**
@@ -68,10 +68,14 @@ export function DocumentsPanel({
 }) {
   const { documents, docTypes, uploadDocument, docTypeName, loads, drivers, trucks, trailers } = useStore();
   const scope = target.scope;
-  const offered = useMemo(() => typesFor(docTypes, scope), [docTypes, scope]);
   const items = useMemo(() => checklist(docTypes, documents, target), [docTypes, documents, target]);
   const [type, setType] = useState<string>(AUTO);
+  const [custom, setCustom] = useState("");
+  const resolveType = useResolveType(scope);
   const [expires, setExpires] = useState("");
+  /** checklist row that expires: ask the date before picking the file */
+  const [slotAsk, setSlotAsk] = useState<DocType | null>(null);
+  const [slotDate, setSlotDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
   const [q, setQ] = useState("");
@@ -81,6 +85,7 @@ export function DocumentsPanel({
   const fileInput = useRef<HTMLInputElement>(null);
   const slotInput = useRef<HTMLInputElement>(null);
   const slotType = useRef<string | null>(null);
+  const slotDue = useRef<string | null>(null);
 
   const list = useMemo(() => {
     const own = (includeAll && scope === "company" ? documents.filter((d) => d.company_id === target.companyId) : docsOf(documents, target)).filter(
@@ -100,10 +105,31 @@ export function DocumentsPanel({
     return true;
   });
 
-  /** Uploads files; `forced` is the type picked from a checklist row. */
-  const upload = async (files: FileList | File[], forced?: string | null) => {
+  /** Uploads files; `forced` is the type picked from a checklist row (with its date). */
+  const upload = async (files: FileList | File[], forced?: string | null, forcedDate?: string | null) => {
     const arr = Array.from(files);
     if (!arr.length) return;
+    let base = type;
+    if (!forced && type === CUSTOM) {
+      if (!custom.trim()) return toast.error("Type the document name first.");
+      const t = await resolveType(custom);
+      if (!t) return;
+      base = t.key;
+      setType(t.key);
+      setCustom("");
+    }
+    // Documents that expire need their date before they're filed.
+    if (!forced && !expires) {
+      for (const f of arr) {
+        const key = base !== AUTO ? base : guessType(f.name, scope, docTypes);
+        const t = key ? docTypes.find((x) => x.key === key) : null;
+        if (t?.has_expiry) {
+          setType(t.key);
+          if (fileInput.current) fileInput.current.value = "";
+          return toast.error(`${t.name} expires: enter the expiration date, then add the file.`);
+        }
+      }
+    }
     setBusy(true);
     const done: DocumentItem[] = [];
     const unknown: string[] = [];
@@ -116,7 +142,7 @@ export function DocumentsPanel({
         toast.error(`${f.name} is over 25 MB.`);
         continue;
       }
-      const picked = forced || (type !== AUTO ? type : guessType(f.name, scope, docTypes));
+      const picked = forced || (base !== AUTO ? base : guessType(f.name, scope, docTypes));
       if (!picked) unknown.push(f.name);
       const res = await uploadDocument(f, {
         company_id: target.companyId,
@@ -125,7 +151,7 @@ export function DocumentsPanel({
         truck_id: scope === "truck" ? target.id : null,
         trailer_id: scope === "trailer" ? target.id : null,
         doc_type: picked || "other",
-        expires_on: forced ? null : expires || null,
+        expires_on: forced ? forcedDate || null : expires || null,
       });
       if (res) done.push(res);
     }
@@ -141,7 +167,14 @@ export function DocumentsPanel({
   };
 
   const uploadFor = (key: string) => {
+    const t = docTypes.find((x) => x.key === key);
+    if (t?.has_expiry) {
+      setSlotDate("");
+      setSlotAsk(t);
+      return;
+    }
     slotType.current = key;
+    slotDue.current = null;
     slotInput.current?.click();
   };
 
@@ -157,6 +190,17 @@ export function DocumentsPanel({
   };
 
   const typesUsed = Array.from(new Set(list.map((d) => d.doc_type)));
+
+  // Driver files: one section per type (Trainings, MVR, Drug tests…), in the type order.
+  const sections = (() => {
+    if (scope !== "driver") return null;
+    const order = new Map(typesFor(docTypes, scope).map((t, i) => [t.key, i]));
+    const by = new Map<string, DocumentItem[]>();
+    for (const d of shown) by.set(d.doc_type, [...(by.get(d.doc_type) || []), d]);
+    return [...by.entries()]
+      .map(([type, docs]) => ({ type, docs }))
+      .sort((a, b) => (order.get(a.type) ?? 999) - (order.get(b.type) ?? 999));
+  })();
 
   return (
     <div className="space-y-3">
@@ -177,31 +221,10 @@ export function DocumentsPanel({
         className={cn("rounded-xl border border-dashed p-3 transition-colors sm:p-4", drag ? "border-brand bg-brand/5" : "border-line-strong bg-surface-2/40")}
       >
         <div className={cn("flex flex-col gap-2.5", !compact && "sm:flex-row sm:items-end")}>
-          <Field label="Type" className={cn("min-w-0", !compact && "sm:w-64")}>
-            <Select value={type} onChange={(e) => setType(e.target.value)}>
-              <option value={AUTO}>Detect from file name</option>
-              {groupTypes(offered).map((g) =>
-                g.label ? (
-                  <optgroup key={g.label} label={g.label}>
-                    {g.types.map((t) => (
-                      <option key={t.key} value={t.key}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : (
-                  g.types.map((t) => (
-                    <option key={t.key} value={t.key}>
-                      {t.name}
-                    </option>
-                  ))
-                ),
-              )}
-            </Select>
-          </Field>
-          {/* Any document can carry an expiry date; types that expire ask for it. */}
+          <DocTypeSelect scope={scope} value={type} onChange={setType} custom={custom} onCustom={setCustom} auto className={cn("min-w-0", !compact && "sm:w-64")} />
+          {/* Any document can carry an expiry date; types that expire require it. */}
           {type !== AUTO && (
-            <Field label={chosen?.has_expiry ? "Expires" : "Expires (optional)"} className={cn(!compact && "sm:w-44")}>
+            <Field label={chosen?.has_expiry ? "Expires (required)" : "Expires (optional)"} className={cn(!compact && "sm:w-44")}>
               <Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
             </Field>
           )}
@@ -221,12 +244,12 @@ export function DocumentsPanel({
             accept={ACCEPT}
             className="hidden"
             onChange={(e) => {
-              if (e.target.files) upload(e.target.files, slotType.current);
+              if (e.target.files) upload(e.target.files, slotType.current, slotDue.current);
               e.target.value = "";
             }}
           />
         </div>
-        <p className="mt-2 hidden text-xs text-fg-4 sm:block">Drop several files at once; each one is filed by its name (BOL, POD, COI, CDL…). PDF, images, Office up to 25 MB.</p>
+        <p className="mt-2 hidden text-xs text-fg-4 sm:block">Drop several files at once; each one is filed by its name (BOL, POD, COI, license…). PDF, images, Office up to 25 MB.</p>
       </div>
 
       {/* Filters */}
@@ -259,14 +282,44 @@ export function DocumentsPanel({
         <Empty icon={FileText} title={list.length ? "No files match" : emptyText || "No files yet"} className="py-6" />
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
-          {shown.map((d) => (
-            <DocRow key={d.id} d={d} where={includeAll ? where(d) : null} old={old.has(d.id)} />
-          ))}
+          {sections
+            ? sections.map((g) => <TypeSection key={g.type} title={docTypeName(g.type)} docs={g.docs} old={old} />)
+            : shown.map((d) => <DocRow key={d.id} d={d} where={includeAll ? where(d) : null} old={old.has(d.id)} />)}
         </ul>
       )}
 
       <DocTypesModal open={typesOpen} onClose={() => setTypesOpen(false)} />
       {askExpiry && <EditDocModal d={askExpiry} onClose={() => setAskExpiry(null)} focusExpiry />}
+      <Modal
+        open={!!slotAsk}
+        onClose={() => setSlotAsk(null)}
+        size="sm"
+        title={`Add ${slotAsk?.name || "document"}`}
+        subtitle="It expires: enter the date first. You'll get a reminder 30 days before."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setSlotAsk(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!slotDate}
+              onClick={() => {
+                slotType.current = slotAsk?.key ?? null;
+                slotDue.current = slotDate;
+                setSlotAsk(null);
+                slotInput.current?.click();
+              }}
+            >
+              <UploadCloud className="h-4 w-4" /> Choose file
+            </Button>
+          </>
+        }
+      >
+        <Field label="Expires">
+          <Input type="date" value={slotDate} onChange={(e) => setSlotDate(e.target.value)} autoFocus />
+        </Field>
+      </Modal>
     </div>
   );
 }
@@ -355,6 +408,35 @@ function Checklist({
         })}
       </ul>
     </div>
+  );
+}
+
+/** A document type with its files; opens to show them. */
+function TypeSection({ title, docs, old }: { title: string; docs: DocumentItem[]; old: Set<string> }) {
+  const [open, setOpen] = useState(false);
+  const current = docs.filter((d) => !old.has(d.id));
+  const next = current
+    .map((d) => d.expires_on)
+    .filter((x): x is string => !!x)
+    .sort()[0];
+  return (
+    <li>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-2/50 sm:px-4" aria-expanded={open}>
+        <ChevronRight className={cn("h-4 w-4 shrink-0 text-fg-4 transition-transform", open && "rotate-90")} />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{title}</span>
+        <span className="shrink-0 text-xs text-fg-4">
+          {docs.length} {docs.length === 1 ? "file" : "files"} · {relTime(docs[0].uploaded_at)}
+        </span>
+        <ExpiryBadge date={next ?? null} />
+      </button>
+      {open && (
+        <ul className="divide-y divide-line border-t border-line bg-surface-2/30 pl-4">
+          {docs.map((d) => (
+            <DocRow key={d.id} d={d} where={null} old={old.has(d.id)} />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
@@ -465,7 +547,8 @@ function EditDocModal({ d, onClose, focusExpiry }: { d: DocumentItem; onClose: (
   const [saving, setSaving] = useState(false);
   const t = docTypes.find((x) => x.key === type);
   const own = typesFor(docTypes, scope);
-  const rest = docTypes.filter((x) => !own.includes(x) && !isPhotoDoc(x.key));
+  const listed = own.some((x) => x.key === type) ? own : [...own, ...docTypes.filter((x) => x.key === type)];
+  const missingDate = !!t?.has_expiry && !exp;
   return (
     <Modal
       open
@@ -481,6 +564,8 @@ function EditDocModal({ d, onClose, focusExpiry }: { d: DocumentItem; onClose: (
           <Button
             variant="primary"
             loading={saving}
+            disabled={missingDate}
+            title={missingDate ? "Enter the expiration date" : undefined}
             onClick={async () => {
               setSaving(true);
               const ok = await updateDocument(d.id, { file_name: name.trim() || d.file_name, doc_type: type, expires_on: exp || null, notes: notes || null });
@@ -502,23 +587,14 @@ function EditDocModal({ d, onClose, focusExpiry }: { d: DocumentItem; onClose: (
           <>
             <Field label="Type">
               <Select value={type} onChange={(e) => setType(e.target.value)}>
-                {own.map((x) => (
+                {listed.map((x) => (
                   <option key={x.key} value={x.key}>
                     {x.name}
                   </option>
                 ))}
-                {rest.length > 0 && (
-                  <optgroup label="Other types">
-                    {rest.map((x) => (
-                      <option key={x.key} value={x.key}>
-                        {x.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
               </Select>
             </Field>
-            <Field label={t?.has_expiry ? "Expires" : "Expires (optional)"}>
+            <Field label={t?.has_expiry ? "Expires (required)" : "Expires (optional)"}>
               <Input type="date" value={exp} onChange={(e) => setExp(e.target.value)} />
             </Field>
             <Field label="File name">
