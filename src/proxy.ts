@@ -32,10 +32,10 @@ export async function proxy(request: NextRequest) {
   const { data } = await sb.auth.getClaims();
   const path = request.nextUrl.pathname;
   const preview = process.env.NODE_ENV === "development" && request.cookies.get("tms_ui_preview")?.value === "1";
-  // /api/handoff checks its own bearer token (TOSS Lead Hunter → TOSS Cloud); /api/ghl/customer its
-  // secret key (GoHighLevel workflow → TOSS Cloud).
+  // /api/handoff and /api/hunter/carrier check their own bearer token (TOSS Lead Hunter → TOSS
+  // Cloud); /api/ghl/customer its secret key (GoHighLevel workflow → TOSS Cloud).
   const isPublic =
-    path.startsWith("/login") || path.startsWith("/auth/") || path.startsWith("/preview-ui") || path === "/api/handoff" || path === "/api/ghl/customer" || path === "/logout" || preview;
+    path.startsWith("/login") || path.startsWith("/auth/") || path.startsWith("/preview-ui") || path === "/api/handoff" || path === "/api/ghl/customer" || path === "/api/hunter/carrier" || path === "/logout" || preview;
   // Already signed in and opening the sign-in page: go straight on. Lead Hunter (e.g. someone
   // opened tossleadhunter.tech) through /go/leads; TOSS Cloud to the page asked for. Only plain
   // page loads: the sign-in form's own POSTs to /login must reach it.

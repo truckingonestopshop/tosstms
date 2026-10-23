@@ -128,5 +128,5 @@ GHL → Settings → Custom Fields (Contact):
 | 2.1 GHL fields | You | To do (steps above) |
 | 2.2 Cloud receiving address | Me | Done (/api/ghl/customer, migration 0019 applied). Not committed |
 | 2.3 Sample tests | Me | Done: 6 cases pass locally, test rows removed |
-| 2.4 GHL workflow | You | After 2.2 is pushed live |
-| 2.5 Live test | Together | — |
+| 2.4 GHL workflow | You | Done (Contact changed → Contact type has changed to Customer → Webhook) |
+| 2.5 Live test | Together | Done: AC COACH OPERATIONS INC created from GHL (2026-10-23) |
