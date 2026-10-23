@@ -70,10 +70,23 @@ export interface Company {
   secondary_email?: string | null;
   services?: Services;
   compliance?: Compliance;
+  /** the GoHighLevel contact it came from (GHL → Cloud) */
+  ghl_contact_id?: string | null;
 }
 
 export type ServiceKey = "dispatch" | "dot_compliance" | "mcpt" | "accounting" | "factoring" | "fuel_card" | "insurance";
-export type ServiceSource = "call_list" | "instagram" | "facebook" | "x" | "email" | "text" | "referral" | "cross_sale";
+export type ServiceSource =
+  | "call_list"
+  | "instagram"
+  | "facebook"
+  | "x"
+  | "email"
+  | "text"
+  | "whatsapp"
+  | "linkedin"
+  | "fiverr"
+  | "referral"
+  | "cross_sale";
 /** One service the carrier is active in, with what the team tracks for it. */
 export interface ServiceInfo {
   on?: boolean;

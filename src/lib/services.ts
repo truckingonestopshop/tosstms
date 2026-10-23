@@ -19,6 +19,9 @@ export const SOURCES: { v: ServiceSource; label: string }[] = [
   { v: "x", label: "Marketing · X" },
   { v: "email", label: "Marketing · Email" },
   { v: "text", label: "Marketing · Text" },
+  { v: "whatsapp", label: "Marketing · WhatsApp" },
+  { v: "linkedin", label: "Marketing · LinkedIn" },
+  { v: "fiverr", label: "Marketing · Fiverr" },
   { v: "referral", label: "Referred by client" },
   { v: "cross_sale", label: "Cross sale" },
 ];
