@@ -13,11 +13,24 @@ export const runtime = "nodejs";
  * same DOT). Never overwrites what the team typed, never deletes. Every call is logged in
  * tms_ghl_events.
  */
+/**
+ * The key as pasted into Vercel, forgiving how it was copied: spaces, line breaks, quotes, a
+ * leading "Value:" or "GHL_WEBHOOK_SECRET=", or the whole webhook URL with ?key=….
+ */
+function cleanKey(raw: string | undefined) {
+  let k = (raw || "").trim().replace(/^["']|["']$/g, "").trim();
+  const fromUrl = k.match(/[?&]key=([^&\s]+)/);
+  if (fromUrl) k = decodeURIComponent(fromUrl[1]);
+  k = k.replace(/^(value|ghl_webhook_secret)\s*[:=]\s*/i, "");
+  return k.replace(/\s+/g, "");
+}
+
 export async function POST(req: NextRequest) {
-  const secret = process.env.GHL_WEBHOOK_SECRET || "";
-  const given = req.nextUrl.searchParams.get("key") || req.headers.get("x-toss-key") || "";
+  const secret = cleanKey(process.env.GHL_WEBHOOK_SECRET);
+  const given = cleanKey(req.nextUrl.searchParams.get("key") || req.headers.get("x-toss-key") || "");
   if (!secret || given.length !== secret.length || !timingSafeEqual(Buffer.from(given), Buffer.from(secret))) {
-    return NextResponse.json({ error: "Not allowed" }, { status: 401 });
+    // Says whether the server has a key at all (never the key), so a missing setting is easy to spot.
+    return NextResponse.json({ error: "Not allowed", serverKey: secret ? "set" : "missing" }, { status: 401 });
   }
   if (!adminConfigured()) return NextResponse.json({ error: "Server not set up (SUPABASE_SECRET_KEY)" }, { status: 503 });
 
