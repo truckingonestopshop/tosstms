@@ -17,6 +17,7 @@ import {
   Stamp,
   Truck as TruckIcon,
   Users,
+  Wallet,
 } from "lucide-react";
 import { CopyButton, PageHeader, Tabs } from "@/components/ui/Bits";
 import { useStore } from "@/lib/store";
@@ -28,7 +29,10 @@ import type { Company } from "@/lib/types";
 // Loads, Invoices, Analytics), so Dispatch sits among the carrier's sections like DOT Compliance
 // and MCPT. TOSS Cloud serves every service; dispatch is one of them.
 
-export type CompanyTab = "units" | "trucks" | "trailers" | "drivers" | "docs" | "vault" | "profile" | "services" | "dot" | "mcpt" | "dispatch";
+export type CompanyTab = "units" | "trucks" | "trailers" | "drivers" | "docs" | "vault" | "profile" | "services" | "dot" | "mcpt" | "dispatch" | "billing";
+
+/** Where a carrier tab lives: Dispatch and Billing have their own pages, the rest are on Fleet & Company. */
+export const companyTabHref = (t: CompanyTab) => (t === "dispatch" ? "/dispatch" : t === "billing" ? "/billing" : `/fleet?tab=${t}`);
 
 /** Carrier name with its MC / DOT (and the dispatch fee when it has Dispatch). */
 export function CompanyHeader({ company }: { company: Company }) {
@@ -80,12 +84,13 @@ export function CompanyTabs({ company, value, onChange }: { company: Company; va
     profile: { value: "profile", label: <><Settings2 className="h-4 w-4" /> Profile</> },
     services: { value: "services", label: <><Layers className="h-4 w-4" /> Services</> },
     dispatch: { value: "dispatch", label: <><Route className="h-4 w-4" /> Dispatch</> },
+    billing: { value: "billing", label: <><Wallet className="h-4 w-4" /> Billing</> },
     dot: { value: "dot", label: <><ShieldCheck className="h-4 w-4" /> DOT Compliance</> },
     mcpt: { value: "mcpt", label: <><Stamp className="h-4 w-4" /> MCPT</> },
   };
   const order: CompanyTab[] = office
-    ? ["profile", "services", "dispatch", "dot", "mcpt", "drivers", "trucks", "trailers", "docs", "vault", "units"]
-    : ["dispatch", "units", "trucks", "trailers", "drivers", "docs", "vault", "services", "dot", "mcpt", "profile"];
+    ? ["profile", "services", "billing", "dispatch", "dot", "mcpt", "drivers", "trucks", "trailers", "docs", "vault", "units"]
+    : ["dispatch", "units", "trucks", "trailers", "drivers", "docs", "vault", "services", "dot", "mcpt", "billing", "profile"];
   const tabs = order
     .filter((k) =>
       k === "dispatch"
@@ -132,19 +137,42 @@ function DispatchSubTabs() {
   );
 }
 
-/** Carriers · Dispatch, when every carrier is shown ("All companies"). */
-export function AllCarriersTabs({ value }: { value: "carriers" | "dispatch" }) {
+type AllTab = "carriers" | "dispatch" | "billing";
+const ALL_HREF: Record<AllTab, string> = { carriers: "/fleet", dispatch: "/dispatch", billing: "/billing" };
+
+/** Carriers · Dispatch · Billing, when every carrier is shown ("All companies"). */
+export function AllCarriersTabs({ value }: { value: AllTab }) {
   const router = useRouter();
   return (
-    <Tabs<"carriers" | "dispatch">
+    <Tabs<AllTab>
       value={value}
-      onChange={(v) => router.push(v === "carriers" ? "/fleet" : "/dispatch")}
+      onChange={(v) => router.push(ALL_HREF[v])}
       className="mb-5"
       tabs={[
         { value: "carriers", label: <><Building2 className="h-4 w-4" /> Carriers</> },
         { value: "dispatch", label: <><Route className="h-4 w-4" /> Dispatch</> },
+        { value: "billing", label: <><Wallet className="h-4 w-4" /> Billing</> },
       ]}
     />
+  );
+}
+
+/** Top of the Billing page: the carrier's header and tabs (Billing selected), or Carriers · Dispatch · Billing. */
+export function BillingFrame() {
+  const { scope, companies } = useStore();
+  const router = useRouter();
+  const company = scope !== "all" ? companies.find((c) => c.id === scope) : undefined;
+  return (
+    <div className="no-print">
+      {company ? (
+        <>
+          <CompanyHeader company={company} />
+          <CompanyTabs company={company} value="billing" onChange={(t) => t !== "billing" && router.push(companyTabHref(t))} />
+        </>
+      ) : (
+        <AllCarriersTabs value="billing" />
+      )}
+    </div>
   );
 }
 
@@ -161,7 +189,7 @@ export function DispatchFrame() {
       {company ? (
         <>
           <CompanyHeader company={company} />
-          <CompanyTabs company={company} value="dispatch" onChange={(t) => t !== "dispatch" && router.push(`/fleet?tab=${t}`)} />
+          <CompanyTabs company={company} value="dispatch" onChange={(t) => t !== "dispatch" && router.push(companyTabHref(t))} />
         </>
       ) : (
         <AllCarriersTabs value="dispatch" />

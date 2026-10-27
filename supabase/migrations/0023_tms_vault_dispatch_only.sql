@@ -17,12 +17,13 @@ grant execute on function tms_private.sees_dispatch() to authenticated;
 
 create or replace view public.tms_vault_items as
   select v.id, v.company_id, v.category, v.title, v.url, v.username,
-         case when v.password_enc is null then null
-              else extensions.pgp_sym_decrypt(v.password_enc, tms_private.vault_key()) end as password,
+         tms_private.vault_decrypt(v.password_enc) as password,
          v.account_number, v.contact_name, v.contact_email, v.contact_phone, v.role_title,
          v.notes, v.custom_fields, v.sort_order, v.created_at, v.updated_at, v.dispatch_only
   from tms_private.vault_items v
   where tms_private.is_member() and (not v.dispatch_only or tms_private.sees_dispatch());
+-- Runs as the caller (see 0001 section 15): members read the encrypted table through RLS.
+alter view public.tms_vault_items set (security_invoker = true);
 
 create or replace function tms_private.vault_write()
 returns trigger language plpgsql security definer set search_path = '' as $$

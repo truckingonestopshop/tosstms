@@ -29,7 +29,7 @@ import { DriverCard, DriverForm, DriverSheet, driverAlert } from "@/components/f
 import { DriversTable } from "@/components/fleet/DriversTable";
 import { DotComplianceTab, McptTab } from "@/components/fleet/Compliance";
 import { Vault } from "@/components/fleet/Vault";
-import { AllCarriersTabs, CompanyHeader, CompanyTabs, type CompanyTab } from "@/components/fleet/CompanyNav";
+import { AllCarriersTabs, CompanyHeader, CompanyTabs, companyTabHref, type CompanyTab } from "@/components/fleet/CompanyNav";
 import { CompanyOverview, ServicesOverview } from "@/components/fleet/CompanyProfile";
 import { TrailersTab } from "@/components/fleet/Trailers";
 import { UnitsTab } from "@/components/fleet/Units";
@@ -41,7 +41,7 @@ import { ACTIVE_STATUSES, daysUntil, lane, money, num, today } from "@/lib/forma
 import { availability, equipmentLine, pitchFor } from "@/lib/pitch";
 import type { Company, Driver, Truck } from "@/lib/types";
 
-type Tab = Exclude<CompanyTab, "dispatch">;
+type Tab = Exclude<CompanyTab, "dispatch" | "billing">;
 
 export default function FleetPage() {
   return (
@@ -207,8 +207,8 @@ function CompanyView({ company }: { company: Company }) {
   return (
     <>
       <CompanyHeader company={company} />
-      {/* Dispatch opens its own pages (Dashboard, Loads, Invoices, Analytics) under this carrier */}
-      <CompanyTabs company={company} value={tab} onChange={(next) => (next === "dispatch" ? router.push("/dispatch") : setTab(next))} />
+      {/* Dispatch and Billing open their own pages, still under this carrier */}
+      <CompanyTabs company={company} value={tab} onChange={(next) => (next === "dispatch" || next === "billing" ? router.push(companyTabHref(next)) : setTab(next))} />
       {tab === "units" && <UnitsTab company={company} />}
       {tab === "trucks" && <TrucksTab company={company} trucks={t} />}
       {tab === "trailers" && <TrailersTab company={company} />}
