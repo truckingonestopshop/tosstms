@@ -135,7 +135,8 @@ export function LoadsCalendar({ loads }: { loads: Load[] }) {
                     >
                       <span className="block truncate">
                         <span className="font-semibold">{l.origin_state}→{l.destination_state}</span>{" "}
-                        <span className="text-fg-3">{driverById(l.driver_id)?.name.split(" ")[0] || truckById(l.truck_id)?.unit_number || ""}</span>
+                        <span className="text-fg-3">{driverById(l.driver_id)?.name.split(" ")[0]}</span>
+                        {truckById(l.truck_id)?.unit_number && <span className="tnum text-fg-4"> #{truckById(l.truck_id)!.unit_number.replace(/^#/, "")}</span>}
                       </span>
                       {win(l) && (
                         <span className="tnum mt-0.5 flex items-center gap-1 truncate text-[10px] text-fg-3">
@@ -171,6 +172,7 @@ export function LoadsCalendar({ loads }: { loads: Load[] }) {
                   </div>
                   <div className="truncate text-xs text-fg-3">
                     {STATUS[l.status].label} · {driverById(l.driver_id)?.name || "No driver"}
+                    {truckById(l.truck_id)?.unit_number && ` · #${truckById(l.truck_id)!.unit_number.replace(/^#/, "")}`}
                     {win(l) && ` · ${by === "pickup" ? "PU" : "DEL"} ${win(l)}`}
                   </div>
                 </div>
