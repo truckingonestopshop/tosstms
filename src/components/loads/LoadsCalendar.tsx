@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Field";
 import { Card } from "@/components/ui/Bits";
-import { STATUS, cn, money, parseDay, toDay, today } from "@/lib/format";
+import { STATUS, cn, money, parseDay, stopWindow, toDay, today } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import type { Load } from "@/lib/types";
 
@@ -53,6 +53,14 @@ export function LoadsCalendar({ loads }: { loads: Load[] }) {
   const monthKey = toDay(month).slice(0, 7);
   const monthLoads = loads.filter((l) => ((by === "pickup" ? l.pickup_date : l.delivery_date) || "").startsWith(monthKey));
   const agendaDays = [...byDay.keys()].filter((k) => k.startsWith(monthKey)).sort();
+
+  // Pickups show the pickup window, Deliveries the delivery window (from the rate con or typed on the load).
+  const win = (l: Load) => stopWindow(l, by);
+  const tip = (l: Load) => {
+    const pu = stopWindow(l, "pickup");
+    const del = stopWindow(l, "delivery");
+    return [`${l.origin_city}, ${l.origin_state} → ${l.destination_city}, ${l.destination_state}`, pu && `Pickup: ${pu}`, del && `Delivery: ${del}`].filter(Boolean).join("\n");
+  };
 
   const shift = (n: number) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + n, 1));
 
@@ -122,11 +130,19 @@ export function LoadsCalendar({ loads }: { loads: Load[] }) {
                     <Link
                       key={l.id}
                       href={`/loads/${l.id}`}
-                      title={`${l.origin_city}, ${l.origin_state} → ${l.destination_city}, ${l.destination_state}`}
-                      className={cn("block truncate rounded-md border-l-[3px] bg-surface-2 px-1.5 py-1 text-[11px] leading-tight text-fg hover:bg-surface-3", STATUS[l.status].chip)}
+                      title={tip(l)}
+                      className={cn("block rounded-md border-l-[3px] bg-surface-2 px-1.5 py-1 text-[11px] leading-tight text-fg hover:bg-surface-3", STATUS[l.status].chip)}
                     >
-                      <span className="font-semibold">{l.origin_state}→{l.destination_state}</span>{" "}
-                      <span className="text-fg-3">{driverById(l.driver_id)?.name.split(" ")[0] || truckById(l.truck_id)?.unit_number || ""}</span>
+                      <span className="block truncate">
+                        <span className="font-semibold">{l.origin_state}→{l.destination_state}</span>{" "}
+                        <span className="text-fg-3">{driverById(l.driver_id)?.name.split(" ")[0] || truckById(l.truck_id)?.unit_number || ""}</span>
+                      </span>
+                      {win(l) && (
+                        <span className="tnum mt-0.5 flex items-center gap-1 truncate text-[10px] text-fg-3">
+                          <Clock className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">{win(l)}</span>
+                        </span>
+                      )}
                     </Link>
                   ))}
                   {items.length > 3 && <div className="px-1 text-[11px] text-fg-3">+{items.length - 3} more</div>}
@@ -155,6 +171,7 @@ export function LoadsCalendar({ loads }: { loads: Load[] }) {
                   </div>
                   <div className="truncate text-xs text-fg-3">
                     {STATUS[l.status].label} · {driverById(l.driver_id)?.name || "No driver"}
+                    {win(l) && ` · ${by === "pickup" ? "PU" : "DEL"} ${win(l)}`}
                   </div>
                 </div>
                 <span className="tnum text-[13px] font-semibold text-fg">{money(l.gross_amount, { cents: false })}</span>

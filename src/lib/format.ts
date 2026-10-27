@@ -94,6 +94,19 @@ export function fileSize(bytes: number | null | undefined) {
 export const lane = (l: Pick<Load, "origin_city" | "origin_state" | "destination_city" | "destination_state">) =>
   `${place(l.origin_city, l.origin_state)} → ${place(l.destination_city, l.destination_state)}`;
 
+/**
+ * The first pickup's or last delivery's time window / appointment, as entered or read from the
+ * rate con ("FCFS 08:00–15:00", "Appt 10:00"); just the time when there is no window.
+ */
+export const stopWindow = (l: Pick<Load, "stops">, type: "pickup" | "delivery") => {
+  const stops = (l.stops || []).filter((s) => s.type === type);
+  const s = type === "pickup" ? stops[0] : stops[stops.length - 1];
+  if (!s) return "";
+  const appt = (s.appointment || "").trim();
+  const time = (s.time || "").trim();
+  return appt && time && !appt.includes(time) ? `${time} · ${appt}` : appt || time;
+};
+
 export const place = (city?: string | null, state?: string | null) =>
   [city, state].filter(Boolean).join(", ") || "—";
 
