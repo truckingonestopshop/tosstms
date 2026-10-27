@@ -200,6 +200,37 @@ export async function routeStops(stops: StopQuery[], from?: StopQuery | null): P
   return out;
 }
 
+const matrixCache = new Map<string, number | null>();
+const pt = (p: [number, number]) => `${p[0].toFixed(4)},${p[1].toFixed(4)}`;
+
+/**
+ * Driving miles from each point in `from` to `to` (Mapbox Matrix: 24 origins per call, cached).
+ * null where no road route was found.
+ */
+export async function roadMiles(to: [number, number], from: [number, number][]): Promise<(number | null)[]> {
+  if (!TOKEN) throw new Error("Mapbox token is not configured");
+  const out: (number | null)[] = from.map((f) => (matrixCache.has(`${pt(f)}>${pt(to)}`) ? matrixCache.get(`${pt(f)}>${pt(to)}`)! : null));
+  const todo = from.map((f, i) => i).filter((i) => !matrixCache.has(`${pt(from[i])}>${pt(to)}`));
+  for (let k = 0; k < todo.length; k += 24) {
+    const batch = todo.slice(k, k + 24);
+    const coords = [to, ...batch.map((i) => from[i])].map(pt).join(";");
+    const sources = batch.map((_, j) => j + 1).join(";");
+    const url = `https://api.mapbox.com/directions-matrix/v1/mapbox/driving/${coords}?sources=${sources}&destinations=0&annotations=distance&access_token=${TOKEN}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error(`Road miles failed (${res.status})`);
+    const data = await res.json();
+    const rows: (number | null)[][] = data?.distances || [];
+    batch.forEach((i, j) => {
+      const m = rows[j]?.[0];
+      const miles = typeof m === "number" ? Math.round(m / METERS_PER_MILE) : null;
+      out[i] = miles;
+      if (matrixCache.size > 5000) matrixCache.clear();
+      matrixCache.set(`${pt(from[i])}>${pt(to)}`, miles);
+    });
+  }
+  return out;
+}
+
 const suggestCache = new Map<string, string[]>();
 
 /** Cities and ZIPs matching what's typed so far, as "City, ST" / "City, ST 12345" (US, Canada, Mexico). */

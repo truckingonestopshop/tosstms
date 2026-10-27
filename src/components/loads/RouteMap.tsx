@@ -8,10 +8,10 @@ import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/format";
 import type { RouteData } from "@/lib/route";
 
-const STYLE = { light: "mapbox://styles/mapbox/light-v11", dark: "mapbox://styles/mapbox/dark-v11" };
+export const STYLE = { light: "mapbox://styles/mapbox/light-v11", dark: "mapbox://styles/mapbox/dark-v11" };
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-function webglAvailable() {
+export function webglAvailable() {
   try {
     const c = document.createElement("canvas");
     return !!(c.getContext("webgl2") || c.getContext("webgl"));
@@ -67,7 +67,7 @@ function staticUrl(route: RouteData, types: ("pickup" | "delivery")[], theme: "l
 }
 
 /** Raises positioned ancestors above the header; returns a function that undoes it. */
-function liftAncestors(el: HTMLElement | null) {
+export function liftAncestors(el: HTMLElement | null) {
   const lifted: [HTMLElement, string][] = [];
   for (let a = el?.parentElement; a && a !== document.body; a = a.parentElement) {
     const cs = getComputedStyle(a);

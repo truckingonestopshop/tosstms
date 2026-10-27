@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   CalendarDays,
+  Map as MapIcon,
   Columns3,
   Download,
   FileCheck2,
@@ -29,13 +30,14 @@ import { confirmDialog } from "@/components/ui/Confirm";
 import { StatusMenu, StatusPill } from "@/components/loads/StatusMenu";
 import { LoadsBoard } from "@/components/loads/LoadsBoard";
 import { LoadsCalendar } from "@/components/loads/LoadsCalendar";
+import { TruckMap } from "@/components/loads/TruckMap";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { downloadCsv } from "@/lib/csv";
 import { STATUS, STATUS_ORDER, addDays, cn, fmtDay, isCanceled, lane, money, num, rpm, today, totalMiles } from "@/lib/format";
 import type { Load, LoadStatus } from "@/lib/types";
 
-type View = "list" | "board" | "calendar";
+type View = "list" | "board" | "calendar" | "map";
 type StatusTab = "all" | "active" | LoadStatus | "canceled";
 type Range = "all" | "today" | "week" | "30d" | "month" | "last_month";
 
@@ -235,6 +237,7 @@ function Loads() {
                 { value: "list", label: <><List className="h-3.5 w-3.5" /> <span className="hidden sm:inline">List</span></> },
                 { value: "board", label: <><Columns3 className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Board</span></> },
                 { value: "calendar", label: <><CalendarDays className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Calendar</span></> },
+                { value: "map", label: <><MapIcon className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Map</span></> },
               ]}
             />
             <Popover
@@ -265,6 +268,10 @@ function Loads() {
         }
       />
 
+      {view === "map" ? (
+        <TruckMap />
+      ) : (
+        <>
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Loads" value={num(stats.count)} sub={`${counts.in_transit || 0} in transit · ${counts.booked || 0} booked`} />
         <Stat label="Gross" value={money(stats.gross, { cents: false })} sub={`${money(stats.fee)} TOSS fee`} />
@@ -597,6 +604,8 @@ function Loads() {
               </div>
             </div>
           )}
+        </>
+      )}
         </>
       )}
     </Page>
