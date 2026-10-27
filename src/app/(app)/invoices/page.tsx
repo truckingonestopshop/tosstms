@@ -1,6 +1,6 @@
 "use client";
 
-import { DispatchFrame } from "@/components/fleet/CompanyNav";
+import { DispatchFrame, DispatchGate } from "@/components/fleet/CompanyNav";
 import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -21,9 +21,11 @@ const usd = (n: number) => money(n);
 
 export default function InvoicesPage() {
   return (
-    <Suspense>
-      <Invoices />
-    </Suspense>
+    <DispatchGate>
+      <Suspense>
+        <Invoices />
+      </Suspense>
+    </DispatchGate>
   );
 }
 

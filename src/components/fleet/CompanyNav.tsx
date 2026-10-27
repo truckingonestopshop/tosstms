@@ -19,8 +19,11 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { CopyButton, PageHeader, Tabs } from "@/components/ui/Bits";
+import { useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { Card, CopyButton, Empty, Page, PageHeader, Tabs } from "@/components/ui/Bits";
 import { useStore } from "@/lib/store";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
 import { hasService } from "@/lib/services";
 import type { Company } from "@/lib/types";
@@ -94,7 +97,7 @@ export function CompanyTabs({ company, value, onChange }: { company: Company; va
   const tabs = order
     .filter((k) =>
       k === "dispatch"
-        ? hasService(company, "dispatch") || value === "dispatch"
+        ? hasService(company, "dispatch")
         : k === "dot"
           ? hasService(company, "dot_compliance")
           : k === "mcpt"
@@ -196,5 +199,43 @@ export function DispatchFrame() {
       )}
       <DispatchSubTabs />
     </div>
+  );
+}
+
+/**
+ * Wraps a Dispatch page. When the chosen carrier doesn't have the Dispatch service, it shows the
+ * carrier's tabs and a note with a button to turn Dispatch on, instead of an empty dashboard.
+ */
+export function DispatchGate({ children }: { children: React.ReactNode }) {
+  const { scopedCompany, updateCompany } = useStore();
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  if (!scopedCompany || hasService(scopedCompany, "dispatch")) return <>{children}</>;
+  const company = scopedCompany;
+  const turnOn = async () => {
+    setBusy(true);
+    const ok = await updateCompany(company.id, { services: { ...company.services, dispatch: { ...company.services?.dispatch, on: true } } });
+    setBusy(false);
+    if (ok) toast.success("Dispatch turned on");
+  };
+  return (
+    <Page>
+      <div className="no-print">
+        <CompanyHeader company={company} />
+        <CompanyTabs company={company} value="dispatch" onChange={(t) => router.push(companyTabHref(t))} />
+      </div>
+      <Card>
+        <Empty
+          icon={Route}
+          title={`${company.name} doesn't have Dispatch`}
+          body="Dispatch (dashboard, loads, invoices and analytics) shows for carriers that have the Dispatch service. Turn it on to start booking loads for this carrier."
+          action={
+            <Button variant="primary" onClick={turnOn} disabled={busy}>
+              <Route className="h-4 w-4" /> Turn on Dispatch
+            </Button>
+          }
+        />
+      </Card>
+    </Page>
   );
 }

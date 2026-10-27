@@ -11,6 +11,7 @@ import { RateConDrop } from "./RateConDrop";
 import { StopsEditor, newStop } from "./StopsEditor";
 import { RouteMap } from "./RouteMap";
 import { useStore } from "@/lib/store";
+import { hasService } from "@/lib/services";
 import { toast } from "@/lib/toast";
 import { useRoute } from "@/lib/route";
 import { STATUS, STATUS_ORDER, cn, cut, money, num } from "@/lib/format";
@@ -87,8 +88,10 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
   const router = useRouter();
   const { companies, drivers, trucks, trailers, members, me, scope, companyById, truckById, createLoad, updateLoad, uploadDocument, loads } = useStore();
   const editing = !!load;
+  // Loads are booked only for carriers with the Dispatch service (an existing load keeps its carrier).
+  const carriers = companies.filter((c) => hasService(c, "dispatch") || c.id === load?.company_id);
 
-  const initialCompany = load?.company_id || (scope !== "all" ? scope : companies.length === 1 ? companies[0].id : "");
+  const initialCompany = load?.company_id || (scope !== "all" && carriers.some((c) => c.id === scope) ? scope : carriers.length === 1 ? carriers[0].id : "");
   const [d, setD] = useState<Draft>(() =>
     load
       ? fromLoad(load)
@@ -162,7 +165,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
     const x = r.data;
     let companyId = d.company_id;
     if (x.carrier_name) {
-      const c = companies.find((c) => squash(c.name).includes(squash(x.carrier_name!)) || squash(x.carrier_name!).includes(squash(c.name)));
+      const c = carriers.find((c) => squash(c.name).includes(squash(x.carrier_name!)) || squash(x.carrier_name!).includes(squash(c.name)));
       if (c) companyId = c.id;
     }
     const pool = drivers.filter((v) => !companyId || v.company_id === companyId);
@@ -282,7 +285,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
             <Field label="Carrier company" required className="sm:col-span-2 lg:col-span-1">
               <Select value={d.company_id} onChange={(e) => set({ company_id: e.target.value, driver_id: "", truck_id: "", trailer_id: "" })}>
                 <option value="">Select…</option>
-                {companies.map((c) => (
+                {carriers.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>

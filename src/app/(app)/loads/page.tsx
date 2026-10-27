@@ -1,6 +1,6 @@
 "use client";
 
-import { DispatchFrame } from "@/components/fleet/CompanyNav";
+import { DispatchFrame, DispatchGate } from "@/components/fleet/CompanyNav";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -43,9 +43,11 @@ const PAGE = 25;
 
 export default function LoadsPage() {
   return (
-    <Suspense>
-      <Loads />
-    </Suspense>
+    <DispatchGate>
+      <Suspense>
+        <Loads />
+      </Suspense>
+    </DispatchGate>
   );
 }
 

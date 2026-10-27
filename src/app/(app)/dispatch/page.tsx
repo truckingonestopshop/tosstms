@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { DispatchFrame } from "@/components/fleet/CompanyNav";
+import { DispatchFrame, DispatchGate } from "@/components/fleet/CompanyNav";
 import { useMemo } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, Building2, CalendarClock, FileWarning, Plus, Truck as TruckIcon } from "lucide-react";
 import { ButtonLink } from "@/components/ui/Button";
@@ -21,7 +21,15 @@ function greeting() {
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
-export default function Dashboard() {
+export default function DispatchPage() {
+  return (
+    <DispatchGate>
+      <Dashboard />
+    </DispatchGate>
+  );
+}
+
+function Dashboard() {
   const { me, loads, trucks, trailers, drivers, documents, docTypes, invoices, companies, inScope, scopedCompany, driverById, truckById, companyById } = useStore();
   const t = today();
   const month = t.slice(0, 7);

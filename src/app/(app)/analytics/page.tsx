@@ -1,6 +1,6 @@
 "use client";
 
-import { DispatchFrame } from "@/components/fleet/CompanyNav";
+import { DispatchFrame, DispatchGate } from "@/components/fleet/CompanyNav";
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +16,14 @@ import { balance, payState } from "@/lib/invoice";
 type Breakdown = "carrier" | "driver" | "truck" | "broker" | "lane" | "dispatcher";
 
 export default function AnalyticsPage() {
+  return (
+    <DispatchGate>
+      <Analytics />
+    </DispatchGate>
+  );
+}
+
+function Analytics() {
   const { loads, invoices, payments, inScope, scopedCompany, companyById, driverById, truckById, memberName } = useStore();
   const [range, setRange] = useState<RangeKey>("30d");
   const [from, setFrom] = useState("");
