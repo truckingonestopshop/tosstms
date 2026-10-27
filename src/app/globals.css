@@ -160,6 +160,24 @@
   }
 }
 
+/* A sideways scroller whose bar is easy to see and grab (the Loads board). */
+@utility scrollbar-bold {
+  scrollbar-color: var(--fg-4) transparent;
+  &::-webkit-scrollbar {
+    height: 12px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--fg-4);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--fg-3);
+    background-clip: padding-box;
+  }
+}
+
 @utility scrollbar-none {
   scrollbar-width: none;
   &::-webkit-scrollbar {

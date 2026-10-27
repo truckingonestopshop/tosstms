@@ -15,7 +15,9 @@ export function LoadsBoard({ loads }: { loads: Load[] }) {
   const [over, setOver] = useState<LoadStatus | null>(null);
 
   return (
-    <div className="scrollbar-none -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+    // Phones swipe between columns (no scrollbar); bigger screens get a visible scrollbar to reach the last columns.
+    <div className="sm:scrollbar-bold max-sm:scrollbar-none -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0 sm:pb-3">
+
       {COLUMNS.map((col) => {
         const items = loads.filter((l) => l.status === col).sort((a, b) => (a.pickup_date || "").localeCompare(b.pickup_date || ""));
         const total = items.reduce((s, l) => s + l.gross_amount, 0);
@@ -35,7 +37,7 @@ export function LoadsBoard({ loads }: { loads: Load[] }) {
               if (l && l.status !== col && (await setLoadStatus([id], col))) toast.success(`Moved to ${STATUS[col].label}`);
             }}
             className={cn(
-              "flex w-[82vw] max-w-[300px] shrink-0 snap-start flex-col rounded-xl border bg-surface-2/50 sm:w-[280px]",
+              "flex w-[82vw] max-w-[300px] shrink-0 snap-start flex-col rounded-xl border bg-surface-2/50 sm:w-[260px] 2xl:w-auto 2xl:min-w-[220px] 2xl:flex-1",
               over === col ? "border-brand bg-brand/5" : "border-line",
             )}
           >
