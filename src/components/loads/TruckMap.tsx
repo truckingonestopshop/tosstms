@@ -12,13 +12,23 @@ import { hasService } from "@/lib/services";
 import { toast } from "@/lib/toast";
 import { cn, today } from "@/lib/format";
 import { equipmentLine, pitchFor } from "@/lib/pitch";
-import { ROAD_FACTOR, airMiles, at, between, fmtMoment, fmtSpan, nowMin, truckSpots, verdict, type LngLat, type TruckSpot, type Verdict } from "@/lib/truckmap";
+import type { Load } from "@/lib/types";
+import { ROAD_FACTOR, airMiles, alongLine, at, between, fmtMoment, fmtSpan, nowMin, truckSpots, verdict, type LngLat, type TruckSpot, type Verdict } from "@/lib/truckmap";
 import { FleetMap, type MapDot } from "./FleetMap";
 import { liftAncestors } from "./RouteMap";
 
 // Map points for places, shared by every visit to the page.
 const geoCache = new Map<string, LngLat | null>();
 const roadCache = new Map<string, number | null>();
+// Driving route of a load (by load id + its stops), the same routing as the load page.
+const routeCache = new Map<string, LngLat[] | null>();
+const routeKey = (l: Load) => `${l.id}|${(l.stops || []).map((s) => [s.address, s.city, s.state, s.zip].join(",")).join(";")}`;
+
+/** Every `step`-th point (keeps first and last), so long routes stay light on the map. */
+const thin = (line: LngLat[], max: number) => {
+  const step = Math.max(1, Math.ceil(line.length / max));
+  return line.filter((_, i) => i % step === 0 || i === line.length - 1);
+};
 
 /** Map points for `places`, fetched once each; `pending` while some are still being looked up. */
 function useGeo(places: string[]) {
@@ -74,6 +84,8 @@ interface Row {
   point: LngLat | null;
   /** loaded right now: estimated position on the way to the delivery */
   nowPoint: LngLat | null;
+  /** the road still ahead of a loaded truck, now → delivery */
+  ahead: LngLat[] | null;
   miles: number | null;
   /** straight-line estimate while road miles load */
   est: boolean;
@@ -131,17 +143,45 @@ export function TruckMap() {
   const geo = useGeo([target, ...spots.flatMap((s) => [s.empty || "", s.now?.leg.from || "", s.now?.leg.to || ""])]);
   const targetPt = geo.get(target);
 
+  // Road routes of the loads trucks are on right now (one call each, cached).
+  const [routeV, bumpRoute] = useState(0);
+  const moving = spots.map((s) => s.now?.leg.load).filter((l): l is Load => !!l);
+  const movingKey = moving.map(routeKey).join("#");
+  useEffect(() => {
+    const todo = moving.filter((l) => !routeCache.has(routeKey(l))).slice(0, 30);
+    if (!todo.length) return;
+    Promise.all(
+      todo.map((l) =>
+        fetch("/api/miles", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ stops: (l.stops || []).map(({ address, city, state, zip }) => ({ address, city, state, zip })) }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d: { line?: LngLat[] } | null) => routeCache.set(routeKey(l), d?.line && d.line.length >= 2 ? thin(d.line, 400) : null))
+          .catch(() => routeCache.set(routeKey(l), null)),
+      ),
+    ).then(() => bumpRoute((x) => x + 1));
+    // movingKey stands for the list of loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movingKey]);
+
   const rows: Row[] = useMemo(() => {
     return spots.map((s) => {
       const point = geo.get(s.empty);
       const a = geo.get(s.now?.leg.from);
       const b = geo.get(s.now?.leg.to);
-      const nowPoint = s.now && a && b ? between(a, b, s.now.progress) : null;
+      // On the road route when we have it (else a straight line between the two cities).
+      const route = s.now ? routeCache.get(routeKey(s.now.leg.load)) : null;
+      const on = s.now && route ? alongLine(route, s.now.progress) : null;
+      const nowPoint = on ? on.point : s.now && a && b ? between(a, b, s.now.progress) : null;
+      const ahead = on ? on.rest : nowPoint && b ? [nowPoint, b] : null;
       if (!searching || !targetPt || !point || s.emptyAt == null)
         return {
           spot: s,
           point: searching ? point : nowPoint || point,
           nowPoint,
+          ahead,
           miles: null,
           est: false,
           v: null,
@@ -152,6 +192,7 @@ export function TruckMap() {
         spot: s,
         point,
         nowPoint,
+        ahead,
         miles,
         est: road == null,
         v: verdict(s.emptyAt, miles, deadline),
@@ -159,7 +200,7 @@ export function TruckMap() {
     });
     // geo / roadCache are read through refs that change with every lookup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spots, searching, targetPt, target, deadline, geo.v, roadV]);
+  }, [spots, searching, targetPt, target, deadline, geo.v, roadV, routeV]);
 
   // Real road miles for the 48 closest empty points (one call per 24).
   useEffect(() => {
@@ -198,6 +239,12 @@ export function TruckMap() {
   }, [rows, equip, searching, maxDh, hideLate, companyById]);
 
   const located = shown.filter((r) => r.point);
+  const tally = (["makes", "tight"] as const).map((k) => [shown.filter((r) => r.v?.verdict === k).length, k] as const).filter(([n]) => n > 0).map(([n, k]) => (k === "makes" ? `${n} make${n === 1 ? "s" : ""} it` : `${n} tight`));
+
+  // A truck picked on the map: bring its row into view in the list.
+  useEffect(() => {
+    if (selected) document.getElementById(`truck-row-${selected}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selected]);
   const unknown = shown.filter((r) => !r.point && !geo.pending);
 
   const colorOf = (r: Row) => {
@@ -212,13 +259,17 @@ export function TruckMap() {
     color: colorOf(r),
     title: `#${r.spot.truck.unit_number} · ${driverById(r.spot.driverId)?.name || "No driver"}${r.spot.empty ? ` · ${r.spot.empty}` : ""}`,
   }));
-  // Loaded trucks: a dashed line from where they are now to where they'll be empty.
+  // Loaded trucks: the rest of their road route, from where they are now to the delivery. In a
+  // search, a later load's empty point is joined on with a straight hop (its route isn't loaded).
   const lines = shown
     .map((r) => {
-      const to = searching ? r.point : geo.get(r.spot.now?.leg.to);
-      return r.nowPoint && to && airMiles(r.nowPoint, to) > 5 ? { id: r.spot.truck.id, from: r.nowPoint, to } : null;
+      if (!r.ahead || r.ahead.length < 2) return null;
+      const coords = [...r.ahead];
+      const end = coords[coords.length - 1];
+      if (searching && r.point && airMiles(end, r.point) > 5) coords.push(r.point);
+      return airMiles(coords[0], coords[coords.length - 1]) > 5 ? { id: r.spot.truck.id, coords } : null;
     })
-    .filter((x): x is { id: string; from: LngLat; to: LngLat } => !!x);
+    .filter((x): x is { id: string; coords: LngLat[] } => !!x);
   // A search shows the pickup city with at least its 150 mi ring, plus the closest trucks.
   const focus: LngLat[] =
     searching && targetPt
@@ -365,6 +416,7 @@ export function TruckMap() {
               <b className="text-fg">{shown.length}</b> truck
               {shown.length === 1 ? "" : "s"}
               {searching ? " · closest first" : ""}
+              {searching && tally.length > 0 && <span className="text-fg-4"> · {tally.join(" · ")}</span>}
             </span>
             {geo.pending && (
               <span className="inline-flex items-center gap-1">
@@ -421,6 +473,7 @@ function TruckRow({
   const emptyLine = s.empty == null ? "Location unknown: set “Truck at” on Units" : s.emptyAt == null || s.emptyAt <= now ? `Empty now · ${s.empty}` : `Empty ${fmtMoment(s.emptyAt)} · ${s.empty}`;
   return (
     <div
+      id={`truck-row-${t.id}`}
       role="button"
       tabIndex={0}
       onClick={onSelect}

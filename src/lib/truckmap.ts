@@ -205,3 +205,27 @@ export function fmtSpan(min: number) {
 }
 
 export { DEFAULT_PICKUP };
+
+/**
+ * The point `f` (0–1) of the way along a road line, and the rest of the line from there
+ * (where the truck still has to drive).
+ */
+export function alongLine(line: LngLat[], f: number): { point: LngLat; rest: LngLat[] } {
+  if (line.length < 2) return { point: line[0], rest: line };
+  const seg: number[] = [];
+  let total = 0;
+  for (let i = 1; i < line.length; i++) {
+    const d = airMiles(line[i - 1], line[i]);
+    seg.push(d);
+    total += d;
+  }
+  let goal = Math.min(1, Math.max(0, f)) * total;
+  for (let i = 0; i < seg.length; i++) {
+    if (goal <= seg[i] || i === seg.length - 1) {
+      const point = between(line[i], line[i + 1], seg[i] ? Math.min(1, goal / seg[i]) : 0);
+      return { point, rest: [point, ...line.slice(i + 1)] };
+    }
+    goal -= seg[i];
+  }
+  return { point: line[line.length - 1], rest: [line[line.length - 1]] };
+}

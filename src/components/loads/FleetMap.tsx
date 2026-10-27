@@ -48,7 +48,8 @@ export function FleetMap({
   className,
 }: {
   dots: MapDot[];
-  lines: { id: string; from: LngLat; to: LngLat }[];
+  /** road still ahead of each loaded truck, now → where it will be empty */
+  lines: { id: string; coords: LngLat[] }[];
   target: LngLat | null;
   /** points the view is fitted to when fitKey changes */
   focus: LngLat[];
@@ -132,7 +133,7 @@ export function FleetMap({
           features: lines.map((l) => ({
             type: "Feature",
             properties: { id: l.id },
-            geometry: { type: "LineString", coordinates: [l.from, l.to] },
+            geometry: { type: "LineString", coordinates: l.coords },
           })),
         },
         () =>
@@ -153,11 +154,11 @@ export function FleetMap({
         "heading-end",
         {
           type: "FeatureCollection",
-          features: lines.map((l) => ({
-            type: "Feature",
-            properties: {},
-            geometry: { type: "Point", coordinates: l.to },
-          })),
+          // Both ends: where the truck is now (filled) and where it will be empty (hollow).
+          features: lines.flatMap((l) => [
+            { type: "Feature" as const, properties: { start: true }, geometry: { type: "Point" as const, coordinates: l.coords[0] } },
+            { type: "Feature" as const, properties: { start: false }, geometry: { type: "Point" as const, coordinates: l.coords[l.coords.length - 1] } },
+          ]),
         },
         () =>
           m.addLayer({
@@ -166,7 +167,7 @@ export function FleetMap({
             source: "heading-end",
             paint: {
               "circle-radius": 4,
-              "circle-color": dark ? "#0d0d0f" : "#fff",
+              "circle-color": ["case", ["get", "start"], dark ? "#93c5fd" : "#2563eb", dark ? "#0d0d0f" : "#fff"],
               "circle-stroke-color": dark ? "#93c5fd" : "#2563eb",
               "circle-stroke-width": 2,
             },
@@ -183,6 +184,19 @@ export function FleetMap({
         el.style.cssText = `width:18px;height:18px;border-radius:999px;background:#f28c38;border:3px solid ${ringColor};box-shadow:0 0 0 6px rgba(242,140,56,.25),0 1px 4px rgba(0,0,0,.4)`;
         markers.current.push(new mapboxgl.Marker({ element: el }).setLngLat(target).addTo(m));
       }
+      // Trucks in the same spot are fanned out a little so each one can be clicked.
+      const groups = new Map<string, string[]>();
+      for (const d of dots) {
+        const k = `${d.point[0].toFixed(2)},${d.point[1].toFixed(2)}`;
+        groups.set(k, [...(groups.get(k) || []), d.id]);
+      }
+      const offsetOf = (d: MapDot): [number, number] => {
+        const g = groups.get(`${d.point[0].toFixed(2)},${d.point[1].toFixed(2)}`) || [];
+        if (g.length < 2) return [0, 0];
+        const a = (g.indexOf(d.id) / g.length) * 2 * Math.PI - Math.PI / 2;
+        const r = 12 + g.length * 2;
+        return [Math.round(Math.cos(a) * r), Math.round(Math.sin(a) * r)];
+      };
       // Selected last, so it sits on top.
       [...dots]
         .sort((a, b) => Number(a.id === selected) - Number(b.id === selected))
@@ -197,7 +211,7 @@ export function FleetMap({
             e.stopPropagation();
             onSelect(d.id);
           });
-          markers.current.push(new mapboxgl.Marker({ element: el }).setLngLat(d.point).addTo(m));
+          markers.current.push(new mapboxgl.Marker({ element: el, offset: offsetOf(d) }).setLngLat(d.point).addTo(m));
         });
 
       if (fitted.current !== fitKey && focus.length) {
