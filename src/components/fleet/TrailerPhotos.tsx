@@ -23,7 +23,14 @@ type Shot = { id: string; slot: string; src: string | null; name: string; pendin
 
 const isPdf = (name: string, type?: string | null) => type === "application/pdf" || /\.pdf$/i.test(name);
 
-type PhotoProps = { companyId: string; pending?: PendingPhoto[]; onPending?: (p: PendingPhoto[]) => void; compact?: boolean };
+type PhotoProps = {
+  companyId: string;
+  pending?: PendingPhoto[];
+  onPending?: (p: PendingPhoto[]) => void;
+  compact?: boolean;
+  /** a file was added to a slot (the driver form reads the license from it) */
+  onFile?: (slot: string, file: File) => void;
+};
 
 /** Trailer photos: side views, rear, interior, plate, and for reefers the unit and air chute. */
 export function TrailerPhotos({ trailerId, trailerType, ...p }: PhotoProps & { trailerId?: string | null; trailerType: string | null | undefined }) {
@@ -52,6 +59,7 @@ function EquipmentPhotos({
   pending = [],
   onPending,
   compact,
+  onFile,
 }: PhotoProps & { owner: "truck" | "trailer" | "driver"; ownerId?: string | null; slots: PhotoSlot[] }) {
   const { documents, uploadDocument, deleteDocument } = useStore();
   const prefix = `${owner}_photo_`;
@@ -82,6 +90,7 @@ function EquipmentPhotos({
     const list = Array.from(files).filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name) || (slot.pdf && isPdf(f.name, f.type)));
     if (!list.length) return toast.error(slot.pdf ? "Choose a photo or a PDF." : "Choose a photo (JPG, PNG, HEIC).");
     const picked = slot.many ? list : list.slice(0, 1);
+    if (picked[0]) onFile?.(slot.key, picked[0]);
     setBusy(slot.key);
     const ready = await Promise.all(picked.map((f) => compressImage(f)));
     if (!ownerId) {

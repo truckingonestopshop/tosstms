@@ -1,5 +1,6 @@
 "use client";
 
+import { DispatchFrame } from "@/components/fleet/CompanyNav";
 import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -91,6 +92,7 @@ function Invoices() {
 
   return (
     <Page>
+      <DispatchFrame />
       <PageHeader
         eyebrow={scopedCompany ? scopedCompany.name : "All companies"}
         title="Invoices"

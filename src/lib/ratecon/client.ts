@@ -188,3 +188,20 @@ export async function readRateCon(file: File, onStatus: (s: string) => void): Pr
   if (!r.ok) throw new Error((r.json as { error?: string }).error || "Couldn't read this file.");
   return r.json as ReadResult;
 }
+
+export type DocKind = "cab_card" | "license";
+export interface CabCard { unit_number: string; plate: string; plate_state: string; year: string; make: string; model: string; vin: string; expires: string }
+export interface License { first_name: string; last_name: string; license_number: string; region: string; license_type: string; expires: string }
+
+/** Reads a cab card or driving license (PDF or photo) for the truck / driver form. */
+export async function readDocument<K extends DocKind>(file: File, kind: K): Promise<K extends "cab_card" ? CabCard : License> {
+  const prep = await prepare(file, () => {});
+  const form = new FormData();
+  form.append("kind", kind);
+  if (prep.layout || prep.text) form.append("text", (prep.layout || prep.text).slice(0, 40_000));
+  for (const i of prep.images.slice(0, 4)) form.append("images", i);
+  const res = await fetch("/api/read-doc", { method: "POST", body: form, signal: AbortSignal.timeout(85000) });
+  const json = (await res.json().catch(() => ({}))) as { data?: unknown; error?: string };
+  if (!res.ok || !json.data) throw new Error(json.error || "Couldn't read this file.");
+  return json.data as K extends "cab_card" ? CabCard : License;
+}

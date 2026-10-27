@@ -10,8 +10,8 @@ import { toast } from "@/lib/toast";
 import { openDocument, errMsg } from "@/lib/db";
 import { cn, US_STATES } from "@/lib/format";
 import { docsOf } from "@/lib/docs";
-import { SERVICES, SOURCES } from "@/lib/services";
-import type { Company, ServiceInfo, ServiceKey, ServiceSource, Services } from "@/lib/types";
+import { AUTHORITY_STATUSES, SERVICES, SOURCES } from "@/lib/services";
+import type { AuthorityStatus, Company, ServiceInfo, ServiceKey, ServiceSource, Services } from "@/lib/types";
 
 /** Service details as typed (numbers stay text until saved). */
 type ServiceDraft = Omit<ServiceInfo, "percent" | "cards"> & {
@@ -25,6 +25,8 @@ export type CompanyDraft = {
   ein: string;
   mc_number: string;
   dot_number: string;
+  dot_status: AuthorityStatus | "";
+  mc_status: AuthorityStatus | "";
   status: "active" | "inactive";
   street: string;
   city: string;
@@ -68,6 +70,8 @@ export const toDraft = (c?: Company | null): CompanyDraft => {
     ein: c?.ein ?? "",
     mc_number: c?.mc_number ?? "",
     dot_number: c?.dot_number ?? "",
+    dot_status: c?.dot_status ?? "",
+    mc_status: c?.mc_status ?? "",
     status: c?.status ?? "active",
     // Carriers from before the address parts: the old one-line address goes in Street.
     street: c?.street ?? (hasParts ? "" : (c?.address ?? "").replace(/\n/g, ", ")),
@@ -114,6 +118,8 @@ export const fromDraft = (d: CompanyDraft): Partial<Company> => {
     ein: nz(d.ein),
     mc_number: d.mc_number.replace(/^mc[-\s#]*/i, ""),
     dot_number: d.dot_number.replace(/^(us)?dot[-\s#]*/i, ""),
+    dot_status: d.dot_status || null,
+    mc_status: d.mc_status || null,
     status: d.status,
     street: nz(d.street),
     city: nz(d.city),
@@ -340,13 +346,33 @@ export function CompanyFields({
         <Field label="EIN" hint="Optional" className="sm:col-span-3">
           <Input value={d.ein} onChange={(e) => set({ ein: e.target.value })} placeholder="12-3456789" inputMode="numeric" />
         </Field>
-        <Field label="USDOT number" required className="sm:col-span-2">
+        <Field label="USDOT number" required className="sm:col-span-3">
           <Input value={d.dot_number} onChange={(e) => set({ dot_number: e.target.value })} placeholder="3456789" inputMode="numeric" />
         </Field>
-        <Field label="MC number" className="sm:col-span-2">
+        <Field label="DOT status" className="sm:col-span-3">
+          <Select value={d.dot_status} onChange={(e) => set({ dot_status: e.target.value as CompanyDraft["dot_status"] })}>
+            <option value="">—</option>
+            {AUTHORITY_STATUSES.map((s) => (
+              <option key={s.v} value={s.v}>
+                {s.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="MC number" className="sm:col-span-3">
           <Input value={d.mc_number} onChange={(e) => set({ mc_number: e.target.value })} placeholder="1234567" inputMode="numeric" />
         </Field>
-        <Field label="Status" className="sm:col-span-2">
+        <Field label="MC status" className="sm:col-span-3">
+          <Select value={d.mc_status} onChange={(e) => set({ mc_status: e.target.value as CompanyDraft["mc_status"] })}>
+            <option value="">—</option>
+            {AUTHORITY_STATUSES.map((s) => (
+              <option key={s.v} value={s.v}>
+                {s.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Client status" hint="Working with TOSS" className="sm:col-span-3">
           <Select value={d.status} onChange={(e) => set({ status: e.target.value as "active" | "inactive" })}>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>

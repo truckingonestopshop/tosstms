@@ -1,5 +1,6 @@
 "use client";
 
+import { DispatchFrame } from "@/components/fleet/CompanyNav";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -219,6 +220,7 @@ function Loads() {
 
   return (
     <Page>
+      <DispatchFrame />
       <PageHeader
         eyebrow={scopedCompany ? scopedCompany.name : "All companies"}
         title="Loads"
@@ -254,6 +256,9 @@ function Loads() {
                 </>
               )}
             </Popover>
+            <ButtonLink href="/loads/new" variant="primary" className="hidden md:inline-flex">
+              <Plus className="h-4 w-4" /> New load
+            </ButtonLink>
           </>
         }
       />

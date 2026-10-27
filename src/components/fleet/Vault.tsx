@@ -3,17 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, ExternalLink, Eye, EyeOff, KeyRound, Lock, Pencil, Plus, Search, Trash2, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Field, Input, Segmented, Select, Textarea } from "@/components/ui/Field";
+import { Checkbox, Field, Input, Segmented, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { CopyButton, Empty, Pill, neutralPill } from "@/components/ui/Bits";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { errMsg, sb } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
+import { NameFields } from "@/components/ui/NameFields";
 import type { VaultCategory, VaultItem } from "@/lib/types";
 
 /** The logins the team keeps for most carriers (picked from a list; "Other" is typed). */
-const PRESETS: { title: string; category: VaultCategory; url?: string }[] = [
+const PRESETS: { title: string; category: VaultCategory; url?: string; dispatch_only?: boolean }[] = [
   { title: "DMV", category: "login" },
   { title: "DMV IFTA", category: "login" },
   { title: "DMV IRP", category: "login" },
@@ -28,6 +29,10 @@ const PRESETS: { title: string; category: VaultCategory; url?: string }[] = [
   { title: "NM PERMIT", category: "login" },
   { title: "KYID PERMIT", category: "login" },
   { title: "OR PERMIT", category: "login" },
+  // load boards: dispatch team only
+  { title: "DAT", category: "login", url: "https://one.dat.com", dispatch_only: true },
+  { title: "TRUCKSTOP", category: "login", url: "https://truckstop.com", dispatch_only: true },
+  { title: "123LOADBOARD", category: "login", url: "https://www.123loadboard.com", dispatch_only: true },
 ];
 const OTHER = "__other";
 
@@ -45,6 +50,7 @@ const blank = (v?: Partial<VaultItem>): Draft => ({
   role_title: v?.role_title ?? "",
   notes: v?.notes ?? "",
   custom_fields: v?.custom_fields ?? [],
+  dispatch_only: v?.dispatch_only ?? false,
 });
 
 /** Portal logins and key contacts for a carrier. Passwords are encrypted in the database. */
@@ -71,7 +77,7 @@ export function Vault({ companyId }: { companyId: string }) {
   const list = items.filter(
     (v) =>
       (cat === "all" || v.category === cat) &&
-      (!q || `${v.title} ${v.username} ${v.contact_name} ${v.url} ${v.notes}`.toLowerCase().includes(q.toLowerCase())),
+      (!q || `${v.title} ${v.username} ${v.contact_email} ${v.contact_name} ${v.url} ${v.notes}`.toLowerCase().includes(q.toLowerCase())),
   );
 
   const move = async (v: VaultItem, dir: -1 | 1) => {
@@ -99,7 +105,7 @@ export function Vault({ companyId }: { companyId: string }) {
     <div className="space-y-4">
       <div className="flex items-start gap-3 rounded-xl border border-line bg-surface-2/40 p-3.5 text-[13px] text-fg-2">
         <Lock className="mt-0.5 h-4 w-4 shrink-0 text-fg-3" />
-        <p>Logins and contacts for this carrier: load boards, factoring, ELD, insurance. Passwords are encrypted and only visible to the dispatch team.</p>
+        <p>Logins and contacts for this carrier, visible to the whole TOSS team. Load boards are dispatch only. Passwords are encrypted.</p>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -149,7 +155,10 @@ export function Vault({ companyId }: { companyId: string }) {
                   {v.category === "contact" ? <UserRound className="h-4 w-4" /> : <KeyRound className="h-4 w-4" />}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold text-fg">{v.title}</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-semibold text-fg">{v.title}</span>
+                    {v.dispatch_only && <span className="shrink-0 rounded-full border border-line px-1.5 text-[10px] font-medium text-fg-3">Dispatch only</span>}
+                  </div>
                   <Pill className={cn(neutralPill, "mt-0.5")}>{v.category === "login" ? "Login" : v.category === "contact" ? "Contact" : "Other"}</Pill>
                 </div>
                 <div className="flex shrink-0">
@@ -310,7 +319,7 @@ function VaultForm({
               // Swap what the previous pick filled in; keep anything typed by hand.
               const prev = PRESETS.find((x) => x.title === d.title);
               const url = d.url && d.url !== prev?.url ? d.url : "";
-              if (p) set({ title: p.title, category: p.category, url: url || p.url || "" });
+              if (p) set({ title: p.title, category: p.category, url: url || p.url || "", dispatch_only: !!p.dispatch_only });
               else if (prev) set({ title: "", url });
             }}
           >
@@ -342,23 +351,27 @@ function VaultForm({
             <Field label="Website" className="col-span-2">
               <Input value={d.url || ""} onChange={(e) => set({ url: e.target.value })} placeholder="https://" />
             </Field>
-            <Field label="Username / email">
+            <Field label="Username" className={d.category === "login" ? undefined : "col-span-2"}>
               <Input value={d.username || ""} onChange={(e) => set({ username: e.target.value })} autoComplete="off" />
             </Field>
+            {/* "Other" shows the email with the contact fields below */}
+            {d.category === "login" && (
+              <Field label="Email">
+                <Input value={d.contact_email || ""} onChange={(e) => set({ contact_email: e.target.value })} type="email" autoComplete="off" />
+              </Field>
+            )}
             <Field label="Password">
               <Input value={d.password || ""} onChange={(e) => set({ password: e.target.value })} autoComplete="new-password" />
             </Field>
-            <Field label="Account / customer #" className="col-span-2">
+            <Field label="Account / customer #">
               <Input value={d.account_number || ""} onChange={(e) => set({ account_number: e.target.value })} />
             </Field>
           </div>
         )}
         {d.category !== "login" && (
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Contact name">
-              <Input value={d.contact_name || ""} onChange={(e) => set({ contact_name: e.target.value })} />
-            </Field>
-            <Field label="Role">
+            <NameFields value={d.contact_name || ""} onChange={(v) => set({ contact_name: v })} />
+            <Field label="Role" className="col-span-2">
               <Input value={d.role_title || ""} onChange={(e) => set({ role_title: e.target.value })} />
             </Field>
             <Field label="Phone">
@@ -369,6 +382,7 @@ function VaultForm({
             </Field>
           </div>
         )}
+        <Checkbox checked={!!d.dispatch_only} onChange={(v) => set({ dispatch_only: v })} label={<span className="text-[13px]">Load board · dispatch team only</span>} />
         <div>
           <div className="mb-1.5 text-xs font-semibold text-fg-2">Extra fields</div>
           <div className="space-y-1.5">

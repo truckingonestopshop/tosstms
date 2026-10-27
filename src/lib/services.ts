@@ -1,6 +1,6 @@
 // Services a carrier can be active in (chosen on the company form) and where the sale came from.
 
-import type { Company, ServiceKey, ServiceSource } from "./types";
+import type { AuthorityStatus, Company, ServiceKey, ServiceSource } from "./types";
 
 export const SERVICES: { key: ServiceKey; label: string }[] = [
   { key: "dispatch", label: "Dispatch" },
@@ -25,6 +25,14 @@ export const SOURCES: { v: ServiceSource; label: string }[] = [
   { v: "referral", label: "Referred by client" },
   { v: "cross_sale", label: "Cross sale" },
 ];
+
+/** USDOT / MC status choices (oos = out of service). */
+export const AUTHORITY_STATUSES: { v: AuthorityStatus; label: string }[] = [
+  { v: "active", label: "Active" },
+  { v: "inactive", label: "Inactive" },
+  { v: "oos", label: "Out of service" },
+];
+export const authorityLabel = (v?: AuthorityStatus | null) => AUTHORITY_STATUSES.find((s) => s.v === v)?.label ?? "";
 
 export const sourceLabel = (v?: ServiceSource | null) => SOURCES.find((s) => s.v === v)?.label ?? "";
 export const serviceLabel = (k: ServiceKey) => SERVICES.find((s) => s.key === k)?.label ?? k;

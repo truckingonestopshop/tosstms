@@ -3,12 +3,13 @@
 import { ArrowRight, ExternalLink, FileText, Layers } from "lucide-react";
 import { Card, Empty, KV } from "@/components/ui/Bits";
 import { useStore } from "@/lib/store";
+import { CompanyTimeline } from "./CompanyTimeline";
 import { openDocument, errMsg } from "@/lib/db";
 import { toast } from "@/lib/toast";
-import { fmtDay } from "@/lib/format";
+import { cn, fmtDay } from "@/lib/format";
 import { docsOf } from "@/lib/docs";
-import { activeServices, sourceLabel } from "@/lib/services";
-import type { Company, ServiceInfo, ServiceKey } from "@/lib/types";
+import { activeServices, authorityLabel, sourceLabel } from "@/lib/services";
+import type { AuthorityStatus, Company, ServiceInfo, ServiceKey } from "@/lib/types";
 
 /** Service documents shown on its card. */
 const SERVICE_DOCS: Partial<Record<ServiceKey, string[]>> = {
@@ -125,38 +126,100 @@ export function ServicesOverview({ company, onMore }: { company: Company; onMore
   );
 }
 
-/** The carrier's details at a glance (office view). */
-export function CompanySummary({ company }: { company: Company }) {
-  const second = [company.secondary_first_name, company.secondary_last_name].filter(Boolean).join(" ");
+/** Active / Inactive / Out of service, colored only when it needs attention. */
+function AuthorityPill({ v }: { v?: AuthorityStatus | null }) {
+  if (!v) return <span className="text-fg-4">Not recorded</span>;
+  const cls = v === "oos" ? "text-red-700 dark:text-red-300" : v === "inactive" ? "text-amber-700 dark:text-amber-300" : "text-emerald-700 dark:text-emerald-300";
+  return <span className={cn("font-medium", cls)}>{authorityLabel(v)}</span>;
+}
+
+function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <Card className="p-4 sm:p-5">
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-        <KV label="DBA" className="col-span-2">
-          {company.dba_name}
-        </KV>
-        <KV label="USDOT">{company.dot_number}</KV>
-        <KV label="MC">{company.mc_number}</KV>
-        <KV label="EIN">{company.ein}</KV>
-        <KV label="Status">{company.status === "active" ? "Active" : "Inactive"}</KV>
-        <KV label="Address" className="col-span-2">
-          <span className="whitespace-pre-line">{company.address}</span>
-        </KV>
-        <KV label="Owner" className="col-span-2">
-          {company.contact_name}
-        </KV>
-        <KV label="Phone">{company.contact_phone}</KV>
-        <KV label="Email">{company.contact_email}</KV>
+    <Card className={cn("p-4 sm:p-5", className)}>
+      <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-fg-4">{title}</div>
+      {children}
+    </Card>
+  );
+}
+
+/** Everything about the carrier on one page, read-only (Edit opens the form). */
+export function CompanyOverview({ company, onServices }: { company: Company; onServices: () => void }) {
+  const second = [company.secondary_first_name, company.secondary_last_name].filter(Boolean).join(" ");
+  const services = activeServices(company);
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <Section title="Company" className="lg:col-span-2">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+          <KV label="Legal name" className="col-span-2 sm:col-span-3">
+            {company.name}
+          </KV>
+          <KV label="DBA">{company.dba_name}</KV>
+          <KV label="EIN">{company.ein}</KV>
+          <KV label="Client status">{company.status === "active" ? "Active" : "Inactive"}</KV>
+          <KV label="USDOT">{company.dot_number}</KV>
+          <KV label="DOT status">
+            <AuthorityPill v={company.dot_status} />
+          </KV>
+          <div className="hidden sm:block" />
+          <KV label="MC">{company.mc_number}</KV>
+          <KV label="MC status">
+            <AuthorityPill v={company.mc_status} />
+          </KV>
+        </div>
+      </Section>
+
+      <Section title="Address">
+        <div className="whitespace-pre-line text-sm text-fg">{company.address || <span className="text-fg-4">—</span>}</div>
+        {company.county && <div className="mt-1 text-xs text-fg-3">{company.county} County</div>}
+      </Section>
+
+      <Section title="Owner / main contact" className="lg:col-span-2">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+          <KV label="First name">{company.contact_first_name}</KV>
+          <KV label="Last name">{company.contact_last_name}</KV>
+          <KV label="Phone">{company.contact_phone}</KV>
+          <KV label="Email">{company.contact_email}</KV>
+        </div>
         {second && (
-          <>
-            <KV label="Secondary contact" className="col-span-2">
-              {[second, company.secondary_title].filter(Boolean).join(" · ")}
-            </KV>
+          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-4 sm:grid-cols-4">
+            <KV label="Secondary contact">{second}</KV>
+            <KV label="Role">{company.secondary_title}</KV>
             <KV label="Phone">{company.secondary_phone}</KV>
             <KV label="Email">{company.secondary_email}</KV>
-          </>
+          </div>
         )}
+      </Section>
+
+      <Section title="Services">
+        {services.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {services.map((s) => (
+              <span key={s.key} className="rounded-full border border-line px-2.5 py-1 text-xs font-medium text-fg-2">
+                {s.label}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-fg-4">No services selected.</p>
+        )}
+        <button type="button" onClick={onServices} className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-fg-2 hover:text-fg">
+          Service details <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+      </Section>
+
+      <div className="lg:col-span-2">
+        <Section title="Notes">
+          <p className="whitespace-pre-line text-sm text-fg-2">{company.notes || <span className="text-fg-4">No notes.</span>}</p>
+        </Section>
       </div>
-    </Card>
+      <div>
+        <div className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-fg-4">Links</div>
+        <CompanyLinks company={company} />
+      </div>
+      <div className="lg:col-span-3">
+        <CompanyTimeline companyId={company.id} />
+      </div>
+    </div>
   );
 }
 

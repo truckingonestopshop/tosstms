@@ -460,7 +460,6 @@ function Permits({ company }: { company: Company }) {
 
   const ready = () => {
     if (type === "__other" && !other.trim()) return toast.error("Type the permit name first."), false;
-    if (!expires) return toast.error("Enter the expiration date first."), false;
     return true;
   };
   const add = async (files: FileList | null) => {
@@ -476,7 +475,7 @@ function Permits({ company }: { company: Company }) {
       setOther("");
     }
     let n = 0;
-    for (const f of Array.from(files)) if (await uploadDocument(f, { company_id: company.id, doc_type: key, truck_id: truck || null, expires_on: expires })) n++;
+    for (const f of Array.from(files)) if (await uploadDocument(f, { company_id: company.id, doc_type: key, truck_id: truck || null, expires_on: expires || null })) n++;
     setBusy(false);
     if (n) {
       toast.success(`${docTypeName(key)} added`);
@@ -503,7 +502,7 @@ function Permits({ company }: { company: Company }) {
             <Input value={other} onChange={(e) => setOther(e.target.value)} placeholder="e.g. NJ permit" autoFocus />
           </Field>
         )}
-        <Field label="Expires (required)">
+        <Field label="Expires (optional)">
           <Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
         </Field>
         <Field label="Truck (optional)">

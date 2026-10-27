@@ -7,6 +7,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { ChoiceSelect } from "@/components/fleet/Trailers";
 import { POSITIONS } from "@/lib/profile";
+import { NameFields } from "@/components/ui/NameFields";
 import { toast } from "@/lib/toast";
 import { AccessEditor, type Access } from "./AccessEditor";
 import { api } from "./shared";
@@ -74,10 +75,8 @@ export function InviteDialog({ open, onClose, onDone }: { open: boolean; onClose
           <Field label="Work email" required className="sm:col-span-2">
             <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="name@truckingonestopshop.net" autoFocus />
           </Field>
-          <Field label="Full name" required>
-            <Input value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
-          </Field>
-          <Field label="Phone">
+          <NameFields value={name} onChange={setName} required />
+          <Field label="Phone" className="sm:col-span-2">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" />
           </Field>
           <Field label="Position" className="sm:col-span-2">

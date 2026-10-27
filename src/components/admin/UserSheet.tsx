@@ -10,6 +10,7 @@ import { confirmDialog } from "@/components/ui/Confirm";
 import { ChoiceSelect } from "@/components/fleet/Trailers";
 import { avatarUrl } from "@/lib/db";
 import { POSITIONS } from "@/lib/profile";
+import { NameFields } from "@/components/ui/NameFields";
 import { toast } from "@/lib/toast";
 import { cn, fmtDateTime, relTime } from "@/lib/format";
 import { AccessEditor, type Access } from "./AccessEditor";
@@ -137,9 +138,7 @@ export function UserSheet({
         <section>
           <Eyebrow className="mb-2">Profile</Eyebrow>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Full name" className="sm:col-span-2">
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
-            </Field>
+            <NameFields value={name} onChange={setName} />
             <Field label="Position">
               <ChoiceSelect value={position} onChange={setPosition} groups={[{ types: POSITIONS }]} placeholder="Select…" otherLabel="Other position…" />
             </Field>

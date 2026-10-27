@@ -13,8 +13,12 @@ export const POSITIONS = [
   "Track & Trace / Check Calls",
   "Carrier Onboarding",
   "Billing & Accounting",
+  "Accounting Manager",
   "Safety & Compliance",
+  "Safety Account Manager",
+  "MCPT Agent",
   "Sales / Carrier Recruiting",
+  "New Business Developer",
 ];
 
 /** US zones first (where the trucks run), then where the team may sit. */

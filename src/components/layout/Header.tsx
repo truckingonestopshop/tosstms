@@ -21,7 +21,6 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { LogoMark } from "@/components/brand/Logo";
-import { ButtonLink } from "@/components/ui/Button";
 import { Popover, MenuItem, MenuLabel, MenuSep } from "@/components/ui/Menu";
 import { useStore } from "@/lib/store";
 import { MemberAvatar } from "@/components/team/MemberAvatar";
@@ -118,15 +117,6 @@ export function Header() {
           >
             <Search className="h-[18px] w-[18px]" />
           </button>
-          <ButtonLink
-            href="/loads/new"
-            variant="primary"
-            size="sm"
-            className="hidden md:inline-flex"
-          >
-            <Plus className="h-4 w-4" />
-            New load
-          </ButtonLink>
           <UserMenu />
         </div>
       </div>

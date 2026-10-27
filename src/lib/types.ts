@@ -72,7 +72,12 @@ export interface Company {
   compliance?: Compliance;
   /** the GoHighLevel contact it came from (GHL → Cloud) */
   ghl_contact_id?: string | null;
+  /** USDOT and MC authority status, kept apart (typed by the team; null = not recorded) */
+  dot_status?: AuthorityStatus | null;
+  mc_status?: AuthorityStatus | null;
 }
+
+export type AuthorityStatus = "active" | "inactive" | "oos";
 
 export type ServiceKey = "dispatch" | "dot_compliance" | "mcpt" | "accounting" | "factoring" | "fuel_card" | "insurance";
 export type ServiceSource =
@@ -299,6 +304,18 @@ export interface LoadEvent {
   created_at: string;
 }
 
+/** Carrier timeline entry (Profile): automatic history and team notes with files. */
+export interface CompanyEvent {
+  id: string;
+  company_id: string;
+  kind: "created" | "note" | "document" | "service" | "status" | "update";
+  message: string | null;
+  attachments: { id: string; name: string; path: string; mime: string | null }[];
+  actor_id: string | null;
+  actor_name: string | null;
+  created_at: string;
+}
+
 export type DocScope = "company" | "load" | "driver" | "truck" | "trailer" | "any";
 
 /** When a document type is required. Loads: from that status on. */
@@ -450,6 +467,8 @@ export interface VaultItem {
   notes: string | null;
   custom_fields: { label: string; value: string }[];
   sort_order: number;
+  /** load boards: only the dispatch team (and owners) see it */
+  dispatch_only?: boolean;
   created_at: string;
   updated_at: string;
 }

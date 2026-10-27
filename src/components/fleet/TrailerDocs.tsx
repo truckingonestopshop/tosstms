@@ -48,8 +48,15 @@ export function TrailerDocs(p: { trailerId?: string | null; companyId: string; p
 }
 
 /** Truck registration (cab card) + annual inspection (see EquipmentDocs). */
-export function TruckDocs(p: { truckId?: string | null; companyId: string; pending?: PendingDoc[]; onPending?: (p: PendingDoc[]) => void }) {
-  return <EquipmentDocs owner="truck" ownerId={p.truckId} companyId={p.companyId} pending={p.pending} onPending={p.onPending} />;
+export function TruckDocs(p: {
+  truckId?: string | null;
+  companyId: string;
+  pending?: PendingDoc[];
+  onPending?: (p: PendingDoc[]) => void;
+  /** a file was picked for a slot (the form reads the cab card from it) */
+  onFile?: (slot: string, file: File) => void;
+}) {
+  return <EquipmentDocs owner="truck" ownerId={p.truckId} companyId={p.companyId} pending={p.pending} onPending={p.onPending} onFile={p.onFile} />;
 }
 
 /**
@@ -63,12 +70,14 @@ export function EquipmentDocs({
   companyId,
   pending = [],
   onPending,
+  onFile,
 }: {
   owner: Owner;
   ownerId?: string | null;
   companyId: string;
   pending?: PendingDoc[];
   onPending?: (p: PendingDoc[]) => void;
+  onFile?: (slot: string, file: File) => void;
 }) {
   const { documents, docTypes } = useStore();
   const SLOTS = owner === "truck" ? TRUCK_DOC_SLOTS : TRAILER_DOC_SLOTS;
@@ -100,6 +109,7 @@ export function EquipmentDocs({
             docType={docTypes.find((t) => t.key === slot.key)}
             pending={pending.find((p) => p.slot === slot.key)}
             onPending={(p) => onPending?.([...pending.filter((x) => x.slot !== slot.key), ...(p ? [p] : [])])}
+            onFile={onFile}
           />
         ))}
       </div>
@@ -118,6 +128,7 @@ function DocSlot({
   docType,
   pending,
   onPending,
+  onFile,
 }: {
   i: number;
   n: number;
@@ -129,6 +140,7 @@ function DocSlot({
   docType?: DocType;
   pending?: PendingDoc;
   onPending: (p: PendingDoc | null) => void;
+  onFile?: (slot: string, file: File) => void;
 }) {
   const { uploadDocument, updateDocument } = useStore();
   const input = useRef<HTMLInputElement>(null);
@@ -153,6 +165,7 @@ function DocSlot({
     if (!f) return;
     if (!OK_FILE.test(f.name)) return toast.error("Use a PDF or a photo (JPG, PNG, HEIC).");
     if (f.size > 25 * 1024 * 1024) return toast.error(`${f.name} is over 25 MB.`);
+    onFile?.(slot.key, f);
     if (!ownerId) return onPending({ slot: slot.key, file: f, expires: pending?.expires || "" });
     setBusy(true);
     const doc = await uploadDocument(f, { company_id: companyId, [owner === "truck" ? "truck_id" : "trailer_id"]: ownerId, doc_type: slot.key, expires_on: exp || null });

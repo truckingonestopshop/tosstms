@@ -89,7 +89,7 @@ function Admin() {
     return (
       <Page>
         <Card>
-          <Empty icon={ShieldCheck} title="Admin panel" body={loading ? "Checking access…" : error || "Only super admins can open the admin panel."} action={!loading ? <ButtonLink href="/">Back to dashboard</ButtonLink> : undefined} />
+          <Empty icon={ShieldCheck} title="Admin panel" body={loading ? "Checking access…" : error || "Only super admins can open the admin panel."} action={!loading ? <ButtonLink href="/fleet">Back to carriers</ButtonLink> : undefined} />
         </Card>
       </Page>
     );

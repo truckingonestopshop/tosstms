@@ -1,5 +1,6 @@
 "use client";
 
+import { DispatchFrame } from "@/components/fleet/CompanyNav";
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -75,6 +76,7 @@ export default function AnalyticsPage() {
 
   return (
     <Page>
+      <DispatchFrame />
       <PageHeader
         eyebrow={scopedCompany ? scopedCompany.name : "All companies"}
         title="Analytics"

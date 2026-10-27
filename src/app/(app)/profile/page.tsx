@@ -16,6 +16,7 @@ import { avatarUrl } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn, fmtDay, localDay } from "@/lib/format";
 import { HOURS_PRESETS, LANGUAGES, POSITIONS, TIMEZONES, buildSignature, localTime, tzLabel } from "@/lib/profile";
+import { NameFields } from "@/components/ui/NameFields";
 import type { Member, MemberProfile } from "@/lib/types";
 
 export default function ProfilePage() {
@@ -121,8 +122,8 @@ function Editor({ m, mine, companyName }: { m: Member; mine: boolean; companyNam
 
   return (
     <Page className="pb-28">
-      <Link href={mine ? "/" : "/settings"} className="mb-3 inline-flex items-center gap-1.5 text-[13px] text-fg-3 hover:text-fg">
-        <ArrowLeft className="h-3.5 w-3.5" /> {mine ? "Dashboard" : "Team"}
+      <Link href={mine ? "/fleet" : "/settings"} className="mb-3 inline-flex items-center gap-1.5 text-[13px] text-fg-3 hover:text-fg">
+        <ArrowLeft className="h-3.5 w-3.5" /> {mine ? "Carriers" : "Team"}
       </Link>
 
       {/* Identity */}
@@ -188,9 +189,7 @@ function Editor({ m, mine, companyName }: { m: Member; mine: boolean; companyNam
         <Card className="animate-rise" style={stagger(1, 60)}>
           <CardHeader title="Basics" subtitle="How you show up to the team, drivers and brokers" />
           <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:p-5">
-            <Field label="Full name" required className="sm:col-span-2">
-              <Input value={d.full_name} onChange={(e) => set({ full_name: e.target.value })} maxLength={120} autoComplete="name" />
-            </Field>
+            <NameFields value={d.full_name} onChange={(v) => set({ full_name: v })} required />
             <Field label="Position" className="sm:col-span-2">
               <ChoiceSelect value={d.position} onChange={(v) => set({ position: v })} groups={[{ types: POSITIONS }]} placeholder="Select your position…" otherLabel="Other position…" />
             </Field>

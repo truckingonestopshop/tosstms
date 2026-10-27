@@ -7,6 +7,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
+import { readDocument } from "@/lib/ratecon/client";
 import { cn, uid } from "@/lib/format";
 import { GEAR_PRESETS } from "@/lib/pitch";
 import { TrailerPicker } from "./Trailers";
@@ -72,6 +73,39 @@ export function TruckForm({
   const [gearName, setGearName] = useState("");
   const [gearQty, setGearQty] = useState("1");
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
+
+  // The cab card fills in what's still empty; anything typed stays.
+  const readCabCard = async (slot: string, file: File) => {
+    if (slot !== "registration") return;
+    toast.info("Reading the cab card…");
+    try {
+      const c = await readDocument(file, "cab_card");
+      const filled: string[] = [];
+      const take = (k: keyof Draft, v: string, label: string) => {
+        if (v && !String(d[k] ?? "").trim()) {
+          filled.push(label);
+          return { [k]: v };
+        }
+        return {};
+      };
+      const patch = {
+        ...take("unit_number", c.unit_number, "truck #"),
+        ...take("plate", c.plate, "plate"),
+        ...take("year", c.year, "year"),
+        ...take("make", c.make, "make"),
+        ...take("model", c.model, "model"),
+        ...take("vin_number", c.vin, "VIN"),
+      };
+      setD((x) => ({ ...x, ...patch }));
+      if (c.expires) {
+        setDocs((l) => l.map((p) => (p.slot === "registration" && !p.expires ? { ...p, expires: c.expires } : p)));
+        if (!truck) filled.push("expiry");
+      }
+      toast.success(filled.length ? `From the cab card: ${filled.join(", ")}. Check them before saving.` : "Nothing new to fill in from the cab card.");
+    } catch (e) {
+      toast.info(`Couldn't read the cab card: ${(e as Error).message} Fill it in by hand.`);
+    }
+  };
 
   useEffect(() => {
     if (open) setD(toDraft(truck));
@@ -217,7 +251,7 @@ export function TruckForm({
           </div>
         </div>
 
-        <TruckDocs truckId={truck?.id} companyId={companyId} pending={docs} onPending={setDocs} />
+        <TruckDocs truckId={truck?.id} companyId={companyId} pending={docs} onPending={setDocs} onFile={readCabCard} />
 
         <TruckPhotos truckId={truck?.id} companyId={companyId} pending={photos} onPending={setPhotos} compact />
 

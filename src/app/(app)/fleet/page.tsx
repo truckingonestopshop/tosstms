@@ -15,20 +15,11 @@ import {
   Trash2,
   Truck as TruckIcon,
   Users,
-  FileText,
-  Container,
-  Network,
-  KeyRound,
-  Settings2,
   PanelRightOpen,
-  ShieldCheck,
-  Stamp,
-  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Segmented } from "@/components/ui/Field";
-import { hasService } from "@/lib/services";
-import { Card, CopyButton, Empty, Page, PageHeader, Pill, Tabs, neutralPill } from "@/components/ui/Bits";
+import { Card, Empty, Page, PageHeader, Pill, neutralPill } from "@/components/ui/Bits";
 import { Popover, MenuItem, MenuSep } from "@/components/ui/Menu";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { CompanyFields, NewCompanyModal, draftProblem, fromDraft, toDraft, type CompanyDraft } from "@/components/fleet/CompanyForm";
@@ -38,7 +29,8 @@ import { DriverCard, DriverForm, DriverSheet, driverAlert } from "@/components/f
 import { DriversTable } from "@/components/fleet/DriversTable";
 import { DotComplianceTab, McptTab } from "@/components/fleet/Compliance";
 import { Vault } from "@/components/fleet/Vault";
-import { CompanyLinks, CompanySummary, ServicesOverview } from "@/components/fleet/CompanyProfile";
+import { AllCarriersTabs, CompanyHeader, CompanyTabs, type CompanyTab } from "@/components/fleet/CompanyNav";
+import { CompanyOverview, ServicesOverview } from "@/components/fleet/CompanyProfile";
 import { TrailersTab } from "@/components/fleet/Trailers";
 import { UnitsTab } from "@/components/fleet/Units";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
@@ -49,7 +41,7 @@ import { ACTIVE_STATUSES, daysUntil, lane, money, num, today } from "@/lib/forma
 import { availability, equipmentLine, pitchFor } from "@/lib/pitch";
 import type { Company, Driver, Truck } from "@/lib/types";
 
-type Tab = "units" | "trucks" | "trailers" | "drivers" | "docs" | "vault" | "profile" | "services" | "dot" | "mcpt";
+type Tab = Exclude<CompanyTab, "dispatch">;
 
 export default function FleetPage() {
   return (
@@ -131,6 +123,7 @@ function CompaniesOverview({ onAdd }: { onAdd: () => void }) {
 
   return (
     <>
+      <AllCarriersTabs value="carriers" />
       <PageHeader
         eyebrow="All companies"
         title="Fleet & Company"
@@ -203,68 +196,19 @@ function CompaniesOverview({ onAdd }: { onAdd: () => void }) {
 function CompanyView({ company }: { company: Company }) {
   const params = useSearchParams();
   const router = useRouter();
-  const { trucks, trailers, drivers, documents, view } = useStore();
+  const { trucks, drivers, view } = useStore();
   const office = view === "office";
   const tab = (params.get("tab") as Tab) || (office ? "profile" : "units");
   const setTab = (t: Tab) => router.replace(`/fleet?tab=${t}`, { scroll: false });
 
   const t = trucks.filter((x) => x.company_id === company.id);
-  const tl = trailers.filter((x) => x.company_id === company.id);
   const d = drivers.filter((x) => x.company_id === company.id);
-  const docs = documents.filter((x) => x.company_id === company.id);
-
-  const all: Record<Tab, { value: Tab; label: React.ReactNode; count?: number }> = {
-    units: { value: "units", label: <><Network className="h-4 w-4" /> Units</>, count: t.filter((x) => x.status !== "inactive").length },
-    trucks: { value: "trucks", label: <><TruckIcon className="h-4 w-4" /> Trucks</>, count: t.length },
-    trailers: { value: "trailers", label: <><Container className="h-4 w-4" /> Trailers</>, count: tl.length },
-    drivers: { value: "drivers", label: <><Users className="h-4 w-4" /> Drivers</>, count: d.length },
-    docs: { value: "docs", label: <><FileText className="h-4 w-4" /> Documents</>, count: docs.length },
-    vault: { value: "vault", label: <><KeyRound className="h-4 w-4" /> Credentials</> },
-    profile: { value: "profile", label: <><Settings2 className="h-4 w-4" /> Profile</> },
-    services: { value: "services", label: <><Layers className="h-4 w-4" /> Services</> },
-    dot: { value: "dot", label: <><ShieldCheck className="h-4 w-4" /> DOT Compliance</> },
-    mcpt: { value: "mcpt", label: <><Stamp className="h-4 w-4" /> MCPT</> },
-  };
-  const order: Tab[] = office
-    ? ["profile", "services", "dot", "mcpt", "drivers", "trucks", "trailers", "docs", "vault", "units"]
-    : ["units", "trucks", "trailers", "drivers", "docs", "vault", "services", "dot", "mcpt", "profile"];
-  const tabs = order
-    .filter((k) => (k === "dot" ? hasService(company, "dot_compliance") : k === "mcpt" ? hasService(company, "mcpt") : true))
-    .map((k) => all[k]);
 
   return (
     <>
-      <PageHeader
-        eyebrow="Fleet & Company"
-        title={company.name}
-        actions={
-          <div className="flex flex-wrap items-center gap-1.5 text-xs text-fg-3">
-            {company.mc_number && (
-              <span className="inline-flex items-center gap-0.5 rounded-lg border border-line px-2 py-1">
-                MC {company.mc_number}
-                <CopyButton text={company.mc_number} />
-              </span>
-            )}
-            {company.dot_number && (
-              <span className="inline-flex items-center gap-0.5 rounded-lg border border-line px-2 py-1">
-                DOT {company.dot_number}
-                <CopyButton text={company.dot_number} />
-              </span>
-            )}
-            {hasService(company, "dispatch") && (
-              <span className="rounded-lg border border-line px-2 py-1.5">
-                {company.commission_percent}% · {company.billing_cadence}
-              </span>
-            )}
-          </div>
-        }
-      />
-      <Tabs<Tab>
-        value={tab}
-        onChange={setTab}
-        className="mb-5"
-        tabs={tabs}
-      />
+      <CompanyHeader company={company} />
+      {/* Dispatch opens its own pages (Dashboard, Loads, Invoices, Analytics) under this carrier */}
+      <CompanyTabs company={company} value={tab} onChange={(next) => (next === "dispatch" ? router.push("/dispatch") : setTab(next))} />
       {tab === "units" && <UnitsTab company={company} />}
       {tab === "trucks" && <TrucksTab company={company} trucks={t} />}
       {tab === "trailers" && <TrailersTab company={company} />}
@@ -274,7 +218,7 @@ function CompanyView({ company }: { company: Company }) {
       {tab === "dot" && <DotComplianceTab key={company.id} company={company} />}
       {tab === "mcpt" && <McptTab key={company.id} company={company} />}
       {tab === "services" && <ServicesOverview company={company} onMore={setTab} />}
-      {tab === "profile" && <ProfileTab company={company} />}
+      {tab === "profile" && <ProfileTab company={company} onServices={() => setTab("services")} />}
     </>
   );
 }
@@ -525,9 +469,9 @@ function DocsTab({ company }: { company: Company }) {
   );
 }
 
-function ProfileTab({ company }: { company: Company }) {
-  const { updateCompany, deleteCompany, isOwner, loads, setScope, view } = useStore();
-  const [sub, setSub] = useState<"overview" | "details" | "links">(view === "office" ? "overview" : "details");
+function ProfileTab({ company, onServices }: { company: Company; onServices: () => void }) {
+  const { updateCompany, deleteCompany, isOwner, loads, setScope } = useStore();
+  const [editing, setEditing] = useState(false);
   const [d, setD] = useState<CompanyDraft>(toDraft(company));
   const [saving, setSaving] = useState(false);
   useEffect(() => setD(toDraft(company)), [company]);
@@ -536,27 +480,16 @@ function ProfileTab({ company }: { company: Company }) {
 
   return (
     <>
-      <Segmented
-        value={sub}
-        onChange={setSub}
-        className="mb-4"
-        options={[
-          { value: "overview", label: "Overview" },
-          { value: "details", label: "Details" },
-          { value: "links", label: "Links" },
-        ]}
-      />
-      {sub === "overview" && (
-        <div className="max-w-2xl">
-          <CompanySummary company={company} />
-        </div>
-      )}
-      {sub === "links" && (
-        <div className="max-w-xl">
-          <CompanyLinks company={company} />
-        </div>
-      )}
-      {sub === "details" && (
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="text-sm text-fg-3">{editing ? "Editing the carrier's details" : "Carrier profile"}</div>
+        {!editing && (
+          <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+            <Pencil className="h-3.5 w-3.5" /> Edit
+          </Button>
+        )}
+      </div>
+      {!editing && <CompanyOverview company={company} onServices={onServices} />}
+      {editing && (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
           <Card className="p-4 sm:p-6">
             <form
@@ -567,13 +500,22 @@ function ProfileTab({ company }: { company: Company }) {
                 setSaving(true);
                 const ok = await updateCompany(company.id, fromDraft(d));
                 setSaving(false);
-                if (ok) toast.success("Company saved");
+                if (ok) {
+                  toast.success("Company saved");
+                  setEditing(false);
+                }
               }}
             >
               <CompanyFields key={company.id} d={d} set={(p) => setD((x) => ({ ...x, ...p }))} companyId={company.id} />
               <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
-                <Button variant="ghost" disabled={!dirty} onClick={() => setD(toDraft(company))}>
-                  Discard
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setD(toDraft(company));
+                    setEditing(false);
+                  }}
+                >
+                  Cancel
                 </Button>
                 <Button type="submit" variant="primary" disabled={!dirty} loading={saving}>
                   Save changes

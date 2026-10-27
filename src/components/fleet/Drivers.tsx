@@ -14,6 +14,7 @@ import { DriverPhotos, type PendingPhoto } from "./TrailerPhotos";
 import { StatusPill } from "@/components/loads/StatusMenu";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
+import { readDocument } from "@/lib/ratecon/client";
 import { cn, daysUntil, fmtDay, lane, LICENSE_REGIONS, licenseRegionLabel } from "@/lib/format";
 import { CUSTOM, DocTypeSelect, useResolveType } from "@/components/docs/DocTypeSelect";
 import type { Driver, LicenseType } from "@/lib/types";
@@ -70,6 +71,37 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
   const [photos, setPhotos] = useState<PendingPhoto[]>([]);
   const [files, setFiles] = useState<PendingFile[]>([]);
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
+
+  // The license (front) fills in what's still empty; anything typed stays.
+  const readLicense = async (slot: string, file: File) => {
+    if (slot !== "driver_photo_license_front") return;
+    toast.info("Reading the license…");
+    try {
+      const l = await readDocument(file, "license");
+      const filled: string[] = [];
+      const patch: Partial<Draft> = {};
+      const take = (k: keyof Draft, v: string, label: string) => {
+        if (v && !String(d[k] ?? "").trim()) {
+          (patch as Record<string, unknown>)[k] = v;
+          filled.push(label);
+        }
+      };
+      take("first_name", l.first_name, "first name");
+      take("last_name", l.last_name, "last name");
+      take("cdl_number", l.license_number, "license #");
+      take("cdl_state", l.region, "state");
+      take("cdl_expiry", l.expires, "expiry");
+      if (l.license_type && (!driver || !d.license_type)) {
+        patch.license_type = l.license_type as LicenseType;
+        filled.push("license type");
+      }
+      setD((x) => ({ ...x, ...patch }));
+      toast.success(filled.length ? `From the license: ${filled.join(", ")}. Check them before saving.` : "Nothing new to fill in from the license.");
+    } catch (e) {
+      toast.info(`Couldn't read the license: ${(e as Error).message} Fill it in by hand.`);
+    }
+  };
+
   useEffect(() => {
     if (open) setD(blank(driver));
     if (!open) {
@@ -204,7 +236,7 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
           </div>
         </div>
 
-        <DriverPhotos driverId={driver?.id} companyId={companyId} pending={photos} onPending={setPhotos} compact />
+        <DriverPhotos driverId={driver?.id} companyId={companyId} pending={photos} onPending={setPhotos} onFile={readLicense} compact />
 
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Other documents</div>

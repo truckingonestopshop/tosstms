@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, FileText, LayoutGrid, Plus, Truck } from "lucide-react";
+import { Building2, FileText, Plus, Route, Truck } from "lucide-react";
 import { cn } from "@/lib/format";
 
 const TABS = [
-  { href: "/", label: "Home", icon: LayoutGrid, match: (p: string) => p === "/" },
-  { href: "/loads", label: "Loads", icon: Truck, match: (p: string) => p.startsWith("/loads") && p !== "/loads/new" },
+  { href: "/fleet", label: "Carriers", icon: Building2, match: (p: string) => p.startsWith("/fleet") },
+  { href: "/dispatch", label: "Dispatch", icon: Route, match: (p: string) => p === "/dispatch" || p.startsWith("/analytics") },
   { href: "/loads/new", label: "New load", icon: Plus, match: (p: string) => p === "/loads/new", primary: true },
+  { href: "/loads", label: "Loads", icon: Truck, match: (p: string) => p.startsWith("/loads") && p !== "/loads/new" },
   { href: "/invoices", label: "Invoices", icon: FileText, match: (p: string) => p.startsWith("/invoices") },
-  { href: "/fleet", label: "Fleet", icon: Building2, match: (p: string) => p.startsWith("/fleet") },
 ];
 
 /** Phone bottom bar. The center button books a new load. */
