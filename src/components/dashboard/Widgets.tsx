@@ -5,6 +5,7 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight, type LucideIcon } from "lucid
 import { Card } from "@/components/ui/Bits";
 import { cn } from "@/lib/format";
 import { change } from "@/lib/dashboard";
+import { CountUp } from "@/components/ui/CountUp";
 
 // Building blocks of the Dashboard and Services: key numbers with the change vs the period before,
 // panels that open their section, small number grids and bar rows.
@@ -16,32 +17,39 @@ export const green = "text-emerald-600 dark:text-emerald-400";
 /** "+12%" green / "−8%" red vs the previous period (down is good when `lowerIsBetter`). */
 export function Delta({ cur, prev, lowerIsBetter }: { cur: number; prev: number; lowerIsBetter?: boolean }) {
   const c = change(cur, prev);
-  if (c === null) return <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">new</span>;
+  if (c === null) return <span className="rounded-full bg-emerald-500/12 px-1.5 py-px text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">new</span>;
   if (c === 0) return cur ? <span className="text-[11px] text-fg-4">same as before</span> : null;
   const good = lowerIsBetter ? c < 0 : c > 0;
   const Icon = c > 0 ? ArrowUpRight : ArrowDownRight;
   return (
-    <span className={cn("inline-flex items-center gap-0.5 text-[11px] font-semibold", good ? green : red)}>
+    <span className={cn("inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[11px] font-semibold", good ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" : "bg-red-500/12 text-red-700 dark:text-red-300")}>
       <Icon className="h-3 w-3" />
       {Math.abs(c)}%
     </span>
   );
 }
 
-export function Kpi({ label, value, sub, cur, prev, lowerIsBetter, href }: { label: string; value: string; sub?: string; cur?: number; prev?: number; lowerIsBetter?: boolean; href?: string }) {
+/** A key number: counts up when it appears, with the change vs the period before. `accent` makes it
+ *  the one highlighted (orange) tile of a row. */
+export function Kpi({ label, value, sub, cur, prev, lowerIsBetter, href, accent }: { label: string; value: string; sub?: string; cur?: number; prev?: number; lowerIsBetter?: boolean; href?: string; accent?: boolean }) {
   const body = (
     <>
-      <div className="text-[10.5px] font-semibold uppercase tracking-wider text-fg-4">{label}</div>
-      <div className="tnum mt-1.5 text-[22px] font-bold leading-none text-fg">{value}</div>
-      <div className="mt-1.5 flex items-center gap-1.5">
-        {cur !== undefined && prev !== undefined && <Delta cur={cur} prev={prev} lowerIsBetter={lowerIsBetter} />}
-        {sub && <span className="truncate text-[11px] text-fg-3">{sub}</span>}
+      <div className="flex items-center justify-between gap-2">
+        <div className={cn("truncate text-[10.5px] font-semibold uppercase tracking-[0.09em]", accent ? "text-black/55" : "text-fg-4")}>{label}</div>
+        {href && <ArrowUpRight className={cn("h-3.5 w-3.5 shrink-0 opacity-0 transition-all duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:opacity-100", accent ? "text-black/60" : "text-fg-4")} />}
+      </div>
+      <div className={cn("tnum mt-2 text-[26px] font-bold leading-none tracking-[-0.035em]", accent ? "text-[#1a0d03]" : "text-fg")}>
+        <CountUp value={value} />
+      </div>
+      <div className="mt-2.5 flex min-h-[18px] items-center gap-1.5">
+        {cur !== undefined && prev !== undefined && (accent ? <span className="rounded-full bg-black/10 px-1.5 py-px"><Delta cur={cur} prev={prev} lowerIsBetter={lowerIsBetter} /></span> : <Delta cur={cur} prev={prev} lowerIsBetter={lowerIsBetter} />)}
+        {sub && <span className={cn("truncate text-[11px]", accent ? "text-black/60" : "text-fg-3")}>{sub}</span>}
       </div>
     </>
   );
-  const cls = "rounded-xl border border-line bg-surface p-4 transition-colors";
+  const cls = cn("group relative overflow-hidden rounded-2xl p-4 sm:p-[18px]", accent ? "card-accent" : "card card-hover");
   return href ? (
-    <Link href={href} className={cn(cls, "group hover:border-line-strong")}>
+    <Link href={href} className={cls}>
       {body}
     </Link>
   ) : (
@@ -51,11 +59,13 @@ export function Kpi({ label, value, sub, cur, prev, lowerIsBetter, href }: { lab
 
 export function Panel({ title, href, icon: Icon, children, className }: { title: string; href: string; icon: LucideIcon; children: React.ReactNode; className?: string }) {
   return (
-    <Card className={cn("flex flex-col", className)}>
-      <Link href={href} className="group flex items-center gap-2 border-b border-line px-4 py-3 sm:px-5">
-        <Icon className="h-4 w-4 text-fg-4" />
-        <span className="text-[14px] font-semibold text-fg">{title}</span>
-        <ArrowRight className="ml-auto h-4 w-4 text-fg-4 transition-transform group-hover:translate-x-0.5" />
+    <Card className={cn("card-hover flex flex-col", className)}>
+      <Link href={href} className="group flex items-center gap-2.5 border-b border-line px-4 py-3 sm:px-5">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-2 text-fg-3 shadow-[inset_0_1px_0_var(--card-hi)] transition-colors group-hover:bg-brand/15 group-hover:text-brand">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <span className="text-[14px] font-semibold tracking-[-0.01em] text-fg">{title}</span>
+        <ArrowRight className="ml-auto h-4 w-4 text-fg-4 transition-transform group-hover:translate-x-0.5 group-hover:text-fg" />
       </Link>
       <div className="flex-1 p-4 sm:p-5">{children}</div>
     </Card>
@@ -68,7 +78,9 @@ export function Mini({ items, cols = 2 }: { items: [string, React.ReactNode, str
       {items.map(([k, v, tone]) => (
         <div key={k} className="min-w-0">
           <dt className="truncate text-[10.5px] font-semibold uppercase tracking-wider text-fg-4">{k}</dt>
-          <dd className={cn("tnum truncate text-[15px] font-semibold text-fg", tone)}>{v}</dd>
+          <dd className={cn("tnum truncate text-[16px] font-semibold tracking-[-0.02em] text-fg", tone)}>
+            <CountUp value={v} />
+          </dd>
         </div>
       ))}
     </dl>
@@ -81,7 +93,7 @@ export function BarRow({ label, value, max, right, color = "bg-brand", onClick, 
     <>
       <span className={cn("w-28 shrink-0 truncate text-left", active ? "font-semibold text-fg" : "text-fg-2")}>{label}</span>
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
-        <div className={cn("h-full rounded-full", color)} style={{ width: `${max ? (value / max) * 100 : 0}%` }} />
+        <div className={cn("animate-grow h-full rounded-full", color === "bg-brand" ? "bg-gradient-to-r from-[#f7a35c] to-brand" : color)} style={{ width: `${max ? (value / max) * 100 : 0}%` }} />
       </div>
       <span className="tnum w-24 shrink-0 text-right text-fg">{right}</span>
     </>

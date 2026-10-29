@@ -132,16 +132,16 @@ export function Segmented<T extends string>({
   size?: "sm" | "md";
 }) {
   return (
-    <div className={cn("inline-flex rounded-lg border border-line bg-surface-2 p-0.5", className)}>
+    <div className={cn("inline-flex rounded-xl border border-line bg-surface-2/70 p-0.5 backdrop-blur", className)}>
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
           className={cn(
-            "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors",
+            "inline-flex items-center gap-1.5 whitespace-nowrap rounded-[10px] font-medium transition-all duration-200",
             size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-[13px]",
-            value === o.value ? "bg-surface text-fg shadow-sm ring-1 ring-line" : "text-fg-3 hover:text-fg",
+            value === o.value ? "bg-surface text-fg shadow-[0_1px_2px_rgba(0,0,0,0.08),0_4px_12px_-6px_rgba(0,0,0,0.25)] ring-1 ring-line" : "text-fg-3 hover:text-fg",
           )}
         >
           {o.label}

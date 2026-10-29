@@ -274,7 +274,7 @@ function Safety({ company }: { company: Company }) {
       const next: Compliance = { ...(company.compliance ?? {}), fmcsa: fm, safety_rating: company.compliance?.safety_rating || fm.rating || null };
       if (await updateCompany(company.id, { compliance: next })) {
         setC((x) => ({ ...x, fmcsa: fm, safety_rating: x.safety_rating || fm.rating || null }));
-        if (!quiet) toast.success("Safety data updated from FMCSA");
+        if (!quiet) toast.success("Safety data updated from Lead Hunter");
       }
     } catch (e) {
       setPullError((e as Error).message);
@@ -308,12 +308,12 @@ function Safety({ company }: { company: Company }) {
         title="Safety scores"
         subtitle={
           f
-            ? `From FMCSA (via Lead Hunter) · updated ${fmtDay(f.pulled_at.slice(0, 10))}`
+            ? `From Lead Hunter · updated ${fmtDay(f.pulled_at.slice(0, 10))}`
             : saved.updated_on
               ? `Updated ${fmtDay(saved.updated_on, true)}`
               : company.dot_number
-                ? "Pulled from FMCSA through Lead Hunter"
-                : "Add the USDOT number to pull FMCSA data"
+                ? "Pulled from Lead Hunter"
+                : "Add the USDOT number to pull it from Lead Hunter"
         }
         actions={
           <>
@@ -338,12 +338,12 @@ function Safety({ company }: { company: Company }) {
               </>
             )}
             <Button variant="outline" size="sm" onClick={() => pull()} loading={pulling} disabled={!company.dot_number}>
-              {!pulling && <RefreshCw className="h-3.5 w-3.5" />} {f ? "Refresh" : "Pull from FMCSA"}
+              {!pulling && <RefreshCw className="h-3.5 w-3.5" />} {f ? "Refresh" : "Pull from Lead Hunter"}
             </Button>
           </>
         }
       />
-      {pullError && !f && <div className="mx-4 mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300 sm:mx-5">Couldn&apos;t pull FMCSA data: {pullError}</div>}
+      {pullError && !f && <div className="mx-4 mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300 sm:mx-5">Couldn&apos;t pull safety data: {pullError}</div>}
 
       {f && (
         <div className="grid grid-cols-2 gap-px border-b border-line bg-line sm:grid-cols-5">
@@ -371,7 +371,7 @@ function Safety({ company }: { company: Company }) {
             ))}
           </Select>
         </Field>
-        <Field label="ISS score" hint="1–100 (higher means more likely to be inspected) · not published by FMCSA, type it in">
+        <Field label="ISS score" hint="1–100 (higher means more likely to be inspected) · not published, type it in">
           <Input type="number" min={1} max={100} value={c.iss_score ?? ""} onChange={(e) => setC((x) => ({ ...x, iss_score: numOrNull(e.target.value) }))} />
         </Field>
         <div className="flex items-end pb-1">
@@ -391,7 +391,7 @@ function Safety({ company }: { company: Company }) {
           <thead className="text-[11px] uppercase tracking-wider text-fg-4">
             <tr>
               <th className="px-4 py-2 font-medium sm:px-5">BASIC</th>
-              <th className="w-32 px-2 py-2 font-medium">FMCSA measure</th>
+              <th className="w-32 px-2 py-2 font-medium">Measure</th>
               <th className="w-28 px-2 py-2 font-medium">Score %</th>
               <th className="w-28 px-2 py-2 font-medium">Threshold %</th>
               <th className="w-24 px-4 py-2 font-medium sm:px-5">Alert</th>

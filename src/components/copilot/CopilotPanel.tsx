@@ -1,17 +1,18 @@
 "use client";
 
-// TOSS Copilot panel: opened from the top bar on every page (or Ctrl+J). It knows the page you're
-// on and the company in focus, reads the team's data with its tools, opens pages, and proposes
+// TOSS Copilot window (opened from the floating orb, Ctrl+J). It knows the page you're on and the
+// company in focus, reads the team's data and Lead Hunter with its tools, opens pages, and proposes
 // actions as confirm cards that run only when you click Confirm. Chats are private to each person
-// (tms_copilot_threads). Plain text, hairlines and pill buttons, like the rest of TOSS Cloud.
+// (tms_copilot_threads). Always dark glass with TOSS orange light, in light mode too.
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, Check, ExternalLink, History, Loader2, Plus, Square, Trash2, X } from "lucide-react";
+import { ArrowUp, Check, ExternalLink, FileWarning, History, Loader2, Maximize2, Mic, Minimize2, Receipt, Search, Sparkle, Square, SquarePen, Trash2, X, type LucideIcon } from "lucide-react";
 import { sb } from "@/lib/db";
+import { Orb } from "./Orb";
 import { useStore } from "@/lib/store";
 import { cn, fmtDay, money } from "@/lib/format";
 import type { CopilotUITools } from "@/lib/copilot/tools";
@@ -22,13 +23,11 @@ type Part = Msg["parts"][number];
 const SEND_LAST = 40;
 const STORE_LAST = 100;
 
-const STARTERS = [
-  "What needs my attention today?",
-  "Which invoices are overdue?",
-  "Show the loads in transit",
-  "Paperwork expired or expiring this month",
-  "Find new carriers in Texas with 2–10 trucks in Lead Hunter",
-  "How did dispatch do this month?",
+const STARTERS: { text: string; icon: LucideIcon }[] = [
+  { text: "What needs my attention today?", icon: Sparkle },
+  { text: "Which invoices are overdue?", icon: Receipt },
+  { text: "Paperwork expired or expiring this month", icon: FileWarning },
+  { text: "Look up MC 1291694 in Lead Hunter", icon: Search },
 ];
 
 const RUNNING: Record<string, [string, string]> = {
@@ -68,8 +67,16 @@ const FIELD: Record<string, string> = {
 
 type Thread = { id: string; title: string; updated_at: string };
 
-/** The whole panel: picks the chat (latest on open, new, or one from history) and stores it. */
-export function CopilotPanel({ onClose }: { onClose: () => void }) {
+/** The whole window: picks the chat (latest on open, new, or one from history) and stores it. */
+export function CopilotPanel({ onClose, onBusy, large, onLarge }: { onClose: () => void; onBusy?: (busy: boolean) => void; large?: boolean; onLarge?: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const reportBusy = useCallback(
+    (b: boolean) => {
+      setBusy(b);
+      onBusy?.(b);
+    },
+    [onBusy],
+  );
   const [chat, setChat] = useState<{ id: string; messages: Msg[] } | null>(null);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [showChats, setShowChats] = useState(false);
@@ -85,7 +92,7 @@ export function CopilotPanel({ onClose }: { onClose: () => void }) {
       if (latest) {
         const { data: t } = await sb().from("tms_copilot_threads").select("messages").eq("id", latest.id).maybeSingle();
         if (stale) return;
-        setChat({ id: latest.id, messages: ((t?.messages as Msg[]) || []) });
+        setChat({ id: latest.id, messages: (t?.messages as Msg[]) || [] });
       } else setChat({ id: crypto.randomUUID(), messages: [] });
     })();
     return () => {
@@ -115,54 +122,77 @@ export function CopilotPanel({ onClose }: { onClose: () => void }) {
   }, []);
 
   return (
-    <div className="flex h-full flex-col bg-surface">
-      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-        <span className="flex-1 text-[15px] font-bold tracking-[-0.02em] text-fg">TOSS Copilot</span>
-        <button type="button" onClick={() => setShowChats((v) => !v)} aria-pressed={showChats} className={pill} title="Earlier chats">
-          <History className="h-3.5 w-3.5" /> {showChats ? "Back" : "Chats"}
-        </button>
-        <button type="button" onClick={newChat} className={pill}>
-          <Plus className="h-3.5 w-3.5" /> New
-        </button>
-        <button type="button" onClick={onClose} aria-label="Close TOSS Copilot" className="rounded-lg p-1.5 text-fg-3 hover:bg-surface-2 hover:text-fg">
+    <div className="dark relative flex h-full flex-col text-fg">
+      <div className="copilot-aurora" data-state={busy ? "busy" : "idle"} aria-hidden />
+      <div className="relative z-10 flex items-center gap-3 px-4 pb-2 pt-3.5">
+        <Orb size={30} busy={busy} />
+        <div className="min-w-0 flex-1 leading-tight">
+          <div className="text-[14px] font-bold tracking-[-0.02em] text-white">TOSS Copilot</div>
+          <div className="truncate text-[11px] text-white/45">{busy ? <span className="animate-shimmer-text">Working on it…</span> : "Knows TOSS Cloud and Lead Hunter"}</div>
+        </div>
+        <IconButton label={showChats ? "Back to the chat" : "Earlier chats"} onClick={() => setShowChats((v) => !v)} active={showChats}>
+          <History className="h-4 w-4" />
+        </IconButton>
+        <IconButton label="New chat" onClick={newChat}>
+          <SquarePen className="h-4 w-4" />
+        </IconButton>
+        {onLarge && (
+          <IconButton label={large ? "Smaller window" : "Bigger window"} onClick={onLarge} className="max-md:hidden">
+            {large ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </IconButton>
+        )}
+        <IconButton label="Close" onClick={onClose}>
           <X className="h-4 w-4" />
-        </button>
+        </IconButton>
       </div>
+      <div className="relative z-10 mx-4 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       {showChats ? (
-        <div className="flex-1 overflow-y-auto p-2">
-          {threads.length === 0 && <p className="px-2 py-3 text-sm text-fg-4">No earlier chats.</p>}
-          {threads.map((t) => (
-            <div key={t.id} className={cn("group flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-surface-2", chat?.id === t.id && "bg-surface-2")}>
-              <button type="button" onClick={() => void openThread(t)} className="min-w-0 flex-1 text-left">
-                <div className="truncate text-[13px] font-medium text-fg">{t.title}</div>
-                <div className="text-[11px] text-fg-4">{fmtDay(t.updated_at.slice(0, 10))}</div>
-              </button>
-              <button type="button" onClick={() => void removeThread(t)} aria-label={`Delete chat ${t.title}`} className="rounded p-1 text-fg-4 opacity-0 hover:text-red-500 group-hover:opacity-100">
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
+        <div className="relative z-10 flex-1 overflow-y-auto p-3">
+          <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/35">Earlier chats</div>
+          {threads.length === 0 && <p className="px-1 py-3 text-sm text-white/45">No earlier chats.</p>}
+          <div className="space-y-1">
+            {threads.map((t) => (
+              <div key={t.id} className={cn("group flex items-center gap-2 rounded-2xl px-3 py-2.5 transition-colors hover:bg-white/[0.06]", chat?.id === t.id && "bg-white/[0.06]")}>
+                <button type="button" onClick={() => void openThread(t)} className="min-w-0 flex-1 text-left">
+                  <div className="truncate text-[13px] font-medium text-white">{t.title}</div>
+                  <div className="text-[11px] text-white/40">{fmtDay(t.updated_at.slice(0, 10))}</div>
+                </button>
+                <button type="button" onClick={() => void removeThread(t)} aria-label={`Delete chat ${t.title}`} className="rounded-full p-1.5 text-white/40 opacity-0 transition hover:bg-white/10 hover:text-red-400 group-hover:opacity-100">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       ) : chat ? (
-        <Chat key={chat.id} id={chat.id} initial={chat.messages} onPersist={persist} />
+        <Chat key={chat.id} id={chat.id} initial={chat.messages} onPersist={persist} onBusy={reportBusy} large={!!large} />
       ) : (
-        <div className="flex flex-1 items-center justify-center text-fg-4">
-          <Loader2 className="h-4 w-4 animate-spin" />
+        <div className="relative z-10 flex flex-1 items-center justify-center">
+          <Orb size={40} busy />
         </div>
       )}
     </div>
   );
 }
 
-const pill = "inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-fg-2 hover:border-line-strong hover:text-fg";
+function IconButton({ label, onClick, active, className, children }: { label: string; onClick: () => void; active?: boolean; className?: string; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={label} title={label} className={cn("cp-glass flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:text-white", active && "border-[#F28C38]/50 text-[#F28C38]", className)}>
+      {children}
+    </button>
+  );
+}
 
 function firstUserText(messages: Msg[]): string {
   for (const m of messages) if (m.role === "user") for (const p of m.parts) if (p.type === "text" && p.text.trim()) return p.text.trim().replace(/\s+/g, " ");
   return "";
 }
 
+type SpeechRec = { lang: string; interimResults: boolean; continuous: boolean; start: () => void; stop: () => void; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null };
+
 /** One conversation (remounted when another chat opens). */
-function Chat({ id, initial, onPersist }: { id: string; initial: Msg[]; onPersist: (id: string, m: Msg[]) => void }) {
+function Chat({ id, initial, onPersist, onBusy, large }: { id: string; initial: Msg[]; onPersist: (id: string, m: Msg[]) => void; onBusy: (b: boolean) => void; large: boolean }) {
+  const { me } = useStore();
   const router = useRouter();
   const path = usePathname();
   const params = useSearchParams();
@@ -180,6 +210,7 @@ function Chat({ id, initial, onPersist }: { id: string; initial: Msg[]; onPersis
   );
   const { messages, sendMessage, status, stop, error, regenerate, clearError, addToolOutput } = useChat<Msg>({ id, messages: initial, transport });
   const busy = status === "submitted" || status === "streaming";
+  useEffect(() => onBusy(busy), [busy, onBusy]);
 
   // Navigation asked by Copilot happens once, as soon as the call arrives (never for an old chat).
   const [done] = useState(() => new Set(initial.flatMap((m) => m.parts.filter((p) => p.type === "tool-navigate" && "toolCallId" in p).map((p) => (p as { toolCallId: string }).toolCallId))));
@@ -213,34 +244,64 @@ function Chat({ id, initial, onPersist }: { id: string; initial: Msg[]; onPersis
     setInput("");
   };
 
+  // Talk instead of typing (the browser's speech recognition, where it exists).
+  const [listening, setListening] = useState(false);
+  const rec = useRef<SpeechRec | null>(null);
+  const canTalk = typeof window !== "undefined" && !!((window as unknown as { SpeechRecognition?: unknown }).SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition);
+  const toggleMic = () => {
+    if (listening) return rec.current?.stop();
+    const W = window as unknown as { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec };
+    const Ctor = W.SpeechRecognition || W.webkitSpeechRecognition;
+    if (!Ctor) return;
+    const r = new Ctor();
+    r.lang = "en-US";
+    r.interimResults = true;
+    r.continuous = false;
+    const before = input ? `${input.trim()} ` : "";
+    r.onresult = (e) => setInput(before + Array.from(e.results).map((x) => x[0].transcript).join(""));
+    r.onend = () => setListening(false);
+    r.onerror = () => setListening(false);
+    rec.current = r;
+    setListening(true);
+    r.start();
+  };
+
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scroller.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && messages.length) el.scrollTop = el.scrollHeight;
   }, [messages, status]);
 
   const last = messages[messages.length - 1];
   const replies = !busy && last?.role === "assistant" ? suggested(last) : [];
   const [oldCards] = useState(() => new Set(initial.flatMap((m) => m.parts.filter((p) => p.type.startsWith("tool-propose_") && "toolCallId" in p).map((p) => (p as { toolCallId: string }).toolCallId))));
+  const first = (me.fullName || "").split(" ")[0];
 
   return (
     <>
-      <div ref={scroller} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+      <div ref={scroller} className={cn("relative z-10 flex-1 overflow-y-auto px-4 py-4", messages.length ? "space-y-5" : "flex flex-col")}>
         {messages.length === 0 && (
-          <div className="space-y-3">
-            <p className="text-[13px] leading-relaxed text-fg-2">Ask about any company, load, driver, truck, invoice, case or deal, search Lead Hunter, or tell me what to do.</p>
-            <div className="flex flex-col items-start gap-1.5">
-              {STARTERS.map((s) => (
-                <button key={s} type="button" onClick={() => send(s)} className="rounded-full border border-line px-3 py-1 text-left text-xs font-medium text-fg-2 hover:border-line-strong hover:text-fg">
-                  {s}
-                </button>
-              ))}
+          <div className="flex flex-1 flex-col items-center justify-center pb-4 text-center">
+            <div className="relative">
+              <div className="absolute -inset-10 rounded-full bg-[radial-gradient(circle,rgba(242,140,56,0.38),rgba(255,86,48,0.12)_45%,transparent_70%)] blur-2xl" aria-hidden />
+              <Orb size={large ? 112 : 92} />
             </div>
+            <h2 className={cn("cp-greeting mt-7 font-semibold tracking-[-0.03em]", large ? "text-[30px]" : "text-[23px]")}>
+              Hey {first || "there"}, how can I help you today?
+            </h2>
+            <p className="mt-2 max-w-[320px] text-[13px] leading-relaxed text-white/45">Ask about anything in TOSS Cloud or Lead Hunter, or give me a task.</p>
           </div>
         )}
 
         {messages.map((m) => (
-          <div key={m.id} className={m.role === "user" ? "ml-8 rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-fg" : "space-y-2 text-[13px] text-fg-2"}>
+          <div
+            key={m.id}
+            className={
+              m.role === "user"
+                ? "cp-glass ml-auto max-w-[85%] rounded-[20px] rounded-br-md px-3.5 py-2.5 text-[13.5px] text-white"
+                : "space-y-2.5 text-[13.5px] leading-relaxed text-white/80"
+            }
+          >
             {m.parts.map((p, i) =>
               p.type.startsWith("tool-propose_") ? (
                 <ActionCard
@@ -260,12 +321,13 @@ function Chat({ id, initial, onPersist }: { id: string; initial: Msg[]; onPersis
         ))}
 
         {status === "submitted" && (
-          <p className="inline-flex items-center gap-1.5 text-xs text-fg-4">
-            <Loader2 className="h-3 w-3 animate-spin" /> Working…
+          <p className="inline-flex items-center gap-2.5 text-xs">
+            <Orb size={18} busy />
+            <span className="animate-shimmer-text font-medium">Thinking…</span>
           </p>
         )}
         {error && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[13px] text-red-700 dark:text-red-300">
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-[13px] text-red-300">
             {errorText(error)}
             <button type="button" onClick={() => void regenerate({ body })} className="ml-2 font-semibold underline underline-offset-2">
               Try again
@@ -275,7 +337,7 @@ function Chat({ id, initial, onPersist }: { id: string; initial: Msg[]; onPersis
         {replies.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {replies.map((r) => (
-              <button key={r} type="button" onClick={() => send(r)} className="rounded-full border border-fg px-3 py-1 text-xs font-semibold text-fg hover:bg-fg hover:text-bg">
+              <button key={r} type="button" onClick={() => send(r)} className="rounded-full border border-[#F28C38]/50 bg-[#F28C38]/10 px-3.5 py-1.5 text-xs font-semibold text-[#ffc896] transition hover:bg-[#F28C38] hover:text-black">
                 {r}
               </button>
             ))}
@@ -284,13 +346,24 @@ function Chat({ id, initial, onPersist }: { id: string; initial: Msg[]; onPersis
       </div>
 
       <form
-        className="border-t border-line p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        className="relative z-10 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2"
         onSubmit={(e) => {
           e.preventDefault();
           send(input);
         }}
       >
-        <div className="flex items-end gap-2 rounded-xl border border-line-strong bg-surface px-2 py-1.5 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/25">
+        {messages.length === 0 && (
+          <div className="mb-2.5 flex flex-col items-start gap-1.5">
+            {STARTERS.map((s) => (
+              <button key={s.text} type="button" onClick={() => send(s.text)} className="cp-glass inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-left text-[12.5px] font-medium text-white/80 hover:text-white">
+                <s.icon className="h-3.5 w-3.5 text-[#F28C38]" />
+                {s.text}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="cp-composer rounded-[22px] px-3 pb-2 pt-2.5">
+          {listening && <div className="px-1 pb-1 text-[11px] font-medium text-[#F28C38]">Listening…</div>}
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -300,23 +373,34 @@ function Chat({ id, initial, onPersist }: { id: string; initial: Msg[]; onPersis
                 send(input);
               }
             }}
-            rows={2}
+            rows={large ? 3 : 2}
             maxLength={4000}
             autoFocus
-            placeholder={companyId ? "Ask about this company, or anything…" : "Ask anything, or tell me what to do…"}
-            className="min-h-[2.5rem] flex-1 resize-none bg-transparent px-1 py-1 text-base text-fg outline-none placeholder:text-fg-4 md:text-[13px]"
+            placeholder={companyId ? "Ask about this company, or give me a task…" : "Ask anything, or give me a task…"}
+            className="block max-h-40 min-h-[2.75rem] w-full resize-none bg-transparent px-1 text-base text-white outline-none placeholder:text-white/35 md:text-[13.5px]"
           />
-          {busy ? (
-            <button type="button" onClick={() => stop()} aria-label="Stop" className="mb-0.5 rounded-lg border border-line p-2 text-fg hover:bg-surface-2">
-              <Square className="h-3.5 w-3.5" />
+          <div className="mt-1 flex items-center gap-1.5">
+            <button type="button" onClick={() => setInput((v) => (v.toLowerCase().includes("lead hunter") ? v : `${v ? `${v.trim()} ` : ""}in Lead Hunter `))} className="cp-glass inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium text-white/70 hover:text-white">
+              <Search className="h-3 w-3" /> Lead Hunter
             </button>
-          ) : (
-            <button type="submit" disabled={!input.trim()} aria-label="Send" className="mb-0.5 rounded-lg bg-brand p-2 text-brand-fg hover:bg-brand-hover disabled:opacity-40">
-              <ArrowUp className="h-3.5 w-3.5" />
-            </button>
-          )}
+            <span className="flex-1" />
+            {canTalk && !busy && (
+              <button type="button" onClick={toggleMic} aria-label={listening ? "Stop listening" : "Speak"} className={cn("flex h-8 w-8 items-center justify-center rounded-full transition", listening ? "cp-listening bg-[#F28C38] text-black" : "cp-glass text-white/70 hover:text-white")}>
+                <Mic className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {busy ? (
+              <button type="button" onClick={() => stop()} aria-label="Stop" className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-black transition hover:bg-white/85">
+                <Square className="h-3 w-3 fill-current" />
+              </button>
+            ) : (
+              <button type="submit" disabled={!input.trim()} aria-label="Send" className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F28C38] text-black shadow-[0_0_20px_-4px_rgba(242,140,56,0.8)] transition hover:bg-[#ff9d4d] disabled:bg-white/10 disabled:text-white/30 disabled:shadow-none">
+                <ArrowUp className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
-        <p className="mt-1.5 px-1 text-[10px] text-fg-4">Changes run only after you click Confirm.</p>
+        <p className="mt-2 text-center text-[10px] text-white/30">Changes run only after you confirm them.</p>
       </form>
     </>
   );

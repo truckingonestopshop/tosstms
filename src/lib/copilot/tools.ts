@@ -110,7 +110,7 @@ export function copilotTools(ctx: ToolContext) {
 
     company_details: tool({
       description:
-        "Everything about one company: profile, contacts, services (with set up dates), dispatch fee %, safety (FMCSA) snapshot, counts of trucks/trailers/drivers, open loads, unpaid invoices, open cases and opportunities, latest timeline notes.",
+        "Everything about one company: profile, contacts, services (with set up dates), dispatch fee %, safety snapshot, counts of trucks/trailers/drivers, open loads, unpaid invoices, open cases and opportunities, latest timeline notes.",
       inputSchema: z.object({ company_id: uuid }),
       execute: async ({ company_id }) => {
         const [c] = await rows(sb.from("tms_companies").select("*").eq("id", company_id).limit(1));
@@ -396,7 +396,7 @@ export function copilotTools(ctx: ToolContext) {
       },
     }),
 
-    // ---- Lead Hunter (every registered trucking company, FMCSA data) ----
+    // ---- Lead Hunter (every registered trucking company) ----
     hunter_count: tool({
       description: "Count trucking companies in Lead Hunter (about 4.5 million US/CA/MX carriers and brokers) that match a filter.",
       inputSchema: z.object({ filter: HUNTER_FILTER }),
@@ -413,11 +413,24 @@ export function copilotTools(ctx: ToolContext) {
       },
     }),
     hunter_company: tool({
-      description: "One carrier's full record in Lead Hunter by USDOT number: registration, authority, insurance, fleet, contacts, safety (inspections, out-of-service rates, crashes, SMS measures).",
-      inputSchema: z.object({ dot: z.string().regex(/^\d{1,9}$/) }),
-      execute: async ({ dot }) => {
-        const p = (await hunter(ctx, `/v1/leads/${dot}/profile`)) as Row | null;
-        if (!p) return { error: "No carrier with that USDOT number in Lead Hunter." };
+      description:
+        "One carrier's full record in Lead Hunter by USDOT number OR MC number (an 'MC#' / 'docket' is the mc field): registration, authority, insurance, fleet, contacts, safety (inspections, out-of-service rates, crashes, safety measures). Use it for any 'look up / research / summarize this DOT or MC'.",
+      inputSchema: z.object({
+        dot: z.string().regex(/^\d{1,9}$/).optional().describe("USDOT number, digits"),
+        mc: z.string().regex(/^\d{1,8}$/).optional().describe("MC number, digits only (no 'MC')"),
+      }),
+      execute: async ({ dot, mc }) => {
+        let usdot = dot;
+        if (!usdot && mc) {
+          // MC → the carrier's USDOT through Lead Hunter's search (it matches MC numbers exactly).
+          const r = (await hunter(ctx, "/v1/leads/search", { q: `MC${mc.replace(/^0+/, "")}`, page: 1, pageSize: 1 })) as { rows?: Row[]; error?: string } | null;
+          if (r && "error" in r && r.error) return r;
+          usdot = r?.rows?.[0]?.dotNumber ? String(r.rows[0].dotNumber) : undefined;
+          if (!usdot) return { error: `No carrier with MC ${mc} in Lead Hunter.` };
+        }
+        if (!usdot) return { error: "Give a USDOT or MC number." };
+        const p = (await hunter(ctx, `/v1/leads/${usdot}/profile`)) as Row | null;
+        if (!p) return { error: "No carrier with that number in Lead Hunter." };
         if ("error" in p) return p;
         const pickArr = (k: string, n: number) => (Array.isArray(p[k]) ? (p[k] as Row[]).slice(0, n).map(compact) : undefined);
         return compact({

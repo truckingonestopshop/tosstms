@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/format";
+import { CountUp } from "./CountUp";
 
 export function Card({ className, children, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("rounded-xl border border-line bg-surface", className)} {...rest}>
+    <div className={cn("card rounded-2xl", className)} {...rest}>
       {children}
     </div>
   );
@@ -26,7 +27,7 @@ export function CardHeader({
   return (
     <div className={cn("flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5", className)}>
       <div className="min-w-0">
-        <h3 className="truncate text-sm font-semibold text-fg">{title}</h3>
+        <h3 className="truncate text-[14px] font-semibold tracking-[-0.01em] text-fg">{title}</h3>
         {subtitle && <p className="truncate text-xs text-fg-3">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
@@ -54,7 +55,7 @@ export function PageHeader({
     <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         {eyebrow && <Eyebrow className="mb-1">{eyebrow}</Eyebrow>}
-        <h1 className="truncate text-[22px] font-bold leading-tight text-fg sm:text-[26px]">{title}</h1>
+        <h1 className="animate-rise truncate text-[24px] font-bold leading-tight tracking-[-0.035em] text-fg sm:text-[30px]">{title}</h1>
         {children}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -95,7 +96,9 @@ export function Stat({
   return (
     <Card className={cn("p-4 sm:p-5", className)} style={style}>
       <Eyebrow>{label}</Eyebrow>
-      <div className="tnum mt-1.5 truncate text-2xl font-bold tracking-tight text-fg sm:text-[28px]">{value}</div>
+      <div className="tnum mt-1.5 truncate text-2xl font-bold tracking-[-0.03em] text-fg sm:text-[28px]">
+        <CountUp value={value} />
+      </div>
       {sub && <div className="mt-1 truncate text-xs text-fg-3">{sub}</div>}
       {children}
     </Card>
@@ -118,7 +121,7 @@ export function Empty({
   return (
     <div className={cn("flex flex-col items-center px-6 py-14 text-center", className)}>
       {Icon && (
-        <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-line bg-surface-2 text-fg-3">
+        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-line bg-surface-2/70 text-fg-3 shadow-[inset_0_1px_0_var(--card-hi)]">
           <Icon className="h-5 w-5" />
         </div>
       )}
@@ -150,13 +153,13 @@ export function Tabs<T extends string>({
             type="button"
             onClick={() => onChange(t.value)}
             className={cn(
-              "relative -mb-px flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors",
-              on ? "border-brand text-fg" : "border-transparent text-fg-3 hover:text-fg",
+              "relative -mb-px flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors duration-200",
+              on ? "border-brand text-fg [box-shadow:0_8px_16px_-12px_var(--brand)]" : "border-transparent text-fg-3 hover:text-fg",
             )}
           >
             {t.label}
             {t.count !== undefined && (
-              <span className={cn("tnum rounded-md px-1.5 py-px text-[11px]", on ? "bg-surface-3 text-fg" : "bg-surface-2 text-fg-3")}>{t.count}</span>
+              <span className={cn("tnum rounded-full px-1.5 py-px text-[11px] transition-colors", on ? "bg-brand/15 text-fg" : "bg-surface-2 text-fg-3")}>{t.count}</span>
             )}
           </button>
         );

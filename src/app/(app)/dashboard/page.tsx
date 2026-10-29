@@ -183,8 +183,8 @@ export default function DashboardPage() {
       />
 
       {/* Key numbers, vs the period before */}
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Kpi label="TOSS revenue" value={money(rev.total, { cents: false })} cur={rev.total} prev={revPrev.total} sub={revPrev.total || revPrev.collected ? "vs previous period" : undefined} href="/billing" />
+      <div className="rise-grid mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <Kpi accent label="TOSS revenue" value={money(rev.total, { cents: false })} cur={rev.total} prev={revPrev.total} sub={revPrev.total || revPrev.collected ? "vs previous period" : undefined} href="/billing" />
         <Kpi label="Collected" value={money(rev.collected, { cents: false })} cur={rev.collected} prev={revPrev.collected} sub={revPrev.total || revPrev.collected ? "vs previous period" : undefined} href="/billing" />
         <Kpi label="Monthly recurring" value={money(billing.recurring, { cents: false })} sub={`${subs.length} active subscriptions`} href="/billing" />
         <Kpi label="Won" value={money(wonV, { cents: false })} cur={wonV} prev={wonPrevV} sub={`${won.length} deal${won.length === 1 ? "" : "s"}`} href="/sales" />

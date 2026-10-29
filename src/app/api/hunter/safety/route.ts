@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireMember, supabaseServer } from "@/lib/supabase/server";
 import type { FmcsaSafety } from "@/lib/types";
+import { HUNTER_API } from "@/lib/copilot/hunter";
 
 export const runtime = "nodejs";
 
@@ -30,13 +31,11 @@ export async function GET(req: NextRequest) {
   if (!(await requireMember())) return fail(403, "No TOSS Cloud access");
   const dot = (req.nextUrl.searchParams.get("dot") || "").replace(/\D/g, "");
   if (!dot) return fail(400, "No USDOT number");
-  const base = process.env.TOSS_API_URL;
-  if (!base) return fail(503, "Lead Hunter isn't connected yet (TOSS_API_URL is not set)");
   const { data } = await (await supabaseServer()).auth.getSession();
   const token = data.session?.access_token;
   if (!token) return fail(401, "Sign in again");
 
-  const res = await fetch(`${base.replace(/\/$/, "")}/v1/leads/${dot}/profile`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" }).catch(() => null);
+  const res = await fetch(`${HUNTER_API}/v1/leads/${dot}/profile`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" }).catch(() => null);
   if (!res) return fail(502, "Couldn't reach Lead Hunter");
   if (res.status === 404) return fail(404, "Lead Hunter has no carrier with this USDOT number");
   if (!res.ok) return fail(502, `Lead Hunter answered ${res.status}`);

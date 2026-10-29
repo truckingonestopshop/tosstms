@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 
 // Small, dependency-free SVG charts. One series per chart (one axis, one color),
@@ -88,7 +88,7 @@ function Tip({ d, format, i, n }: { d: Datum; format: (v: number) => string; i: 
   const frac = (i + 0.5) / n;
   return (
     <div
-      className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs shadow-pop"
+      className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 whitespace-nowrap rounded-xl border border-line bg-surface/90 px-2.5 py-1.5 text-xs shadow-pop backdrop-blur-md"
       style={{ left: `clamp(60px, calc((100% - 48px) * ${frac}), calc(100% - 60px))` }}
     >
       <div className="text-fg-3">{d.label}</div>
@@ -101,6 +101,11 @@ function Tip({ d, format, i, n }: { d: Datum; format: (v: number) => string; i: 
 export function BarChart({ data, format, height = 200, className }: { data: Datum[]; format: (v: number) => string; height?: number; className?: string }) {
   const { i, setI } = useHover();
   const box = useRef<HTMLDivElement>(null);
+  const gid = useId().replace(/:/g, "");
+  // The bar in orange: the hovered one, else the latest with a value.
+  let lastWithValue = -1;
+  data.forEach((d, k) => d.value > 0 && (lastWithValue = k));
+  const lit = i ?? lastWithValue;
   return (
     <div
       ref={box}
@@ -113,8 +118,19 @@ export function BarChart({ data, format, height = 200, className }: { data: Datu
       }}
     >
       <Frame data={data} format={format} height={height}>
-        {({ x, y, bw, h }) =>
-          data.map((d, k) => {
+        {({ x, y, bw, h }) => [
+          <defs key="defs">
+            <linearGradient id={`${gid}-lit`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#ffb878" />
+              <stop offset="55%" stopColor="#f28c38" />
+              <stop offset="100%" stopColor="#e2701c" />
+            </linearGradient>
+            <linearGradient id={`${gid}-bar`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--chart-bar-2)" />
+              <stop offset="100%" stopColor="var(--chart-bar)" />
+            </linearGradient>
+          </defs>,
+          ...data.map((d, k) => {
             const top = y(d.value);
             const bh = Math.max(0, h - top);
             const r = Math.min(4, bw / 2, bh);
@@ -124,14 +140,15 @@ export function BarChart({ data, format, height = 200, className }: { data: Datu
                 {bh > 0 && (
                   <path
                     d={`M${x0},${h} V${top + r} Q${x0},${top} ${x0 + r},${top} H${x0 + bw - r} Q${x0 + bw},${top} ${x0 + bw},${top + r} V${h} Z`}
-                    fill="var(--chart-1)"
-                    opacity={i === null || i === k ? 1 : 0.45}
+                    fill={k === lit ? `url(#${gid}-lit)` : `url(#${gid}-bar)`}
+                    className="bar-grow transition-[fill] duration-200"
+                    style={{ ["--d" as string]: `${k * 45}ms` }}
                   />
                 )}
               </g>
             );
-          })
-        }
+          }),
+        ]}
       </Frame>
       {i !== null && data[i] && <Tip d={data[i]} format={format} i={i} n={data.length} />}
     </div>
@@ -140,6 +157,7 @@ export function BarChart({ data, format, height = 200, className }: { data: Datu
 
 export function LineChart({ data, format, height = 200, className }: { data: Datum[]; format: (v: number) => string; height?: number; className?: string }) {
   const { i, setI } = useHover();
+  const gid = useId().replace(/:/g, "");
   const box = useRef<HTMLDivElement>(null);
   return (
     <div
@@ -158,7 +176,14 @@ export function LineChart({ data, format, height = 200, className }: { data: Dat
           const path = pts.map((p, n) => `${n ? "L" : "M"}${p.px},${p.py}`).join(" ");
           return (
             <>
-              <path d={path} fill="none" stroke="var(--chart-1)" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+              <defs>
+                <linearGradient id={`${gid}-area`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#f28c38" stopOpacity="0.28" />
+                  <stop offset="100%" stopColor="#f28c38" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {pts.length > 1 && <path d={`${path} L${pts[pts.length - 1].px},${h} L${pts[0].px},${h} Z`} fill={`url(#${gid}-area)`} className="animate-fade" />}
+              <path d={path} fill="none" stroke="#f28c38" strokeWidth={2.25} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" pathLength={1} className="line-draw" />
               {i !== null && <line x1={x(i)} x2={x(i)} y1={0} y2={h} stroke="var(--line-strong)" strokeWidth={1} vectorEffect="non-scaling-stroke" />}
             </>
           );
@@ -170,7 +195,7 @@ export function LineChart({ data, format, height = 200, className }: { data: Dat
           d.value > 0 && (i === k || data.length <= 31) ? (
             <span
               key={k}
-              className={cn("absolute rounded-full border-2 border-surface bg-chart-1", i === k ? "h-3 w-3" : "h-2 w-2")}
+              className={cn("absolute rounded-full border-2 border-surface bg-brand transition-all", i === k ? "h-3 w-3 shadow-[0_0_0_4px_rgba(242,140,56,0.2)]" : "h-2 w-2")}
               style={{
                 left: `${((k + 0.5) / data.length) * 100}%`,
                 top: `${(1 - d.value / niceMax(Math.max(0, ...data.map((x) => x.value)))) * ((height - 22 - 8) / (height - 22)) * 100}%`,

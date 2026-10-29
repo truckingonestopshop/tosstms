@@ -7,14 +7,14 @@ type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger" | "dange
 type Size = "xs" | "sm" | "md" | "lg" | "icon" | "icon-sm";
 
 const base =
-  "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-semibold transition-[background-color,border-color,color,transform] duration-100 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 select-none";
+  "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] font-semibold transition-[background-color,border-color,color,transform,box-shadow] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 select-none";
 
 const variants: Record<Variant, string> = {
   // The one orange action per screen: black text on brand orange.
-  primary: "bg-brand text-brand-fg hover:bg-brand-hover",
+  primary: "bg-brand text-brand-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_6px_18px_-8px_rgba(242,140,56,0.8)] hover:bg-brand-hover hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_10px_24px_-8px_rgba(242,140,56,0.9)]",
   // Black in light mode, white in dark mode.
   secondary: "bg-inverse text-inverse-fg hover:opacity-90",
-  outline: "border border-line-strong bg-surface text-fg hover:bg-surface-2",
+  outline: "border border-line-strong bg-surface/70 text-fg shadow-[inset_0_1px_0_var(--card-hi)] hover:bg-surface-2",
   ghost: "text-fg-2 hover:bg-surface-2 hover:text-fg",
   danger: "bg-red-600 text-white hover:bg-red-700",
   "danger-ghost": "text-red-600 hover:bg-red-500/10 dark:text-red-400",

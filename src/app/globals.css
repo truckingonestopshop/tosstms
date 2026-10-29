@@ -40,6 +40,16 @@
   --overlay: rgba(10, 10, 13, 0.4);
   --chart-1: #2a78d6;
   --shadow-pop: 0 1px 2px rgba(10, 10, 13, 0.04), 0 12px 32px -8px rgba(10, 10, 13, 0.16);
+  /* Glass cards: translucent white over the page light, a crisp top edge, a soft long shadow. */
+  --card: rgba(255, 255, 255, 0.78);
+  --card-border: rgba(10, 10, 13, 0.07);
+  --card-hi: rgba(255, 255, 255, 0.9);
+  --shadow-card: 0 1px 2px rgba(10, 10, 13, 0.04), 0 8px 24px -12px rgba(10, 10, 13, 0.12);
+  --shadow-card-hover: 0 2px 4px rgba(10, 10, 13, 0.05), 0 18px 40px -16px rgba(10, 10, 13, 0.2);
+  --chart-bar: #e4e4e8;
+  --chart-bar-2: #d2d2d8;
+  --page-glow-1: rgba(242, 140, 56, 0.1);
+  --page-glow-2: rgba(255, 196, 140, 0.12);
   color-scheme: light;
 }
 
@@ -62,6 +72,15 @@
   --overlay: rgba(0, 0, 0, 0.65);
   --chart-1: #3987e5;
   --shadow-pop: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 16px 40px -8px rgba(0, 0, 0, 0.7);
+  --card: linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0.02) 100%), rgba(13, 13, 15, 0.72);
+  --card-border: rgba(255, 255, 255, 0.075);
+  --card-hi: rgba(255, 255, 255, 0.06);
+  --shadow-card: 0 1px 0 rgba(0, 0, 0, 0.4), 0 12px 32px -16px rgba(0, 0, 0, 0.7);
+  --shadow-card-hover: 0 1px 0 rgba(0, 0, 0, 0.4), 0 20px 48px -18px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(242, 140, 56, 0.08);
+  --chart-bar: #26262c;
+  --chart-bar-2: #34343c;
+  --page-glow-1: rgba(242, 140, 56, 0.09);
+  --page-glow-2: rgba(255, 86, 48, 0.05);
   color-scheme: dark;
 }
 
@@ -102,6 +121,17 @@
   body {
     background: var(--bg);
     color: var(--fg);
+  }
+  /* A faint warm TOSS light behind every page (fixed, painted once, no scroll cost). */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(60vw 50vh at 8% -10%, var(--page-glow-1), transparent 70%),
+      radial-gradient(50vw 45vh at 100% 105%, var(--page-glow-2), transparent 70%);
   }
   h1, h2, h3 {
     letter-spacing: -0.025em;
@@ -261,6 +291,292 @@
 }
 @utility animate-pulse-ring {
   animation: pulse-ring 1.6s ease-out infinite;
+}
+
+/* Cards everywhere: glass surface with a lit top edge. */
+@utility card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  box-shadow: inset 0 1px 0 var(--card-hi), var(--shadow-card);
+}
+.card-hover {
+  transition: box-shadow 220ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 220ms ease;
+}
+.card-hover:hover {
+  box-shadow: inset 0 1px 0 var(--card-hi), var(--shadow-card-hover);
+  transform: translateY(-1px);
+  border-color: rgba(242, 140, 56, 0.28);
+}
+/* The one highlighted number tile: TOSS orange, lit from the top left. */
+@utility card-accent {
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(255, 220, 180, 0.55), transparent 55%),
+    linear-gradient(135deg, #f7a35c 0%, #f28c38 45%, #e2701c 100%);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 14px 34px -14px rgba(242, 140, 56, 0.75);
+  color: #1a0d03;
+}
+/* Chart bars rise in, one after another. */
+@keyframes bar-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+.bar-grow {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: bar-grow 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes line-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.line-draw {
+  stroke-dasharray: 1;
+  animation: line-draw 1100ms cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+/* Tiles in a grid rise in turn (first eight). */
+.rise-grid > * {
+  animation: fade-up 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.rise-grid > *:nth-child(2) { animation-delay: 40ms; }
+.rise-grid > *:nth-child(3) { animation-delay: 80ms; }
+.rise-grid > *:nth-child(4) { animation-delay: 120ms; }
+.rise-grid > *:nth-child(5) { animation-delay: 160ms; }
+.rise-grid > *:nth-child(6) { animation-delay: 200ms; }
+.rise-grid > *:nth-child(7) { animation-delay: 240ms; }
+.rise-grid > *:nth-child(8) { animation-delay: 280ms; }
+
+/* Side menu rail: a soft orange light follows the cursor (--spot-y, set on mouse move). */
+.rail-spot::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--spot-y, -200px) - 90px);
+  height: 180px;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgba(242, 140, 56, 0.16), transparent);
+  opacity: var(--spot-o, 0);
+  transition: opacity 250ms ease;
+}
+.rail-active {
+  background: linear-gradient(90deg, rgba(242, 140, 56, 0.16), rgba(242, 140, 56, 0.02) 70%);
+  box-shadow: inset 0 0 0 1px rgba(242, 140, 56, 0.18);
+}
+.rail[data-open="false"] .rail-active {
+  right: auto;
+  width: 40px;
+}
+/* The "Menu" tab: a rounded notch on the rail edge. */
+.rail-tab {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 0;
+  border-radius: 0 16px 16px 0;
+  box-shadow: 8px 0 24px -12px rgba(0, 0, 0, 0.5);
+}
+.rail-tab::before,
+.rail-tab::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+.rail-tab::before {
+  top: -14px;
+  background: radial-gradient(circle at 100% 0, transparent 13px, var(--surface) 14px);
+}
+.rail-tab::after {
+  bottom: -14px;
+  background: radial-gradient(circle at 100% 100%, transparent 13px, var(--surface) 14px);
+}
+
+/* TOSS Copilot orb, in TOSS orange: a dark glass sphere with molten light moving inside. Three
+   soft blobs (orange, gold, ember red) drift and turn, screen-blended; a gloss highlight and rim sit
+   on top; the warm glow breathes. data-state="busy" spins it faster and brighter while it works. */
+.orb {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  isolation: isolate;
+  background: radial-gradient(circle at 46% 40%, #4a1c05 0%, #2a0f03 34%, #140701 64%, #070302 88%);
+  box-shadow:
+    0 0 calc(var(--orb, 56px) * 0.42) rgba(242, 140, 56, 0.55),
+    0 0 calc(var(--orb, 56px) * 1.1) rgba(255, 94, 58, 0.22),
+    inset 0 calc(var(--orb, 56px) * -0.12) calc(var(--orb, 56px) * 0.25) rgba(0, 0, 0, 0.7),
+    inset 0 calc(var(--orb, 56px) * 0.06) calc(var(--orb, 56px) * 0.18) rgba(255, 210, 160, 0.22);
+  animation: orb-breathe 4.2s ease-in-out infinite;
+  transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 260ms ease;
+}
+.orb > i {
+  position: absolute;
+  inset: -20%;
+  border-radius: 9999px;
+  mix-blend-mode: screen;
+  filter: blur(calc(var(--orb, 56px) * 0.07));
+}
+.orb > i:nth-child(1) {
+  background: radial-gradient(circle at 34% 34%, rgba(242, 140, 56, 0.95) 0%, rgba(242, 140, 56, 0.3) 20%, transparent 38%);
+  animation: orb-spin 9s linear infinite;
+}
+.orb > i:nth-child(2) {
+  background: radial-gradient(ellipse 42% 13% at 46% 60%, rgba(255, 228, 168, 0.95) 0%, rgba(255, 184, 107, 0.5) 40%, transparent 75%);
+  animation: orb-wave 6.5s ease-in-out infinite;
+}
+.orb > i:nth-child(3) {
+  background: radial-gradient(circle at 68% 34%, rgba(255, 86, 48, 0.85) 0%, rgba(255, 86, 48, 0.3) 14%, transparent 30%);
+  animation: orb-spin 12s linear infinite reverse;
+}
+.orb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 36% 22%, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0.05) 18%, transparent 34%),
+    radial-gradient(circle at 50% 120%, rgba(255, 160, 80, 0.2) 0%, transparent 45%);
+  z-index: 2;
+}
+.orb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(255, 200, 150, 0.2);
+  z-index: 3;
+}
+.orb[data-state="busy"] {
+  animation-duration: 1.6s;
+}
+.orb[data-state="busy"] > i:nth-child(1) { animation-duration: 2.4s; }
+.orb[data-state="busy"] > i:nth-child(2) { animation-duration: 1.8s; }
+.orb[data-state="busy"] > i:nth-child(3) { animation-duration: 3.2s; }
+.orb-button:hover .orb,
+.orb-button:focus-visible .orb {
+  transform: scale(1.07);
+  filter: brightness(1.15) saturate(1.1);
+}
+.orb-button[data-dragging="true"] .orb {
+  transform: scale(1.12);
+  filter: brightness(1.2);
+}
+@keyframes orb-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes orb-wave {
+  0%, 100% { transform: translate(-6%, 4%) rotate(-12deg) scaleX(1); }
+  50% { transform: translate(8%, -6%) rotate(14deg) scaleX(1.15); }
+}
+@keyframes orb-breathe {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.18); }
+}
+/* The Copilot window: dark glass, a hairline rim lit from the top, deep shadow. */
+.copilot-window {
+  background: linear-gradient(180deg, rgba(24, 22, 22, 0.97) 0%, rgba(13, 12, 12, 0.985) 55%, rgba(10, 9, 9, 0.99) 100%);
+  backdrop-filter: blur(28px) saturate(1.4);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 40px 120px -24px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(242, 140, 56, 0.04),
+    0 0 80px -30px rgba(242, 140, 56, 0.35);
+  color: #f4f4f5;
+}
+@media (max-width: 767px) {
+  .copilot-window { background: linear-gradient(180deg, #171515 0%, #0d0c0c 55%, #0a0909 100%); }
+}
+/* Glass controls inside the window. */
+.cp-glass {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.cp-glass:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.cp-composer {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.cp-composer:focus-within {
+  border-color: rgba(242, 140, 56, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 4px rgba(242, 140, 56, 0.12), 0 0 40px -10px rgba(242, 140, 56, 0.45);
+}
+.cp-greeting {
+  background: linear-gradient(100deg, #ffffff 0%, #ffffff 40%, #ffd2a6 60%, rgba(255, 255, 255, 0.35) 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: greeting-reveal 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes greeting-reveal {
+  from { background-position: 100% 0; opacity: 0; transform: translateY(6px); }
+  to { background-position: 0% 0; opacity: 1; transform: none; }
+}
+@keyframes listening {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(242, 140, 56, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(242, 140, 56, 0); }
+}
+.cp-listening {
+  animation: listening 1.4s ease-out infinite;
+}
+
+/* The Copilot window: warm ember light drifting along its bottom edge. */
+.copilot-aurora {
+  position: absolute;
+  inset: auto -20% -38% -20%;
+  height: 70%;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 50% 60% at 30% 70%, rgba(242, 140, 56, 0.28), transparent 70%),
+    radial-gradient(ellipse 45% 55% at 72% 80%, rgba(255, 86, 48, 0.16), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(255, 196, 120, 0.14), transparent 70%);
+  filter: blur(24px);
+  animation: aurora-drift 14s ease-in-out infinite alternate;
+}
+.copilot-aurora[data-state="busy"] {
+  animation-duration: 4s;
+  opacity: 1.4;
+}
+@keyframes aurora-drift {
+  0% { transform: translateX(-6%) scale(1); }
+  100% { transform: translateX(6%) scale(1.08); }
+}
+/* "Thinking…" with light running through the text. */
+@keyframes shimmer-text {
+  to { background-position: -200% 0; }
+}
+@utility animate-shimmer-text {
+  background: linear-gradient(90deg, var(--color-fg-4) 0%, var(--color-fg) 45%, var(--color-fg-4) 90%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer-text 1.6s linear infinite;
+}
+@keyframes copilot-open {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@utility animate-copilot {
+  transform-origin: bottom right;
+  animation: copilot-open 260ms cubic-bezier(0.2, 0.9, 0.25, 1.05);
 }
 
 @media (prefers-reduced-motion: reduce) {
