@@ -47,11 +47,25 @@ function Items({ onPick }: { onPick?: () => void }) {
   );
 }
 
+const BUILT = process.env.NEXT_PUBLIC_BUILT_AT ? new Date(process.env.NEXT_PUBLIC_BUILT_AT) : null;
+
+/** One line at the bottom of the menu: app version and when it was last updated. */
+function VersionLine() {
+  const date = BUILT ? BUILT.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : null;
+  return (
+    <div className="mt-auto truncate border-t border-line px-5 py-3 text-[11px] text-fg-4">
+      v{process.env.NEXT_PUBLIC_APP_VERSION}
+      {date && ` · Updated ${date}`}
+    </div>
+  );
+}
+
 /** The left menu on computers (under the top bar). */
 export function Sidebar() {
   return (
-    <aside className="no-print sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-56 shrink-0 overflow-y-auto border-r border-line bg-surface/40 lg:block">
+    <aside className="no-print sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-56 shrink-0 overflow-y-auto border-r border-line bg-surface/40 lg:flex lg:flex-col">
       <Items />
+      <VersionLine />
     </aside>
   );
 }
@@ -78,6 +92,7 @@ export function SidebarDrawer({ open, onClose }: { open: boolean; onClose: () =>
           </button>
         </div>
         <Items onPick={onClose} />
+        <VersionLine />
       </div>
     </div>,
     document.body,

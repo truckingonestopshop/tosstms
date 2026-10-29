@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, CreditCard,
 import { Button } from "@/components/ui/Button";
 import { Card, Page, PageHeader } from "@/components/ui/Bits";
 import { Segmented } from "@/components/ui/Field";
-import { BarChart } from "@/components/analytics/Charts";
+import { BarChart, LineChart } from "@/components/analytics/Charts";
 import { BarRow, Kpi, Panel, amber, red } from "@/components/dashboard/Widgets";
 import { useAcc } from "@/components/accounting/AccountingProvider";
 import { TxModal } from "@/components/accounting/TxModal";
@@ -15,27 +15,35 @@ import { addDays, cn, fmtDay, money, moneyShort, today } from "@/lib/format";
 import { PERIODS, inRange, lastMonths, ranges, type Period, type Range } from "@/lib/dashboard";
 import { balances, missingFile, perMonth, type AccTransaction, type TxKind } from "@/lib/accounting";
 
-// TOSS Accounting dashboard: money in / out / net and cash, vs the period before; 12 months of in vs
-// out; where the money goes (categories vs budget, merchants, people, payment methods); account
-// balances; what needs attention; the latest transactions. Everything opens the tracker filtered.
+// TOSS Accounting dashboard: money in / out / net and available funds, vs the period before (or all
+// time); 12 months of out / in / net; where the money comes from (incoming categories and senders);
+// where it goes (categories vs budget, merchants, people, payment methods); account balances; what
+// needs attention; the latest transactions. Everything opens the tracker filtered.
+
+// "All time" is Accounting's own: total money in / out since the first transaction.
+type AccPeriod = Period | "all";
+const ACC_PERIODS: { v: AccPeriod; label: string }[] = [...PERIODS, { v: "all", label: "All time" }];
+const accRanges = (p: AccPeriod, t: string) => (p === "all" ? { cur: { from: "1900-01-01", to: t }, prev: null } : ranges(p, t));
+type Chart = "out" | "in" | "net";
 
 const days = (r: Range) => Math.round((new Date(r.to).getTime() - new Date(r.from).getTime()) / 86400000) + 1;
 
 export default function AccountingDashboard() {
   const { memberName, me } = useStore();
   const { txs, categories, merchants, methods, accounts, recurring, settings } = useAcc();
-  const [period, setPeriod] = useState<Period>("month");
+  const [period, setPeriod] = useState<AccPeriod>("month");
+  const [chart, setChart] = useState<Chart>("out");
   const [adding, setAdding] = useState<TxKind | null>(null);
   const [editing, setEditing] = useState<AccTransaction | null>(null);
   const t = today();
-  const { cur, prev } = ranges(period, t);
-  const periodLabel = PERIODS.find((p) => p.v === period)!.label.toLowerCase();
+  const { cur, prev } = accRanges(period, t);
+  const periodLabel = ACC_PERIODS.find((p) => p.v === period)!.label.toLowerCase();
 
   const sum = (kind: TxKind, r: Range) => txs.rows.filter((x) => x.kind === kind && inRange(x.date, r)).reduce((s, x) => s + Number(x.amount), 0);
   const inCur = sum("income", cur);
   const outCur = sum("expense", cur);
-  const inPrev = sum("income", prev);
-  const outPrev = sum("expense", prev);
+  const inPrev = prev ? sum("income", prev) : undefined;
+  const outPrev = prev ? sum("expense", prev) : undefined;
   const bal = balances(accounts.rows, txs.rows, methods.rows);
   const cash = accounts.rows.filter((a) => a.active && a.kind !== "card").reduce((s, a) => s + (bal.get(a.id) ?? 0), 0);
   const cardDebt = accounts.rows.filter((a) => a.active && a.kind === "card").reduce((s, a) => s + (bal.get(a.id) ?? 0), 0);
@@ -45,7 +53,8 @@ export default function AccountingDashboard() {
   const months = lastMonths(12, t).map((m) => ({ ...m, out: sum("expense", m), in: sum("income", m) }));
 
   const spent = txs.rows.filter((x) => x.kind === "expense" && inRange(x.date, cur));
-  const factor = days(cur) / 30.44;
+  // Budgets are monthly; over "all time" they don't apply.
+  const factor = period === "all" ? 0 : days(cur) / 30.44;
   const byCat = categories.rows
     .filter((c) => c.kind === "expense")
     .map((c) => {
@@ -68,6 +77,23 @@ export default function AccountingDashboard() {
   const byPerson = group((x) => (x.processed_by ? memberName(x.processed_by) : null));
   const byMethod = group((x) => methods.rows.find((m) => m.id === x.payment_method_id)?.name || null);
   const maxCat = Math.max(1, ...byCat.map((x) => Math.max(x.v, x.budget)));
+  // Where the money came from: incoming by category, and by who sent it.
+  const received = txs.rows.filter((x) => x.kind === "income" && inRange(x.date, cur));
+  const inByCat = categories.rows
+    .filter((c) => c.kind === "income" && !c.parent_id)
+    .map((c) => {
+      const kids = new Set([c.id, ...categories.rows.filter((x) => x.parent_id === c.id).map((x) => x.id)]);
+      return { c, v: received.filter((x) => x.category_id && kids.has(x.category_id)).reduce((s, x) => s + Number(x.amount), 0) };
+    })
+    .filter((x) => x.v)
+    .sort((a, b) => b.v - a.v);
+  const inUncat = received.filter((x) => !x.category_id).reduce((s, x) => s + Number(x.amount), 0);
+  const maxIn = Math.max(1, inUncat, ...inByCat.map((x) => x.v));
+  const bySource = (() => {
+    const m = new Map<string, number>();
+    for (const x of received) if (x.counterparty) m.set(x.counterparty, (m.get(x.counterparty) || 0) + Number(x.amount));
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  })();
   const due = recurring.rows.filter((r) => r.active && r.next_date <= addDays(t, 7));
   const pending = txs.rows.filter((x) => x.status === "pending");
 
@@ -93,7 +119,7 @@ export default function AccountingDashboard() {
         title={firstName ? `Money, ${firstName}` : "Money"}
         actions={
           <>
-            <Segmented value={period} onChange={setPeriod} options={PERIODS.map((p) => ({ value: p.v, label: p.label }))} className="scrollbar-none overflow-x-auto" />
+            <Segmented value={period} onChange={setPeriod} options={ACC_PERIODS.map((p) => ({ value: p.v, label: p.label }))} className="scrollbar-none overflow-x-auto" />
             <Button variant="secondary" onClick={() => setAdding("income")}>
               <ArrowDownLeft className="h-4 w-4" /> Incoming
             </Button>
@@ -105,10 +131,10 @@ export default function AccountingDashboard() {
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Kpi label="Money in" value={money(inCur, { cents: false })} cur={inCur} prev={inPrev} sub="vs before" href="/accounting/transactions?kind=income" />
-        <Kpi label="Money out" value={money(outCur, { cents: false })} cur={outCur} prev={outPrev} lowerIsBetter sub="vs before" href="/accounting/transactions?kind=expense" />
-        <Kpi label="Net" value={money(inCur - outCur, { cents: false })} cur={inCur - outCur} prev={inPrev - outPrev} sub={periodLabel} />
-        <Kpi label="Cash in accounts" value={money(cash, { cents: false })} sub={cardDebt ? `${money(cardDebt, { cents: false })} on cards` : "Banks, cash, online"} href="/accounting/setup?tab=accounts" />
+        <Kpi label="Money in" value={money(inCur, { cents: false })} cur={inCur} prev={inPrev} sub={prev ? "vs before" : "Total received"} href="/accounting/transactions?kind=income" />
+        <Kpi label="Money out" value={money(outCur, { cents: false })} cur={outCur} prev={outPrev} lowerIsBetter sub={prev ? "vs before" : "Total spent"} href="/accounting/transactions?kind=expense" />
+        <Kpi label="Net" value={money(inCur - outCur, { cents: false })} cur={inCur - outCur} prev={prev ? inPrev! - outPrev! : undefined} sub={periodLabel} />
+        <Kpi label="Available funds" value={money(cash, { cents: false })} sub={cardDebt ? `${money(cardDebt, { cents: false })} on cards` : "Banks, cash, online"} href="/accounting/setup?tab=accounts" />
         <Kpi label="Fixed costs / month" value={money(fixed, { cents: false })} sub="Recurring expenses" href="/accounting/recurring" />
         <Kpi label="Missing receipts" value={String(missing.length)} sub={missing.length ? "Need a file" : "All filed"} href="/accounting/transactions?range=all&missing=1" />
       </div>
@@ -116,11 +142,27 @@ export default function AccountingDashboard() {
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3 sm:px-5">
-            <span className="text-[14px] font-semibold text-fg">Money out · last 12 months</span>
-            <span className="text-xs text-fg-3">Hover a month for money in and net</span>
+            <span className="text-[14px] font-semibold text-fg">{chart === "out" ? "Money out" : chart === "in" ? "Money in" : "Net"} · last 12 months</span>
+            <Segmented
+              value={chart}
+              onChange={setChart}
+              options={[
+                { value: "out", label: "Out" },
+                { value: "in", label: "In" },
+                { value: "net", label: "Net" },
+              ]}
+            />
           </div>
           <div className="p-4 sm:p-5">
-            <BarChart data={months.map((m) => ({ label: m.label, value: Math.round(m.out), sub: `In ${moneyShort(m.in)} · Net ${moneyShort(m.in - m.out)}` }))} format={(v) => moneyShort(v)} height={200} />
+            {chart === "net" ? (
+              <LineChart data={months.map((m) => ({ label: m.label, value: Math.round(m.in - m.out), sub: `In ${moneyShort(m.in)} · Out ${moneyShort(m.out)}` }))} format={(v) => moneyShort(v)} height={200} />
+            ) : (
+              <BarChart
+                data={months.map((m) => ({ label: m.label, value: Math.round(chart === "out" ? m.out : m.in), sub: chart === "out" ? `In ${moneyShort(m.in)} · Net ${moneyShort(m.in - m.out)}` : `Out ${moneyShort(m.out)} · Net ${moneyShort(m.in - m.out)}` }))}
+                format={(v) => moneyShort(v)}
+                height={200}
+              />
+            )}
           </div>
         </Card>
         <Card className="flex flex-col">
@@ -156,6 +198,33 @@ export default function AccountingDashboard() {
                 <Link key={x.c.id} href={`/accounting/transactions?category=${x.c.id}`} className="block">
                   <BarRow label={x.c.name} value={x.v} max={maxCat} right={x.budget ? `${moneyShort(x.v)} / ${moneyShort(x.budget)}` : moneyShort(x.v)} color={x.budget && x.v > x.budget ? "bg-red-500" : ""} />
                 </Link>
+              ))}
+            </div>
+          )}
+        </Panel>
+
+        <Panel title={`Incoming by category · ${periodLabel}`} href="/accounting/transactions?kind=income" icon={ArrowDownLeft}>
+          {inByCat.length === 0 && !inUncat ? (
+            <div className="text-sm text-fg-4">No money in {periodLabel}.</div>
+          ) : (
+            <div className="space-y-2.5">
+              {inByCat.map((x) => (
+                <Link key={x.c.id} href={`/accounting/transactions?category=${x.c.id}`} className="block">
+                  <BarRow label={x.c.name} value={x.v} max={maxIn} right={moneyShort(x.v)} color="bg-emerald-500" />
+                </Link>
+              ))}
+              {inUncat > 0 && <BarRow label="Uncategorized" value={inUncat} max={maxIn} right={moneyShort(inUncat)} color="bg-emerald-500/50" />}
+            </div>
+          )}
+        </Panel>
+
+        <Panel title={`Where it came from · ${periodLabel}`} href="/accounting/transactions?kind=income" icon={Landmark}>
+          {bySource.length === 0 ? (
+            <div className="text-sm text-fg-4">No money in {periodLabel}.</div>
+          ) : (
+            <div className="space-y-2">
+              {bySource.slice(0, 8).map(([n, v]) => (
+                <BarRow key={n} label={n} value={v} max={bySource[0][1]} right={moneyShort(v)} color="bg-emerald-500" />
               ))}
             </div>
           )}
