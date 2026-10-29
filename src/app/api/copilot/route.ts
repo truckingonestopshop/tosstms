@@ -68,6 +68,8 @@ export async function POST(req: Request) {
         "navigate",
         "propose_create_company",
         "propose_add_lead_from_hunter",
+        "propose_update_company",
+        "propose_update_from_hunter",
         "propose_add_company_note",
         "propose_create_case",
         "propose_create_opportunity",

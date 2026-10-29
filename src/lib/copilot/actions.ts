@@ -29,6 +29,25 @@ export const ACTIONS = {
   add_lead_from_hunter: z.object({
     dot_number: z.string().regex(/^\d{1,9}$/).describe("USDOT number of the carrier in Lead Hunter"),
   }),
+  update_company: z.object({
+    company_id: uuid,
+    name: z.string().trim().min(2).max(200).optional().describe("Legal name"),
+    dba_name: z.string().trim().max(200).nullable().optional(),
+    dot_number: z.string().regex(/^\d{1,9}$/).optional().describe("USDOT number, digits"),
+    mc_number: z.string().trim().max(12).nullable().optional().describe("MC number; saved as digits only"),
+    stage: z.enum(["lead", "client"]).optional(),
+    contact_first_name: z.string().max(80).nullable().optional(),
+    contact_last_name: z.string().max(80).nullable().optional(),
+    contact_phone: z.string().max(40).nullable().optional(),
+    contact_email: z.string().email().nullable().optional(),
+    street: z.string().max(200).nullable().optional(),
+    city: z.string().max(100).nullable().optional(),
+    state: z.string().max(40).nullable().optional(),
+    zip: z.string().max(20).nullable().optional(),
+  }),
+  update_from_hunter: z.object({
+    company_id: uuid.describe("A company already in TOSS Cloud that has a USDOT number"),
+  }),
   add_company_note: z.object({
     company_id: uuid,
     note: z.string().trim().min(1).max(4000),
@@ -66,6 +85,8 @@ export const ACTION_NAMES = Object.keys(ACTIONS) as ActionName[];
 export const ACTION_LABEL: Record<ActionName, string> = {
   create_company: "Add company",
   add_lead_from_hunter: "Add lead from Lead Hunter",
+  update_company: "Edit company details",
+  update_from_hunter: "Update company from Lead Hunter",
   add_company_note: "Add note to the company timeline",
   create_case: "Open a case",
   create_opportunity: "Create an opportunity",
@@ -85,7 +106,9 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
   const check = async (table: string, id: string, expect?: Record<string, unknown>): Promise<boolean> => {
     const { data } = await sb.from(table).select("*").eq("id", id).maybeSingle();
     if (!data) return false;
-    return !expect || Object.entries(expect).every(([k, v]) => (data as Record<string, unknown>)[k] === v);
+    // Phones come back as (XXX) XXX-XXXX (the database formats them), so those compare by digits.
+    const same = (k: string, a: unknown, b: unknown) => (k.endsWith("phone") && typeof a === "string" && typeof b === "string" ? a.replace(/\D/g, "") === b.replace(/\D/g, "") : a === b);
+    return !expect || Object.entries(expect).every(([k, v]) => same(k, (data as Record<string, unknown>)[k], v));
   };
   const notSeen = (what: string): Result => ({ ok: false, message: `${what} didn't save (I checked and it isn't there). Try again or add it from the page.` });
 
@@ -164,6 +187,61 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
         id: r.companyId,
         href: `/fleet?company=${r.companyId}`,
       };
+    }
+
+    case "update_company": {
+      const { company_id, ...fields } = input as z.infer<typeof ACTIONS.update_company>;
+      const patch: Record<string, unknown> = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
+      if (typeof patch.mc_number === "string") patch.mc_number = patch.mc_number.replace(/\D/g, "") || null;
+      if (patch.stage === "client") {
+        const { data: cur } = await sb.from("tms_companies").select("became_client_at").eq("id", company_id).maybeSingle();
+        if (cur && !cur.became_client_at) patch.became_client_at = new Date().toISOString();
+      }
+      if (!Object.keys(patch).length) return { ok: false, message: "Nothing to change." };
+      if (patch.dot_number) {
+        const { data: twin } = await sb.from("tms_companies").select("id,name").eq("dot_number", patch.dot_number).neq("id", company_id).maybeSingle();
+        if (twin) return { ok: false, message: `${twin.name} already has USDOT ${patch.dot_number}.` };
+      }
+      const { data, error } = await sb.from("tms_companies").update(patch).eq("id", company_id).select("id,name").maybeSingle();
+      if (error) return fail(error, "Couldn't update the company");
+      if (!data) return { ok: false, message: "That company isn't there, or you can't edit it." };
+      const expect = { ...patch };
+      delete expect.became_client_at;
+      if (!(await check("tms_companies", data.id, expect))) return notSeen("The change");
+      return { ok: true, message: `${data.name} updated. Checked: it's saved.`, id: data.id, href: `/fleet?company=${data.id}&tab=profile` };
+    }
+
+    case "update_from_hunter": {
+      const i = input as z.infer<typeof ACTIONS.update_from_hunter>;
+      if (!me.token) return { ok: false, message: "Sign in again." };
+      const { data: co } = await sb.from("tms_companies").select("*").eq("id", i.company_id).maybeSingle();
+      if (!co) return { ok: false, message: "That company isn't there, or you can't edit it." };
+      if (!co.dot_number) return { ok: false, message: `${co.name} has no USDOT number, so Lead Hunter can't match it.` };
+      const lead = (await hunterApi(me.token, `/v1/leads/${co.dot_number}`)) as Record<string, unknown> | null;
+      if (!lead) return { ok: false, message: `Lead Hunter has no carrier with USDOT ${co.dot_number}.` };
+      const s = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+      // Registration details follow Lead Hunter; contacts the team typed are only filled when empty.
+      const patch: Record<string, unknown> = {};
+      const put = (k: string, v: string | null | undefined) => {
+        if (v && v !== co[k]) patch[k] = v;
+      };
+      put("name", s(lead.legalName));
+      put("dba_name", s(lead.dbaName));
+      put("mc_number", s(lead.mcNumber)?.replace(/\D/g, ""));
+      if (!co.street && !co.city && !co.state && !co.zip) {
+        put("street", s(lead.phyStreet));
+        put("city", s(lead.phyCity));
+        put("state", s(lead.phyState));
+        put("zip", s(lead.phyZip));
+      }
+      if (!co.contact_phone) put("contact_phone", s(lead.phone) || s(lead.cellPhone));
+      if (!co.contact_email) put("contact_email", s(lead.email));
+      if (!Object.keys(patch).length) return { ok: true, message: `${co.name} already matches Lead Hunter. Nothing to change.`, id: co.id, href: `/fleet?company=${co.id}&tab=profile` };
+      const { error } = await sb.from("tms_companies").update(patch).eq("id", co.id);
+      if (error) return fail(error, "Couldn't update the company");
+      if (!(await check("tms_companies", co.id, patch))) return notSeen("The update");
+      const what = Object.keys(patch).map((k) => k.replace(/_number$/, "").replace(/_/g, " ").replace(/^mc$/, "MC").replace(/^dba name$/, "DBA"));
+      return { ok: true, message: `${s(lead.legalName) || co.name} updated from Lead Hunter (${what.join(", ")}). Checked: it's saved.`, id: co.id, href: `/fleet?company=${co.id}&tab=profile` };
     }
 
     case "add_company_note": {

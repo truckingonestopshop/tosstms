@@ -51,6 +51,8 @@ const RUNNING: Record<string, [string, string]> = {
 const ACTION: Record<string, string> = {
   "tool-propose_create_company": "Add company",
   "tool-propose_add_lead_from_hunter": "Add lead from Lead Hunter",
+  "tool-propose_update_company": "Edit company details",
+  "tool-propose_update_from_hunter": "Update company from Lead Hunter",
   "tool-propose_add_company_note": "Add a note to the company timeline",
   "tool-propose_create_case": "Open a case",
   "tool-propose_create_opportunity": "Create an opportunity",
@@ -62,7 +64,8 @@ const FIELD: Record<string, string> = {
   name: "Name", dot_number: "USDOT", mc_number: "MC", stage: "Stage", contact_first_name: "Contact first name", contact_last_name: "Contact last name",
   contact_phone: "Phone", contact_email: "Email", notes: "Notes", company_id: "Company", note: "Note", kind: "Kind", title: "Title", description: "Description",
   priority: "Priority", due_date: "Due", service: "Service", value: "Value", expected_close: "Expected close", load_id: "Load", status: "Status",
-  truck_id: "Truck", current_location: "Location", available_date: "Available from",
+  truck_id: "Truck", current_location: "Location", available_date: "Available from", dba_name: "DBA", street: "Street", city: "City", state: "State",
+  zip: "ZIP",
 };
 
 type Thread = { id: string; title: string; updated_at: string };
@@ -441,8 +444,11 @@ function ActionCard({ part, actionable, threadId, onDone }: { part: ProposePart;
     }
     if (k === "truck_id") return `Unit ${trucks.find((x) => x.id === v)?.unit_number ?? v}`;
     if (k === "value") return money(Number(v));
-    if (v === null) return "Ready now";
-    return String(v).replace(/_/g, " ");
+    if (v === null) return k === "available_date" ? "Ready now" : "(clear)";
+    const text = String(v).replace(/_/g, " ");
+    // An edit shows what it replaces.
+    const before = part.type === "tool-propose_update_company" ? (companyById(String(input.company_id)) as unknown as Record<string, unknown> | undefined)?.[k] : undefined;
+    return before != null && before !== "" && String(before) !== String(v) ? `${String(before).replace(/_/g, " ")} → ${text}` : text;
   };
   const confirm = async () => {
     setRunning(true);

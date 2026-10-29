@@ -457,6 +457,8 @@ export function copilotTools(ctx: ToolContext) {
   const actionTools = {
     propose_create_company: card("create_company", ACTIONS.create_company),
     propose_add_lead_from_hunter: card("add_lead_from_hunter", ACTIONS.add_lead_from_hunter),
+    propose_update_company: card("update_company", ACTIONS.update_company),
+    propose_update_from_hunter: card("update_from_hunter", ACTIONS.update_from_hunter),
     propose_add_company_note: card("add_company_note", ACTIONS.add_company_note),
     propose_create_case: card("create_case", ACTIONS.create_case),
     propose_create_opportunity: card("create_opportunity", ACTIONS.create_opportunity),
