@@ -39,6 +39,9 @@ export function ExpiryPill({ label, date }: { label: string; date: string | null
   return <Pill className={neutralPill}>{label} {fmtDay(date)}</Pill>;
 }
 
+/** Terminated: has a termination date, or was set Inactive (the letter / date may come later). */
+export const isTerminated = (d: Pick<Driver, "termination_date" | "status">) => !!d.termination_date || d.status === "inactive";
+
 export const driverAlert = (d: Driver) => {
   const a = daysUntil(d.cdl_expiry);
   const b = daysUntil(d.medical_card_expiry);
@@ -61,11 +64,12 @@ const blank = (d?: Driver | null): Draft => ({
   status: d?.status ?? "active",
   hire_date: d?.hire_date ?? "",
   termination_date: d?.termination_date ?? "",
+  dob: d?.dob ?? "",
   notes: d?.notes ?? "",
 });
 
 export function DriverForm({ open, onClose, companyId, driver }: { open: boolean; onClose: () => void; companyId: string; driver?: Driver | null }) {
-  const { createDriver, updateDriver, uploadDocument } = useStore();
+  const { createDriver, updateDriver, uploadDocument, drivers, companyById } = useStore();
   const [d, setD] = useState<Draft>(blank(driver));
   const [saving, setSaving] = useState(false);
   // Picked while adding a new driver; uploaded right after it's created.
@@ -115,6 +119,35 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
 
   const save = async () => {
     if (!String(d.first_name || "").trim()) return toast.error("First name is required.");
+    // Same name or license # as a driver already on file: ask before adding a duplicate.
+    const norm = (s: unknown) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const lic = norm(d.cdl_number).replace(/[^a-z0-9]/g, "");
+    const twins = drivers.filter(
+      (x) => x.id !== driver?.id && ((fullName && norm(x.name) === norm(fullName)) || (lic && norm(x.cdl_number).replace(/[^a-z0-9]/g, "") === lic)),
+    );
+    if (twins.length && (!driver || norm(driver.name) !== norm(fullName) || norm(driver.cdl_number) !== norm(d.cdl_number))) {
+      const go = await confirmDialog({
+        title: "This driver may already exist",
+        body: (
+          <div className="space-y-2 text-[13px]">
+            <p>Same {twins.some((x) => lic && norm(x.cdl_number).replace(/[^a-z0-9]/g, "") === lic) ? "license #" : "name"} as:</p>
+            <ul className="space-y-1">
+              {twins.slice(0, 4).map((x) => (
+                <li key={x.id} className="rounded-lg bg-surface-2 px-2.5 py-1.5">
+                  <b>{x.name}</b>
+                  {x.cdl_number ? ` · ${x.cdl_number}` : ""}
+                  {companyById(x.company_id) ? ` · ${companyById(x.company_id)!.name}` : ""}
+                  {isTerminated(x) ? " · terminated" : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ),
+        confirmLabel: driver ? "Save anyway" : "Add anyway",
+        cancelLabel: "Disregard",
+      });
+      if (!go) return;
+    }
     setSaving(true);
     const row = {
       ...d,
@@ -123,6 +156,7 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
       name: fullName,
       hire_date: d.hire_date || null,
       termination_date: d.termination_date || null,
+      dob: d.dob || null,
       // A termination date makes the driver inactive.
       status: d.termination_date ? ("inactive" as const) : d.status,
     };
@@ -216,7 +250,7 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
             <Field label="Medical card expires">
               <Input type="date" value={d.medical_card_expiry || ""} onChange={(e) => set({ medical_card_expiry: e.target.value })} />
             </Field>
-            <Field label="Status" hint={d.termination_date ? "Terminated drivers are inactive" : undefined}>
+            <Field label="Status" hint={d.termination_date ? "Terminated drivers are inactive" : d.status === "inactive" ? "Shows under Terminated (add the date when you have it)" : undefined}>
               <Select value={d.termination_date ? "inactive" : d.status} disabled={!!d.termination_date} onChange={(e) => set({ status: e.target.value as Driver["status"] })}>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
@@ -228,6 +262,10 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Employment</div>
           <div className="grid grid-cols-2 gap-3">
+            <Field label="Date of birth">
+              <Input type="date" value={String(d.dob || "")} onChange={(e) => set({ dob: e.target.value })} />
+            </Field>
+            <div className="hidden sm:block" />
             <Field label="Date of hire">
               <Input type="date" value={String(d.hire_date || "")} onChange={(e) => set({ hire_date: e.target.value })} />
             </Field>
@@ -242,9 +280,9 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Other documents</div>
           {driver ? (
-            <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId, licenseExpiry: driver.cdl_expiry }} compact emptyText="No driver files yet." />
+            <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId, licenseExpiry: driver.cdl_expiry, waived: driver.waived_docs }} compact emptyText="No driver files yet." />
           ) : (
-            <PendingFiles files={files} onChange={setFiles} />
+            <PendingFiles files={files} onChange={setFiles} medicalExpiry={d.medical_card_expiry || ""} />
           )}
         </div>
 
@@ -256,8 +294,9 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
   );
 }
 
-/** Documents for a driver that doesn't exist yet: type, optional expiry, file. */
-function PendingFiles({ files, onChange }: { files: PendingFile[]; onChange: (f: PendingFile[]) => void }) {
+/** Documents for a driver that doesn't exist yet: type, optional expiry, file. A medical card uses the
+ *  "Medical card expires" date typed above, so it isn't asked twice. */
+function PendingFiles({ files, onChange, medicalExpiry }: { files: PendingFile[]; onChange: (f: PendingFile[]) => void; medicalExpiry: string }) {
   const { docTypes } = useStore();
   const nameOf = (k: string) => docTypes.find((t) => t.key === k)?.name || k;
   const [type, setType] = useState("driver_application");
@@ -267,10 +306,12 @@ function PendingFiles({ files, onChange }: { files: PendingFile[]; onChange: (f:
   const input = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const chosen = docTypes.find((t) => t.key === type);
+  const medical = type === "medical_card";
   /** Checked before the file picker opens (and on drop). */
   const ready = () => {
     if (type === CUSTOM && !custom.trim()) return toast.error("Type the document name first."), false;
-    if (chosen?.has_expiry && !expires) return toast.error(`${chosen.name} expires: enter the expiration date first.`), false;
+    if (medical && !medicalExpiry) return toast.error("Enter the Medical card expires date above first."), false;
+    if (!medical && chosen?.has_expiry && !expires) return toast.error(`${chosen.name} expires: enter the expiration date first.`), false;
     return true;
   };
   const add = async (list: FileList | null) => {
@@ -283,7 +324,7 @@ function PendingFiles({ files, onChange }: { files: PendingFile[]; onChange: (f:
       setType(t.key);
       setCustom("");
     }
-    onChange([...files, ...Array.from(list).map((file) => ({ id: crypto.randomUUID(), file, type: key, expires }))]);
+    onChange([...files, ...Array.from(list).map((file) => ({ id: crypto.randomUUID(), file, type: key, expires: medical ? medicalExpiry : expires }))]);
     setExpires("");
   };
   return (
@@ -302,9 +343,13 @@ function PendingFiles({ files, onChange }: { files: PendingFile[]; onChange: (f:
     >
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_150px_auto] sm:items-end">
         <DocTypeSelect scope="driver" value={type} onChange={setType} custom={custom} onCustom={setCustom} className={type === CUSTOM ? "sm:col-span-3" : undefined} />
-        <Field label={chosen?.has_expiry ? "Expires (required)" : "Expires (optional)"}>
-          <Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
-        </Field>
+        {medical ? (
+          <div className="pb-2 text-[12px] text-fg-3">{medicalExpiry ? `Expires ${fmtDay(medicalExpiry)} (from above)` : "Uses the medical card date above"}</div>
+        ) : (
+          <Field label={chosen?.has_expiry ? "Expires (required)" : "Expires (optional)"}>
+            <Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
+          </Field>
+        )}
         <Button variant="secondary" onClick={() => ready() && input.current?.click()}>
           <FilePlus2 className="h-4 w-4" /> Add file
         </Button>
@@ -346,7 +391,7 @@ function PendingFiles({ files, onChange }: { files: PendingFile[]; onChange: (f:
 
 /** A driver at a glance (read only). Edit shows the truck picker, photos and document uploads. */
 export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null; onClose: () => void; onEdit: (d: Driver) => void }) {
-  const { trucks, loads, deleteDriver, documents } = useStore();
+  const { trucks, loads, deleteDriver, documents, isOwner } = useStore();
   const [manageId, setManageId] = useState<string | null>(null);
   if (!driver) return null;
   const manage = manageId === driver.id;
@@ -377,28 +422,30 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
               <Pencil className="h-3.5 w-3.5" /> Edit
             </Button>
           )}
-          <Button
-            size="icon-sm"
-            variant="danger-ghost"
-            aria-label="Delete driver"
-            onClick={async () => {
-              if (
-                await confirmDialog({
-                  title: `Delete ${driver.name}?`,
-                  body: "Their loads stay, but the driver is removed from them and from any truck. Their documents are deleted.",
-                  confirmLabel: "Delete driver",
-                  danger: true,
-                })
-              ) {
-                if (await deleteDriver(driver.id)) {
-                  toast.success("Driver deleted");
-                  onClose();
+          {isOwner && (
+            <Button
+              size="icon-sm"
+              variant="danger-ghost"
+              aria-label="Delete driver"
+              onClick={async () => {
+                if (
+                  await confirmDialog({
+                    title: `Delete ${driver.name}?`,
+                    body: "Their loads stay, but the driver is removed from them and from any truck. Their documents are deleted.",
+                    confirmLabel: "Delete driver",
+                    danger: true,
+                  })
+                ) {
+                  if (await deleteDriver(driver.id)) {
+                    toast.success("Driver deleted");
+                    onClose();
+                  }
                 }
-              }
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
         </>
       }
     >
@@ -466,7 +513,7 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
 
             <section>
               <Eyebrow className="mb-2">Driver documents</Eyebrow>
-              <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId: driver.company_id, licenseExpiry: driver.cdl_expiry }} compact emptyText="No driver files yet." />
+              <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId: driver.company_id, licenseExpiry: driver.cdl_expiry, waived: driver.waived_docs }} compact emptyText="No driver files yet." />
             </section>
           </>
         ) : (

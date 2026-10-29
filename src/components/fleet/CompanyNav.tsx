@@ -31,7 +31,7 @@ import type { Company } from "@/lib/types";
 // Loads, Invoices, Analytics), so Dispatch sits among the carrier's sections like DOT Compliance
 // and MCPT. TOSS Cloud serves every service; dispatch is one of them.
 
-export type CompanyTab = "units" | "trucks" | "trailers" | "drivers" | "docs" | "vault" | "profile" | "services" | "sales" | "cases" | "dot" | "mcpt" | "dispatch" | "billing";
+export type CompanyTab = "units" | "trucks" | "trailers" | "drivers" | "equipment_list" | "docs" | "vault" | "profile" | "services" | "sales" | "cases" | "dot" | "mcpt" | "dispatch" | "billing";
 
 /** Where a carrier tab lives: Dispatch and Billing have their own pages, the rest are on Fleet & Company. */
 export const companyTabHref = (t: CompanyTab) => (t === "dispatch" ? "/dispatch" : t === "billing" ? "/billing" : `/fleet?tab=${t}`);
@@ -80,7 +80,7 @@ export function CompanyTabs({ company, value, onChange }: { company: Company; va
   const d = drivers.filter((x) => x.company_id === company.id);
   const docs = documents.filter((x) => x.company_id === company.id);
 
-  type Shown = Exclude<CompanyTab, "units" | "trucks" | "trailers" | "drivers"> | "equipment";
+  type Shown = Exclude<CompanyTab, "units" | "trucks" | "trailers" | "drivers" | "equipment_list"> | "equipment";
   const all: Record<Shown, { value: Shown; label: React.ReactNode; count?: number }> = {
     equipment: { value: "equipment", label: <><TruckIcon className="h-4 w-4" /> Equipment & Drivers</>, count: t.length + tl.length + d.length },
     docs: { value: "docs", label: <><FileText className="h-4 w-4" /> Documents</>, count: docs.length },
@@ -108,7 +108,7 @@ export function CompanyTabs({ company, value, onChange }: { company: Company; va
             : true,
     )
     .map((k) => all[k]);
-  const equipment = value === "units" || value === "trucks" || value === "trailers" || value === "drivers";
+  const equipment = value === "units" || value === "trucks" || value === "trailers" || value === "drivers" || value === "equipment_list";
   return (
     <Tabs<Shown>
       value={equipment ? "equipment" : (value as Shown)}

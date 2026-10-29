@@ -12,12 +12,11 @@ import { confirmDialog } from "@/components/ui/Confirm";
 import { stagger } from "@/components/ui/Motion";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { useStore } from "@/lib/store";
+import { truckLabel } from "@/lib/pitch";
 import { useFleetHref } from "./fleetLinks";
 import { toast } from "@/lib/toast";
 import { DOOR_TYPES, TRAILER_GROUPS, TRAILER_LENGTHS, TRAILER_TYPES, cn, num } from "@/lib/format";
 import { specGroupsFor, specsFor, specsLine, type SpecGroup, type Specs } from "@/lib/trailerSpecs";
-import { photoSlotsFor } from "@/lib/trailerPhotos";
-import { TrailerPhotos, type PendingPhoto } from "./TrailerPhotos";
 import { TrailerDocs, type PendingDoc } from "./TrailerDocs";
 import type { Company, Trailer, TruckStatus } from "@/lib/types";
 
@@ -117,6 +116,9 @@ type Draft = {
   make: string;
   status: TruckStatus;
   notes: string;
+  ownership: string;
+  gvwr: string;
+  plate_state: string;
 };
 
 const toDraft = (t?: Trailer | null): Draft => ({
@@ -134,6 +136,9 @@ const toDraft = (t?: Trailer | null): Draft => ({
   make: t?.make ?? "",
   status: t?.status ?? "active",
   notes: t?.notes ?? "",
+  ownership: t?.ownership ?? "",
+  gvwr: t?.gvwr ? String(t.gvwr) : "",
+  plate_state: t?.plate_state ?? "",
 });
 
 /** Add or edit a trailer. `hookTo` hooks the new trailer to that truck right away. */
@@ -155,8 +160,6 @@ export function TrailerForm({
   const { createTrailer, updateTrailer, hookTrailer, trailers, uploadDocument } = useStore();
   const [d, setD] = useState<Draft>(toDraft(trailer));
   const [saving, setSaving] = useState(false);
-  // Photos picked before a new trailer exists; uploaded right after it's created.
-  const [photos, setPhotos] = useState<PendingPhoto[]>([]);
   // Registration / inspection picked before the trailer exists.
   const [docs, setDocs] = useState<PendingDoc[]>([]);
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
@@ -164,11 +167,6 @@ export function TrailerForm({
   useEffect(() => {
     if (open) setD(toDraft(trailer));
     if (!open) setDocs([]);
-    if (!open)
-      setPhotos((p) => {
-        p.forEach((x) => URL.revokeObjectURL(x.url));
-        return [];
-      });
   }, [open, trailer]);
 
   const save = async () => {
@@ -184,6 +182,9 @@ export function TrailerForm({
       year: d.year ? Number(d.year) : null,
       max_weight: d.max_weight ? Number(String(d.max_weight).replace(/[^\d]/g, "")) : null,
       vin_number: d.vin_number.toUpperCase() || null,
+      ownership: (d.ownership || null) as Trailer["ownership"],
+      gvwr: d.gvwr ? Number(d.gvwr.replace(/D/g, "")) || null : null,
+      plate_state: d.plate_state.trim().toUpperCase() || null,
       // Keep only the specs of the chosen type (a reefer turned flatbed drops its air chute).
       specs: specsFor(d.trailer_type, d.specs),
     };
@@ -194,12 +195,6 @@ export function TrailerForm({
       saved = await createTrailer({ ...row, company_id: companyId });
       if (saved && hookTo) await hookTrailer(hookTo, saved.id);
       if (saved) {
-        // Only the slots that fit the final type (reefer photos are dropped if it's not a reefer).
-        const keep = new Set(photoSlotsFor(d.trailer_type).map((x) => x.key));
-        const todo = photos.filter((p) => keep.has(p.slot));
-        let up = 0;
-        for (const p of todo) if (await uploadDocument(p.file, { company_id: companyId, trailer_id: saved.id, doc_type: p.slot })) up++;
-        if (todo.length && up < todo.length) toast.error(`${todo.length - up} photo(s) didn't upload. Add them from the trailer.`);
         let docUp = 0;
         for (const p of docs)
           if (await uploadDocument(p.file, { company_id: companyId, trailer_id: saved.id, doc_type: p.slot, expires_on: p.expires || null })) docUp++;
@@ -280,8 +275,6 @@ export function TrailerForm({
 
         <TrailerDocs trailerId={trailer?.id} companyId={companyId} pending={docs} onPending={setDocs} />
 
-        <TrailerPhotos trailerId={trailer?.id} companyId={companyId} trailerType={d.trailer_type} pending={photos} onPending={setPhotos} />
-
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Registration</div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -296,6 +289,19 @@ export function TrailerForm({
             </Field>
             <Field label="Make">
               <Input value={d.make} onChange={(e) => set({ make: e.target.value })} placeholder="Utility, Wabash, Great Dane…" />
+            </Field>
+            <Field label="Plate state">
+              <Input value={d.plate_state} onChange={(e) => set({ plate_state: e.target.value })} maxLength={3} placeholder="FL" className="uppercase" />
+            </Field>
+            <Field label="GVWR (lbs)">
+              <Input value={d.gvwr} onChange={(e) => set({ gvwr: e.target.value })} inputMode="numeric" />
+            </Field>
+            <Field label="Leased or owned" className="col-span-2">
+              <Select value={d.ownership} onChange={(e) => set({ ownership: e.target.value })}>
+                <option value="">—</option>
+                <option value="owned">Owned</option>
+                <option value="leased">Leased</option>
+              </Select>
             </Field>
           </div>
         </div>
@@ -332,7 +338,7 @@ function HookControl({ trailer }: { trailer: Trailer }) {
           <option value="">Not hooked (in the yard)</option>
           {own.map((t) => (
             <option key={t.id} value={t.id}>
-              Unit {t.unit_number}
+              {truckLabel(t)}
               {t.trailer_id && t.trailer_id !== trailer.id ? ` · now pulling ${t.trailer_number}` : ""}
             </option>
           ))}
@@ -347,9 +353,9 @@ function HookControl({ trailer }: { trailer: Trailer }) {
   );
 }
 
-/** A trailer at a glance (read only). Edit shows hooking, photos and document uploads. */
+/** A trailer at a glance (read only). Edit shows hooking and document uploads. */
 export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | null; onClose: () => void; onEdit: (t: Trailer) => void }) {
-  const { trucks, loads, deleteTrailer, driverById, documents } = useStore();
+  const { trucks, loads, deleteTrailer, driverById, documents, isOwner } = useStore();
   const [manageId, setManageId] = useState<string | null>(null);
   if (!trailer) return null;
   const manage = manageId === trailer.id;
@@ -387,27 +393,29 @@ export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | 
               <Pencil className="h-3.5 w-3.5" /> Edit
             </Button>
           )}
-          <Button
-            size="icon-sm"
-            variant="danger-ghost"
-            aria-label="Delete trailer"
-            onClick={async () => {
-              if (
-                await confirmDialog({
-                  title: `Delete trailer ${trailer.unit_number}?`,
-                  body: `${holder ? `It's dropped from unit ${holder.unit_number}. ` : ""}Its documents are deleted. Loads keep their history without it.`,
-                  confirmLabel: "Delete trailer",
-                  danger: true,
-                })
-              )
-                if (await deleteTrailer(trailer.id)) {
-                  toast.success("Trailer deleted");
-                  onClose();
-                }
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {isOwner && (
+            <Button
+              size="icon-sm"
+              variant="danger-ghost"
+              aria-label="Delete trailer"
+              onClick={async () => {
+                if (
+                  await confirmDialog({
+                    title: `Delete trailer ${trailer.unit_number}?`,
+                    body: `${holder ? `It's dropped from unit ${holder.unit_number}. ` : ""}Its documents are deleted. Loads keep their history without it.`,
+                    confirmLabel: "Delete trailer",
+                    danger: true,
+                  })
+                )
+                  if (await deleteTrailer(trailer.id)) {
+                    toast.success("Trailer deleted");
+                    onClose();
+                  }
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
         </>
       }
     >
@@ -447,15 +455,12 @@ export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | 
         {manage ? (
           <>
             <section>
-              <TrailerPhotos trailerId={trailer.id} companyId={trailer.company_id} trailerType={trailer.trailer_type} compact />
-            </section>
-            <section>
               <Eyebrow className="mb-2">Trailer documents</Eyebrow>
               <DocumentsPanel target={{ scope: "trailer", id: trailer.id, companyId: trailer.company_id }} compact emptyText="No trailer files yet." />
             </section>
           </>
         ) : (
-          <SheetFiles title="Files and photos" docs={documents.filter((x) => x.trailer_id === trailer.id)} empty="No trailer files yet. Click Edit to add them." />
+          <SheetFiles title="Trailer documents" docs={documents.filter((x) => x.trailer_id === trailer.id)} empty="No trailer files yet. Click Edit to add them." />
         )}
       </div>
     </Drawer>

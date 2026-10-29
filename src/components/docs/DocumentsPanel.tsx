@@ -66,9 +66,19 @@ export function DocumentsPanel({
   emptyText?: string;
   compact?: boolean;
 }) {
-  const { documents, docTypes, uploadDocument, docTypeName, loads, drivers, trucks, trailers } = useStore();
+  const { documents, docTypes, uploadDocument, docTypeName, loads, drivers, trucks, trailers, updateDriver } = useStore();
   const scope = target.scope;
-  const items = useMemo(() => checklist(docTypes, documents, target), [docTypes, documents, target]);
+  // A driver's "Not required" marks come from the driver itself, so they follow every change.
+  const waived = target.scope === "driver" ? drivers.find((x) => x.id === target.id)?.waived_docs : undefined;
+  const items = useMemo(() => checklist(docTypes, documents, target.scope === "driver" ? { ...target, waived: waived ?? target.waived } : target), [docTypes, documents, target, waived]);
+  /** Mark a driver document Not required (or required again): it leaves / returns to the to-dos. */
+  const setWaived =
+    target.scope === "driver"
+      ? (key: string, on: boolean) => {
+          const cur = waived ?? target.waived ?? [];
+          updateDriver(target.id, { waived_docs: on ? [...new Set([...cur, key])] : cur.filter((k) => k !== key) });
+        }
+      : undefined;
   const [type, setType] = useState<string>(AUTO);
   const [custom, setCustom] = useState("");
   const resolveType = useResolveType(scope);
@@ -178,6 +188,13 @@ export function DocumentsPanel({
     slotInput.current?.click();
   };
 
+  /** More files (pages, separate photos) for a document already on file: same type and date. */
+  const addTo = (key: string, due: string | null) => {
+    slotType.current = key;
+    slotDue.current = due;
+    slotInput.current?.click();
+  };
+
   const where = (d: DocumentItem) => {
     if (d.load_id) {
       const l = loads.find((x) => x.id === d.load_id);
@@ -204,7 +221,7 @@ export function DocumentsPanel({
 
   return (
     <div className="space-y-3">
-      {items.length > 0 && <Checklist items={items} compact={compact} onUpload={uploadFor} onEdit={setAskExpiry} busy={busy} />}
+      {items.length > 0 && <Checklist items={items} compact={compact} onUpload={uploadFor} onAdd={addTo} onEdit={setAskExpiry} busy={busy} counts={list.filter((d) => !old.has(d.id))} onWaive={setWaived} />}
 
       {/* Upload zone */}
       <div
@@ -241,6 +258,7 @@ export function DocumentsPanel({
           <input
             ref={slotInput}
             type="file"
+            multiple
             accept={ACCEPT}
             className="hidden"
             onChange={(e) => {
@@ -337,12 +355,20 @@ function Checklist({
   items,
   compact,
   onUpload,
+  onAdd,
   onEdit,
   busy,
+  counts,
+  onWaive,
 }: {
   items: CheckItem[];
   compact?: boolean;
   onUpload: (key: string) => void;
+  onAdd: (key: string, due: string | null) => void;
+  /** current files, to show "3 files" on a row */
+  counts: DocumentItem[];
+  /** drivers only: mark a document Not required / required again */
+  onWaive?: (key: string, on: boolean) => void;
   onEdit: (d: DocumentItem) => void;
   busy: boolean;
 }) {
@@ -369,15 +395,24 @@ function Checklist({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <span className="truncate text-[13px] font-medium text-fg">{i.type.name}</span>
-                  {!i.required && <span className="text-[10px] font-medium uppercase tracking-wide text-fg-4">optional</span>}
+                  {i.waived ? (
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-fg-4">not required</span>
+                  ) : (
+                    !i.required && <span className="text-[10px] font-medium uppercase tracking-wide text-fg-4">optional</span>
+                  )}
                 </div>
                 <div className={cn("truncate text-xs", ui.cls)}>
                   {i.doc ? (
                     <>
                       {i.state === "ok" || i.state === "no_date" ? ui.label : `${ui.label} ${fmtDay(i.doc.expires_on)}`}
                       {i.doc.expires_on && i.state === "ok" && <span className="text-fg-4"> · exp. {fmtDay(i.doc.expires_on)}</span>}
-                      {!compact && <span className="text-fg-4"> · {i.doc.file_name}</span>}
+                      {(() => {
+                        const n = counts.filter((d) => d.doc_type === i.type.key).length;
+                        return n > 1 ? <span className="text-fg-4"> · {n} files</span> : !compact && <span className="text-fg-4"> · {i.doc.file_name}</span>;
+                      })()}
                     </>
+                  ) : i.waived ? (
+                    <span className="text-fg-4">Not required for this driver</span>
                   ) : (
                     ui.label
                   )}
@@ -392,6 +427,17 @@ function Checklist({
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                 </button>
+              )}
+              {onWaive && !i.doc && (i.required || i.waived) && (
+                <Button size="xs" variant="ghost" onClick={() => onWaive(i.type.key, !i.waived)} title={i.waived ? "Ask for this document again" : "This driver doesn't need it (e.g. no MVR for a Mexican license): it leaves the to-dos"}>
+                  {i.waived ? "Required" : "Not required"}
+                </Button>
+              )}
+              {i.doc && (
+                <Button size="xs" variant="ghost" disabled={busy} onClick={() => onAdd(i.type.key, i.doc!.expires_on)} title="Add more files (pages, photos) to this document">
+                  <Plus className="h-3.5 w-3.5" />
+                  {compact ? "" : "Add file"}
+                </Button>
               )}
               {i.state === "no_date" && i.doc ? (
                 <Button size="xs" variant="outline" onClick={() => onEdit(i.doc!)}>

@@ -127,6 +127,28 @@ export interface Compliance {
   iss_score?: number | null;
   basics?: Record<string, { score?: number | null; threshold?: number | null }>;
   updated_on?: string | null;
+  /** pulled from FMCSA data through TOSS Lead Hunter */
+  fmcsa?: FmcsaSafety | null;
+}
+
+/** A carrier's FMCSA safety picture (via Lead Hunter): rating, SMS BASIC measures, 24-month OOS rates, crashes. */
+export interface FmcsaSafety {
+  pulled_at: string;
+  rating: string | null;
+  rating_date: string | null;
+  inspections_24m: number | null;
+  driver_inspections: number | null;
+  driver_oos_rate: number | null;
+  driver_oos_national: number | null;
+  vehicle_inspections: number | null;
+  vehicle_oos_rate: number | null;
+  vehicle_oos_national: number | null;
+  crashes_24m: number | null;
+  crashes_fatal: number | null;
+  crashes_injury: number | null;
+  crashes_tow: number | null;
+  last_inspection: string | null;
+  basics: Record<string, { measure: number | null; alert: boolean; inspections_with_violation: number | null }>;
 }
 
 export interface Driver {
@@ -140,6 +162,10 @@ export interface Driver {
   hire_date?: string | null;
   /** set = terminated (from that day) */
   termination_date?: string | null;
+  /** date of birth */
+  dob?: string | null;
+  /** paperwork marked "Not required" for this driver (doc type keys) */
+  waived_docs?: string[];
   phone: string | null;
   email: string | null;
   cdl_number: string | null;
@@ -191,9 +217,16 @@ export interface Trailer {
   make: string | null;
   status: TruckStatus;
   notes: string | null;
+  /** owned or leased (equipment list) */
+  ownership?: Ownership | null;
+  /** gross vehicle weight rating, lbs */
+  gvwr?: number | null;
+  plate_state?: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export type Ownership = "owned" | "leased";
 
 export interface Truck {
   id: string;
@@ -224,6 +257,9 @@ export interface Truck {
   available_time?: string | null;
   status: TruckStatus;
   notes: string | null;
+  ownership?: Ownership | null;
+  gvwr?: number | null;
+  plate_state?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -363,9 +399,28 @@ export interface DocumentItem {
   expires_on: string | null;
   /** the date on the document (e.g. the inspection day) */
   issued_on?: string | null;
+  /** the inspection / accident it belongs to (tms_safety_events) */
+  event_id?: string | null;
   notes: string | null;
   uploaded_by: string | null;
   uploaded_at: string;
+}
+
+/** An inspection or accident on the DOT Compliance tab, with its files (documents.event_id). */
+export interface SafetyEvent {
+  id: string;
+  company_id: string;
+  kind: "inspection" | "accident";
+  event_date: string | null;
+  truck_id: string | null;
+  driver_id: string | null;
+  /** inspection level (I – NAS …) or accident type */
+  level: string | null;
+  location: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type InvoiceStatus = "draft" | "sent" | "paid" | "void";

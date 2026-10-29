@@ -128,7 +128,7 @@ interface Store {
 
   uploadDocument: (
     file: File,
-    meta: { company_id: string; doc_type: string; load_id?: string | null; driver_id?: string | null; truck_id?: string | null; trailer_id?: string | null; expires_on?: string | null; issued_on?: string | null; notes?: string | null },
+    meta: { company_id: string; doc_type: string; load_id?: string | null; driver_id?: string | null; truck_id?: string | null; trailer_id?: string | null; expires_on?: string | null; issued_on?: string | null; notes?: string | null; event_id?: string | null },
   ) => Promise<DocumentItem | null>;
   updateDocument: (id: string, patch: Partial<DocumentItem>) => Promise<boolean>;
   replaceDocumentFile: (id: string, file: File) => Promise<boolean>;

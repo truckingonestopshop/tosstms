@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Container, Download, Network, Plus, Search, Truck as TruckIcon, Users, X } from "lucide-react";
+import { AlertTriangle, Container, Download, Network, Plus, Search, Truck as TruckIcon, Sheet, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, Empty, Page, PageHeader, Pill, Stat, Tabs, neutralPill } from "@/components/ui/Bits";
 import { Checkbox, Field, Input, Segmented, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { FleetPlaceProvider } from "@/components/fleet/fleetLinks";
 import { UnitsTab } from "@/components/fleet/Units";
+import { EquipmentTable } from "@/components/fleet/EquipmentTable";
 import { TruckForm } from "@/components/fleet/TruckForm";
 import { TruckSheet } from "@/components/fleet/TruckSheet";
 import { TrailerForm, TrailerSheet } from "@/components/fleet/Trailers";
@@ -26,10 +27,10 @@ import type { Company, Driver, Load, Trailer, Truck } from "@/lib/types";
 // paperwork. Rows open the same sheets and forms as inside a company (Companies), so an edit here
 // shows there and the other way round. With one company picked, Units also has the desk view.
 
-type Tab = "units" | "trucks" | "trailers" | "drivers";
+type Tab = "units" | "trucks" | "trailers" | "drivers" | "list";
 type Row = { id: string; company: Company | undefined; cells: React.ReactNode[]; csv: (string | number | null)[]; status: string; type: string; issues: number; search: string };
 
-const TABS: Tab[] = ["units", "trucks", "trailers", "drivers"];
+const TABS: Tab[] = ["units", "trucks", "trailers", "drivers", "list"];
 
 /** Expiry text with its color (expired red, ≤ 30 days amber). */
 function Exp({ date }: { date: string | null | undefined }) {
@@ -61,7 +62,7 @@ function Equipment() {
   const [q, setQ] = useState("");
   const [group, setGroup] = useState(false);
   const [unitsView, setUnitsView] = useState<"table" | "desk">("table");
-  const [adding, setAdding] = useState<{ what: Exclude<Tab, "units">; companyId: string } | null>(null);
+  const [adding, setAdding] = useState<{ what: Exclude<Tab, "units" | "list">; companyId: string } | null>(null);
   const [editing, setEditing] = useState<{ truck?: Truck; trailer?: Trailer; driver?: Driver } | null>(null);
 
   // The URL keeps the tab, the companies picked and the open sheet.
@@ -307,6 +308,7 @@ function Equipment() {
     trucks: ["Unit", "Company", "Truck", "Plate", "VIN", "Trailer", "Driver", "Current load", "Status", "Registration", "Inspection", "Paperwork"],
     trailers: ["Trailer", "Company", "Type", "Truck", "Driver", "Current load", "Plate", "Status", "Registration", "Inspection", "Paperwork"],
     drivers: ["Driver", "Company", "Phone", "Truck", "Trailer", "Current load", "License", "License expires", "Medical expires", "Status", "Hired", "Paperwork"],
+    list: [],
   };
   // CSV headers (a few columns split in two: driver + phone, etc.)
   const CSV_HEAD: Record<Tab, string[]> = {
@@ -314,12 +316,14 @@ function Equipment() {
     trucks: ["Unit", "Company", "Truck", "Plate", "VIN", "Trailer", "Driver", "Current load", "Status", "Registration expires", "Inspection expires", "Paperwork issues"],
     trailers: ["Trailer", "Company", "Type", "Truck", "Driver", "Current load", "Plate", "Status", "Registration expires", "Inspection expires", "Paperwork issues"],
     drivers: ["Driver", "Company", "Phone", "Email", "Truck", "Trailer", "Current load", "License", "License expires", "Medical expires", "Status", "Hired", "Paperwork issues"],
+    list: [],
   };
   const STATUSES: Record<Tab, [string, string][]> = {
     units: [["available", "Available"], ["loaded", "On a load"], ["oos", "Out of service"], ["inactive", "Inactive"]],
     trucks: [["available", "Available"], ["loaded", "On a load"], ["oos", "Out of service"], ["inactive", "Inactive"]],
     trailers: [["hooked", "Hooked"], ["yard", "In the yard"], ["oos", "Out of service"], ["inactive", "Inactive"]],
     drivers: [["on_truck", "On a truck"], ["no_truck", "No truck"], ["inactive", "Terminated / inactive"]],
+    list: [],
   };
   const types = [...new Set(rows.map((r) => r.type).filter(Boolean))].sort();
 
@@ -353,7 +357,7 @@ function Equipment() {
   const sheetTrailer = trailers.find((x) => x.id === params.get("trailer")) || null;
   const sheetDriver = drivers.find((x) => x.id === params.get("driver")) || null;
 
-  const addWhat: Exclude<Tab, "units"> = tab === "units" ? "trucks" : tab;
+  const addWhat: Exclude<Tab, "units" | "list"> = tab === "units" || tab === "list" ? "trucks" : tab;
   const startAdd = () => setAdding({ what: addWhat, companyId: singleCompany?.id || "" });
 
   const exportCsv = () =>
@@ -405,6 +409,7 @@ function Equipment() {
           { value: "trucks", label: <><TruckIcon className="h-4 w-4" /> Trucks</>, count: inPick.t.length },
           { value: "trailers", label: <><Container className="h-4 w-4" /> Trailers</>, count: inPick.tl.length },
           { value: "drivers", label: <><Users className="h-4 w-4" /> Drivers</>, count: inPick.d.length },
+          { value: "list", label: <><Sheet className="h-4 w-4" /> Equipment list</>, count: inPick.t.length + inPick.tl.length },
         ]}
       />
 
@@ -464,6 +469,10 @@ function Equipment() {
         </table>
       </Card>
 
+      {tab === "list" ? (
+        <EquipmentTable trucks={inPick.t} trailers={inPick.tl} showCompany={!singleCompany} onOpen={(k, id) => open(k, id)} />
+      ) : (
+      <>
       {/* Filters */}
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
         <div className="relative flex-1">
@@ -564,6 +573,8 @@ function Equipment() {
             </tbody>
           </table>
         </Card>
+      )}
+      </>
       )}
 
       {/* Units: what isn't in a unit */}

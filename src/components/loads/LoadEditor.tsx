@@ -11,6 +11,7 @@ import { RateConDrop } from "./RateConDrop";
 import { StopsEditor, newStop } from "./StopsEditor";
 import { RouteMap } from "./RouteMap";
 import { useStore } from "@/lib/store";
+import { truckLabel } from "@/lib/pitch";
 import { hasService } from "@/lib/services";
 import { toast } from "@/lib/toast";
 import { useRoute } from "@/lib/route";
@@ -304,7 +305,7 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
                 <option value="">Unassigned</option>
                 {companyTrucks.map((t) => (
                   <option key={t.id} value={t.id}>
-                    Unit {t.unit_number}
+                    {truckLabel(t)}
                     {t.trailer_type ? ` · ${t.trailer_type}` : " · power only"}
                   </option>
                 ))}

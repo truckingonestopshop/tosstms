@@ -254,6 +254,7 @@ export function CompanyFields({
         </Field>
         {person("dispatch", "dispatcher", "Assigned dispatcher")}
         {person("dispatch", "sold_by", "Sold by")}
+        {date("dispatch", "Set up date")}
         <Field label="Factoring company">
           <Input value={d.factoring_company} onChange={(e) => set({ factoring_company: e.target.value })} placeholder="e.g. RTS Financial" />
         </Field>
@@ -266,12 +267,14 @@ export function CompanyFields({
       <>
         {person("dot_compliance", "sam", "Safety account manager (SAM)")}
         {person("dot_compliance", "sold_by", "Sold by")}
+        {date("dot_compliance", "Set up date")}
         <div className="sm:col-span-3">{doc("dot_compliance_agreement", "Agreement")}</div>
       </>
     ),
     mcpt: (
       <>
         {person("mcpt", "agent", "MCPT agent")}
+        {date("mcpt", "Set up date")}
         <div className="flex items-end pb-2">
           <Checkbox checked={!!svc("mcpt").fuel_taxes} onChange={(v) => setSvc("mcpt", { fuel_taxes: v })} label="Fuel taxes" />
         </div>
@@ -287,6 +290,7 @@ export function CompanyFields({
           />
         </Field>
         {percent("accounting")}
+        {date("accounting", "Set up date")}
         <div className="sm:col-span-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {doc("noa", "NOA")}
           {doc("factoring_agreement", "Factoring contract")}
@@ -324,6 +328,7 @@ export function CompanyFields({
     insurance: (
       <>
         {person("insurance", "agent", "Insurance agent")}
+        {date("insurance", "Set up date")}
         <Field label="Insurance provider">
           <Input value={svc("insurance").provider || ""} onChange={(e) => setSvc("insurance", { provider: e.target.value })} />
         </Field>

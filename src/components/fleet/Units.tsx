@@ -12,7 +12,7 @@ import { useStore } from "@/lib/store";
 import { useFleetHref, useOpenSheet } from "./fleetLinks";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
-import { availability, truckModelLine } from "@/lib/pitch";
+import { availability, truckModelLine, truckLabel } from "@/lib/pitch";
 import { specsLine } from "@/lib/trailerSpecs";
 import type { Company, Driver, Trailer, Truck } from "@/lib/types";
 import { TrailerForm, trailerLine } from "./Trailers";
@@ -468,7 +468,7 @@ export function DriverRig({ driver, readOnly }: { driver: Driver; readOnly?: boo
             const other = t.assigned_driver_id && t.assigned_driver_id !== driver.id;
             return (
               <option key={t.id} value={t.id}>
-                Unit {t.unit_number}
+                {truckLabel(t)}
                 {t.trailer_number ? ` · ${t.trailer_number} ${t.trailer_type || ""}` : " · power only"}
                 {other ? " · has a driver" : ""}
               </option>

@@ -188,7 +188,7 @@ export const PLACEHOLDERS: { key: string; label: string; get: (c: Company) => st
   { key: "phone", label: "Phone", get: (c) => c.contact_phone || "" },
   { key: "address", label: "Address", get: (c) => [c.street, [c.city, [c.state, c.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ")].filter(Boolean).join(", ") || c.address || "" },
   { key: "dispatch_fee", label: "Dispatch fee %", get: (c) => (c.commission_percent ? `${c.commission_percent}%` : "") },
-  { key: "date", label: "Today's date", get: () => new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) },
+  { key: "date", label: "Today's date", get: () => new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }) },
 ];
 
 /** Opportunity placeholders (agreements made from an opportunity). */

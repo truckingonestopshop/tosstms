@@ -32,6 +32,7 @@ import { LoadsBoard } from "@/components/loads/LoadsBoard";
 import { LoadsCalendar } from "@/components/loads/LoadsCalendar";
 import { TruckMap } from "@/components/loads/TruckMap";
 import { useStore } from "@/lib/store";
+import { truckLabel } from "@/lib/pitch";
 import { toast } from "@/lib/toast";
 import { downloadCsv } from "@/lib/csv";
 import { STATUS, STATUS_ORDER, addDays, cn, fmtDay, isCanceled, lane, money, num, rpm, today, totalMiles } from "@/lib/format";
@@ -303,7 +304,7 @@ function Loads() {
             <option value="all">All trucks</option>
             {scopedTrucks.map((t) => (
               <option key={t.id} value={t.id}>
-                Unit {t.unit_number}
+                {truckLabel(t)}
               </option>
             ))}
           </Select>

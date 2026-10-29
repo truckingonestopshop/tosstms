@@ -8,6 +8,7 @@ interface Req {
   title: string;
   body?: React.ReactNode;
   confirmLabel?: string;
+  cancelLabel?: string;
   danger?: boolean;
   /** When set, the user must type this text to enable the button. */
   typeToConfirm?: string;
@@ -50,7 +51,7 @@ export function ConfirmHost() {
       footer={
         <>
           <Button variant="ghost" onClick={() => done(false)}>
-            Cancel
+            {req?.cancelLabel || "Cancel"}
           </Button>
           <Button variant={req?.danger ? "danger" : "secondary"} disabled={blocked} onClick={() => done(true)} autoFocus>
             {req?.confirmLabel || "Confirm"}

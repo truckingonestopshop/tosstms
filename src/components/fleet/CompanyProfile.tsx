@@ -10,7 +10,7 @@ import { openDocument, errMsg } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn, fmtDay } from "@/lib/format";
 import { docsOf } from "@/lib/docs";
-import { activeServices, authorityLabel, sourceLabel } from "@/lib/services";
+import { SERVICES, activeServices, authorityLabel, sourceLabel } from "@/lib/services";
 import type { AuthorityStatus, Company, ServiceInfo, ServiceKey } from "@/lib/types";
 
 /** Service documents shown on its card. */
@@ -135,6 +135,38 @@ function AuthorityPill({ v }: { v?: AuthorityStatus | null }) {
   return <span className={cn("font-medium", cls)}>{authorityLabel(v)}</span>;
 }
 
+/** Every service with Active / Inactive and its set up date, at the top of the overview. */
+function ServicesAtGlance({ company, onServices }: { company: Company; onServices: () => void }) {
+  const on = new Set(activeServices(company).map((s) => s.key));
+  return (
+    <Card className="overflow-hidden lg:row-span-2">
+      <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:px-5">
+        <span className="text-xs font-semibold uppercase tracking-wider text-fg-4">Services</span>
+        <span className="text-xs text-fg-3">{on.size} active</span>
+      </div>
+      <ul className="divide-y divide-line">
+        {SERVICES.map((s) => {
+          const active = on.has(s.key);
+          const since = company.services?.[s.key]?.activation_date;
+          return (
+            <li key={s.key} className={cn("flex items-center gap-3 px-4 py-2.5 sm:px-5", !active && "opacity-60")}>
+              <span className={cn("h-2 w-2 shrink-0 rounded-full", active ? "bg-emerald-500" : "bg-fg-4/40")} />
+              <span className={cn("min-w-0 flex-1 truncate text-[13px]", active ? "font-semibold text-fg" : "text-fg-3")}>{s.label}</span>
+              <span className="text-right">
+                <span className={cn("block text-xs font-semibold", active ? "text-emerald-700 dark:text-emerald-300" : "text-fg-4")}>{active ? "Active" : "Inactive"}</span>
+                {active && <span className="tnum block text-[11px] text-fg-3">{since ? fmtDay(since) : "No set up date"}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <button type="button" onClick={onServices} className="flex w-full items-center justify-center gap-1 border-t border-line px-4 py-2.5 text-xs font-medium text-fg-2 hover:bg-surface-2/50 hover:text-fg">
+        Service details <ArrowRight className="h-3.5 w-3.5" />
+      </button>
+    </Card>
+  );
+}
+
 function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (
     <Card className={cn("p-4 sm:p-5", className)}>
@@ -163,7 +195,6 @@ function MarkClient({ company }: { company: Company }) {
 /** Everything about the carrier on one page, read-only (Edit opens the form). */
 export function CompanyOverview({ company, onServices }: { company: Company; onServices: () => void }) {
   const second = [company.secondary_first_name, company.secondary_last_name].filter(Boolean).join(" ");
-  const services = activeServices(company);
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <Section title="Company" className="lg:col-span-2">
@@ -194,6 +225,8 @@ export function CompanyOverview({ company, onServices }: { company: Company; onS
         </div>
       </Section>
 
+      <ServicesAtGlance company={company} onServices={onServices} />
+
       <Section title="Address">
         <div className="whitespace-pre-line text-sm text-fg">{company.address || <span className="text-fg-4">—</span>}</div>
         {company.county && <div className="mt-1 text-xs text-fg-3">{company.county} County</div>}
@@ -214,23 +247,6 @@ export function CompanyOverview({ company, onServices }: { company: Company; onS
             <KV label="Email">{company.secondary_email}</KV>
           </div>
         )}
-      </Section>
-
-      <Section title="Services">
-        {services.length ? (
-          <div className="flex flex-wrap gap-1.5">
-            {services.map((s) => (
-              <span key={s.key} className="rounded-full border border-line px-2.5 py-1 text-xs font-medium text-fg-2">
-                {s.label}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-fg-4">No services selected.</p>
-        )}
-        <button type="button" onClick={onServices} className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-fg-2 hover:text-fg">
-          Service details <ArrowRight className="h-3.5 w-3.5" />
-        </button>
       </Section>
 
       <div className="lg:col-span-2">

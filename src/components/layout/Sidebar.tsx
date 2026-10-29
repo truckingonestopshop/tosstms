@@ -51,7 +51,7 @@ const BUILT = process.env.NEXT_PUBLIC_BUILT_AT ? new Date(process.env.NEXT_PUBLI
 
 /** One line at the bottom of the menu: app version and when it was last updated. */
 function VersionLine() {
-  const date = BUILT ? BUILT.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : null;
+  const date = BUILT ? BUILT.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric", timeZone: "UTC" }) : null;
   return (
     <div className="mt-auto truncate border-t border-line px-5 py-3 text-[11px] text-fg-4">
       v{process.env.NEXT_PUBLIC_APP_VERSION}

@@ -10,7 +10,7 @@ import { Popover, MenuItem, MenuSep } from "@/components/ui/Menu";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { TruckForm } from "@/components/fleet/TruckForm";
 import { TruckSheet } from "@/components/fleet/TruckSheet";
-import { DriverCard, DriverForm, DriverSheet, driverAlert } from "@/components/fleet/Drivers";
+import { DriverCard, DriverForm, DriverSheet, driverAlert, isTerminated } from "@/components/fleet/Drivers";
 import { DriversTable } from "@/components/fleet/DriversTable";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
@@ -24,7 +24,7 @@ export function TrucksTab({ company, trucks }: { company: Company; trucks: Truck
   const params = useSearchParams();
   const router = useRouter();
   const href = useFleetHref();
-  const { driverById, trailerById, memberById, me, loads, deleteTruck } = useStore();
+  const { driverById, trailerById, memberById, me, loads, deleteTruck, isOwner } = useStore();
   const [q, setQ] = useState("");
   const [f, setF] = useState<"all" | "ready" | "loaded" | "oos">("all");
   const [form, setForm] = useState<{ open: boolean; truck?: Truck | null }>({ open: false });
@@ -111,18 +111,22 @@ export function TrucksTab({ company, trucks }: { company: Company; trucks: Truck
                         <MenuItem icon={Pencil} onClick={() => (close(), setForm({ open: true, truck: t }))}>
                           Edit
                         </MenuItem>
-                        <MenuSep />
-                        <MenuItem
-                          icon={Trash2}
-                          danger
-                          onClick={async () => {
-                            close();
-                            if (await confirmDialog({ title: `Delete unit ${t.unit_number}?`, body: "Loads keep their history but lose the truck link.", confirmLabel: "Delete", danger: true }))
-                              if (await deleteTruck(t.id)) toast.success("Truck deleted");
-                          }}
-                        >
-                          Delete
-                        </MenuItem>
+                        {isOwner && (
+                          <>
+                            <MenuSep />
+                            <MenuItem
+                              icon={Trash2}
+                              danger
+                              onClick={async () => {
+                                close();
+                                if (await confirmDialog({ title: `Delete unit ${t.unit_number}?`, body: "Loads keep their history but lose the truck link.", confirmLabel: "Delete", danger: true }))
+                                  if (await deleteTruck(t.id)) toast.success("Truck deleted");
+                              }}
+                            >
+                              Delete
+                            </MenuItem>
+                          </>
+                        )}
                       </>
                     )}
                   </Popover>
@@ -205,7 +209,7 @@ export function DriversTab({ company, drivers }: { company: Company; drivers: Dr
   const sheet = drivers.find((x) => x.id === params.get("driver")) || null;
   const openSheet = (id: string | null) => router.replace(id ? href("drivers", "driver", id) : href("drivers"), { scroll: false });
   const list = drivers
-    .filter((d) => !office || shown === "all" || (shown === "terminated") === !!d.termination_date)
+    .filter((d) => !office || shown === "all" || (shown === "terminated") === isTerminated(d))
     .filter((d) => !q || `${d.name} ${d.phone} ${d.email} ${d.cdl_number}`.toLowerCase().includes(q.toLowerCase()));
   const alerts = drivers.filter(driverAlert).length;
 
@@ -226,8 +230,8 @@ export function DriversTab({ company, drivers }: { company: Company; drivers: Dr
             value={shown}
             onChange={setShown}
             options={[
-              { value: "active", label: `Active ${drivers.filter((d) => !d.termination_date).length}` },
-              { value: "terminated", label: `Terminated ${drivers.filter((d) => d.termination_date).length}` },
+              { value: "active", label: `Active ${drivers.filter((d) => !isTerminated(d)).length}` },
+              { value: "terminated", label: `Terminated ${drivers.filter((d) => isTerminated(d)).length}` },
               { value: "all", label: "All" },
             ]}
           />

@@ -1,18 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Minus, Plus, X } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { readDocument } from "@/lib/ratecon/client";
-import { cn, uid } from "@/lib/format";
-import { GEAR_PRESETS } from "@/lib/pitch";
+import { cn } from "@/lib/format";
 import { TrailerPicker } from "./Trailers";
 import { TruckDocs, type PendingDoc } from "./TrailerDocs";
-import { TruckPhotos, type PendingPhoto } from "./TrailerPhotos";
 
 const TRUCK_MAKES = ["Freightliner", "Peterbilt", "Kenworth", "Volvo", "International", "Mack", "Western Star", "Ford", "Isuzu", "Hino", "Ram"];
 import type { Truck, TruckAccessory, TruckStatus } from "@/lib/types";
@@ -33,6 +31,9 @@ type Draft = {
   status: TruckStatus;
   notes: string;
   accessories: TruckAccessory[];
+  ownership: string;
+  gvwr: string;
+  plate_state: string;
 };
 
 const toDraft = (t?: Truck | null): Draft => ({
@@ -51,6 +52,9 @@ const toDraft = (t?: Truck | null): Draft => ({
   status: t?.status ?? "active",
   notes: t?.notes ?? "",
   accessories: t?.accessories ?? [],
+  ownership: t?.ownership ?? "",
+  gvwr: t?.gvwr ? String(t.gvwr) : "",
+  plate_state: t?.plate_state ?? "",
 });
 
 export function TruckForm({
@@ -69,9 +73,6 @@ export function TruckForm({
   const [saving, setSaving] = useState(false);
   // Registration / inspection picked before a new truck exists; uploaded right after it's created.
   const [docs, setDocs] = useState<PendingDoc[]>([]);
-  const [photos, setPhotos] = useState<PendingPhoto[]>([]);
-  const [gearName, setGearName] = useState("");
-  const [gearQty, setGearQty] = useState("1");
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
 
   // The cab card fills in what's still empty; anything typed stays.
@@ -111,20 +112,10 @@ export function TruckForm({
     if (open) setD(toDraft(truck));
     if (!open) {
       setDocs([]);
-      setPhotos([]);
     }
   }, [open, truck]);
 
   const companyDrivers = drivers.filter((x) => x.company_id === companyId);
-
-  const addGear = (name: string, quantity: number, details = "") => {
-    if (!name.trim()) return;
-    setD((x) => {
-      const hit = x.accessories.find((a) => a.name.toLowerCase() === name.trim().toLowerCase());
-      if (hit) return { ...x, accessories: x.accessories.map((a) => (a === hit ? { ...a, quantity: a.quantity + quantity } : a)) };
-      return { ...x, accessories: [...x.accessories, { id: uid(), name: name.trim(), quantity, details }] };
-    });
-  };
 
   const save = async () => {
     if (!d.unit_number.trim()) return toast.error("Truck number is required.");
@@ -138,6 +129,9 @@ export function TruckForm({
       // A time only means something with a date.
       available_time: d.available_date && d.available_time ? d.available_time : null,
       vin_number: d.vin_number.toUpperCase(),
+      ownership: (d.ownership || null) as Truck["ownership"],
+      gvwr: d.gvwr ? Number(d.gvwr.replace(/\D/g, "")) || null : null,
+      plate_state: d.plate_state.trim().toUpperCase() || null,
     };
     let ok = false;
     if (truck) ok = await updateTruck(truck.id, row);
@@ -148,11 +142,6 @@ export function TruckForm({
         let up = 0;
         for (const p of docs) if (await uploadDocument(p.file, { company_id: companyId, truck_id: created.id, doc_type: p.slot, expires_on: p.expires || null })) up++;
         if (up < docs.length) toast.error(`${docs.length - up} document(s) didn't upload. Add them from the truck.`);
-      }
-      if (created && photos.length) {
-        let up = 0;
-        for (const p of photos) if (await uploadDocument(p.file, { company_id: companyId, truck_id: created.id, doc_type: p.slot })) up++;
-        if (up < photos.length) toast.error(`${photos.length - up} photo(s) didn't upload. Add them from the truck.`);
       }
     }
     setSaving(false);
@@ -168,7 +157,7 @@ export function TruckForm({
       onClose={onClose}
       size="lg"
       title={truck ? `Edit unit ${truck.unit_number}` : "Add truck"}
-      subtitle="Power unit, hooked trailer and onboard gear"
+      subtitle="Power unit, registration and paperwork"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -212,23 +201,29 @@ export function TruckForm({
           <Field label="VIN" className="col-span-2">
             <Input value={d.vin_number} onChange={(e) => set({ vin_number: e.target.value })} maxLength={17} className="uppercase" />
           </Field>
+          <Field label="Plate state">
+            <Input value={d.plate_state} onChange={(e) => set({ plate_state: e.target.value })} maxLength={3} placeholder="FL" className="uppercase" />
+          </Field>
+          <Field label="GVWR (lbs)">
+            <Input value={d.gvwr} onChange={(e) => set({ gvwr: e.target.value })} inputMode="numeric" placeholder="80000" />
+          </Field>
+          <Field label="Leased or owned" className="col-span-2">
+            <Select value={d.ownership} onChange={(e) => set({ ownership: e.target.value })}>
+              <option value="">—</option>
+              <option value="owned">Owned</option>
+              <option value="leased">Leased</option>
+            </Select>
+          </Field>
         </div>
 
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Trailer</div>
           <TrailerPicker companyId={companyId} value={d.trailer_id} onChange={(id) => set({ trailer_id: id })} />
-          <Field label="Endorsements & features" className="mt-3">
-            <Input
-              value={d.important_info}
-              onChange={(e) => set({ important_info: e.target.value })}
-              placeholder="Hazmat, TWIC, team, liftgate, food grade, scale…"
-            />
-          </Field>
         </div>
 
         <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Driver & availability</div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.55fr)]">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Driver</div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Assigned driver">
               <Select value={d.assigned_driver_id} onChange={(e) => set({ assigned_driver_id: e.target.value })}>
                 <option value="">Unassigned</option>
@@ -239,83 +234,10 @@ export function TruckForm({
                 ))}
               </Select>
             </Field>
-            <Field label="Current location">
-              <Input value={d.current_location} onChange={(e) => set({ current_location: e.target.value })} placeholder="Dallas, TX" />
-            </Field>
-            <Field label="Available from" hint={d.available_date ? (d.available_time ? undefined : "Add a time if it matters") : "Empty = ready now"}>
-              <div className="flex gap-2">
-                <Input type="date" value={d.available_date} onChange={(e) => set({ available_date: e.target.value, available_time: e.target.value ? d.available_time : "" })} className="min-w-0 flex-1" />
-                <Input type="time" value={d.available_time} onChange={(e) => set({ available_time: e.target.value })} disabled={!d.available_date} aria-label="Available from time" className="w-[112px]" />
-              </div>
-            </Field>
           </div>
         </div>
 
         <TruckDocs truckId={truck?.id} companyId={companyId} pending={docs} onPending={setDocs} onFile={readCabCard} />
-
-        <TruckPhotos truckId={truck?.id} companyId={companyId} pending={photos} onPending={setPhotos} compact />
-
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Onboard gear</div>
-          <div className="mb-3 flex flex-wrap gap-1.5">
-            {GEAR_PRESETS.map((g) => (
-              <button
-                key={g.name}
-                type="button"
-                onClick={() => addGear(g.name, g.quantity, g.details)}
-                className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-xs text-fg-2 hover:border-line-strong hover:bg-surface-2"
-              >
-                <Plus className="h-3 w-3" />
-                {g.name}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input value={gearName} onChange={(e) => setGearName(e.target.value)} placeholder="Other gear" className="flex-1" />
-            <Input value={gearQty} onChange={(e) => setGearQty(e.target.value)} inputMode="numeric" className="w-20" />
-            <Button
-              variant="outline"
-              onClick={() => {
-                addGear(gearName, Number(gearQty) || 1);
-                setGearName("");
-                setGearQty("1");
-              }}
-            >
-              Add
-            </Button>
-          </div>
-          {d.accessories.length > 0 && (
-            <ul className="mt-3 divide-y divide-line rounded-xl border border-line">
-              {d.accessories.map((a) => (
-                <li key={a.id} className="flex items-center gap-2 px-3 py-2">
-                  <div className="min-w-0 flex-1">
-                    <Input
-                      value={a.name}
-                      onChange={(e) => set({ accessories: d.accessories.map((x) => (x.id === a.id ? { ...x, name: e.target.value } : x)) })}
-                      className="h-7 border-transparent px-1 font-medium hover:border-line"
-                    />
-                    <Input
-                      value={a.details || ""}
-                      placeholder="Details"
-                      onChange={(e) => set({ accessories: d.accessories.map((x) => (x.id === a.id ? { ...x, details: e.target.value } : x)) })}
-                      className="h-7 border-transparent px-1 text-xs text-fg-3 hover:border-line"
-                    />
-                  </div>
-                  <QtyStepper
-                    value={a.quantity}
-                    onChange={(q) => set({ accessories: d.accessories.map((x) => (x.id === a.id ? { ...x, quantity: q } : x)) })}
-                  />
-                  <button
-                    onClick={() => set({ accessories: d.accessories.filter((x) => x.id !== a.id) })}
-                    className="rounded-md p-1 text-fg-4 hover:bg-surface-2 hover:text-fg"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
 
         <Field label="Notes">
           <Textarea value={d.notes} onChange={(e) => set({ notes: e.target.value })} rows={2} />

@@ -28,6 +28,7 @@ import { RouteMap } from "@/components/loads/RouteMap";
 import { Activity } from "@/components/loads/Activity";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { useStore } from "@/lib/store";
+import { truckLabel } from "@/lib/pitch";
 import { useRoute } from "@/lib/route";
 import { toast } from "@/lib/toast";
 import { buildPacket } from "@/lib/packet";
@@ -426,7 +427,7 @@ function LoadView({ load }: { load: Load }) {
                     .filter((t) => t.company_id === load.company_id)
                     .map((t) => (
                       <option key={t.id} value={t.id}>
-                        Unit {t.unit_number}
+                        {truckLabel(t)}
                       </option>
                     ))}
                 </Select>

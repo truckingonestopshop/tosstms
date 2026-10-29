@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Container, Network, Truck as TruckIcon, Users } from "lucide-react";
+import { Container, Network, Sheet, Truck as TruckIcon, Users } from "lucide-react";
 import { Tabs } from "@/components/ui/Bits";
 import { useStore } from "@/lib/store";
 import type { Company, Driver, Trailer, Truck } from "@/lib/types";
@@ -13,13 +13,14 @@ import { TruckForm } from "./TruckForm";
 import { TruckSheet } from "./TruckSheet";
 import { DriverForm, DriverSheet } from "./Drivers";
 import { useOpenSheet } from "./fleetLinks";
+import { EquipmentTable } from "./EquipmentTable";
 
 // A company's Equipment & Drivers tab: Units · Trucks · Trailers · Drivers in one place. The URL
 // keeps the old tab names (/fleet?tab=trucks&truck=…), so every existing link still works.
 // Clicking a truck, trailer or driver opens its panel on the right without leaving the screen.
 
-export type EquipmentTab = "units" | "trucks" | "trailers" | "drivers";
-export const EQUIPMENT_TABS: EquipmentTab[] = ["units", "trucks", "trailers", "drivers"];
+export type EquipmentTab = "units" | "trucks" | "trailers" | "drivers" | "equipment_list";
+export const EQUIPMENT_TABS: EquipmentTab[] = ["units", "trucks", "trailers", "drivers", "equipment_list"];
 export const isEquipmentTab = (t: string): t is EquipmentTab => (EQUIPMENT_TABS as string[]).includes(t);
 
 export function CompanyEquipment({ company, tab, onTab }: { company: Company; tab: EquipmentTab; onTab: (t: EquipmentTab) => void }) {
@@ -27,6 +28,7 @@ export function CompanyEquipment({ company, tab, onTab }: { company: Company; ta
   const t = trucks.filter((x) => x.company_id === company.id);
   const tl = trailers.filter((x) => x.company_id === company.id);
   const d = drivers.filter((x) => x.company_id === company.id);
+  const openSheet = useOpenSheet();
   return (
     <>
       <Tabs<EquipmentTab>
@@ -38,12 +40,14 @@ export function CompanyEquipment({ company, tab, onTab }: { company: Company; ta
           { value: "trucks", label: <><TruckIcon className="h-4 w-4" /> Trucks</>, count: t.length },
           { value: "trailers", label: <><Container className="h-4 w-4" /> Trailers</>, count: tl.length },
           { value: "drivers", label: <><Users className="h-4 w-4" /> Drivers</>, count: d.length },
+          { value: "equipment_list", label: <><Sheet className="h-4 w-4" /> Equipment list</>, count: t.length + tl.length },
         ]}
       />
       {tab === "units" && <UnitsTab company={company} />}
       {tab === "trucks" && <TrucksTab company={company} trucks={t} />}
       {tab === "trailers" && <TrailersTab company={company} />}
       {tab === "drivers" && <DriversTab company={company} drivers={d} />}
+      {tab === "equipment_list" && <EquipmentTable trucks={t} trailers={tl} onOpen={(k, id) => openSheet(k, id)} />}
       <SheetHost tab={tab} />
     </>
   );

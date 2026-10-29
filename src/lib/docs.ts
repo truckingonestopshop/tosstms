@@ -95,7 +95,7 @@ export const byTypeOrder = (a: DocType, b: DocType) => a.sort - b.sort || a.name
 export type DocTarget =
   | { scope: "company"; companyId: string }
   | { scope: "load"; id: string; companyId: string; status?: LoadStatus }
-  | { scope: "driver"; id: string; companyId: string; /** typed on the driver (License expires) */ licenseExpiry?: string | null }
+  | { scope: "driver"; id: string; companyId: string; /** typed on the driver (License expires) */ licenseExpiry?: string | null; /** marked Not required for this driver */ waived?: string[] }
   | { scope: "truck"; id: string; companyId: string }
   | { scope: "trailer"; id: string; companyId: string };
 
@@ -128,6 +128,7 @@ const NEED: Record<DocRequired, number> = { always: 0, booked: 1, in_transit: 2,
 /** Is this type required for the target right now? (A canceled load needs nothing.) */
 export function isRequired(t: DocType, target: DocTarget) {
   if (!t.required_from || (t.scope !== target.scope && t.scope !== "any")) return false;
+  if (target.scope === "driver" && target.waived?.includes(t.key)) return false;
   if (target.scope !== "load") return true;
   const stage = STAGE[target.status ?? "booked"] ?? 1;
   return stage >= 0 && stage >= NEED[t.required_from];
@@ -156,7 +157,14 @@ export function supersededIds(docs: DocumentItem[]) {
   const out = new Set<string>();
   for (const g of groups.values()) {
     const latest = latestByType(g);
-    for (const d of g) if (latest.get(d.doc_type)?.id !== d.id && !MANY.has(d.doc_type) && !isPhotoDoc(d.doc_type)) out.add(d.id);
+    for (const d of g) {
+      const l = latest.get(d.doc_type);
+      if (!l || l.id === d.id || MANY.has(d.doc_type) || isPhotoDoc(d.doc_type)) continue;
+      // Several files of one document (pages, photos sent separately) stay current: same expiry date
+      // as the newest, or (no date) added within a day of it.
+      const sameSet = l.expires_on ? d.expires_on === l.expires_on : !d.expires_on && Math.abs(Date.parse(l.uploaded_at) - Date.parse(d.uploaded_at)) < 86400000;
+      if (!sameSet) out.add(d.id);
+    }
   }
   return out;
 }
@@ -178,6 +186,8 @@ export interface CheckItem {
   doc: DocumentItem | undefined;
   state: DocState;
   required: boolean;
+  /** required, but marked Not required for this driver */
+  waived?: boolean;
 }
 
 /**
@@ -195,8 +205,13 @@ export function checklist(docTypes: DocType[], documents: DocumentItem[], target
     if (cdl) latest.set("cdl", cdl.expires_on || !target.licenseExpiry ? cdl : { ...cdl, expires_on: target.licenseExpiry });
   }
   return typesFor(docTypes, target.scope)
-    .filter((t) => t.key !== "other" && (isRequired(t, target) || latest.has(t.key)))
-    .map((t) => ({ type: t, doc: latest.get(t.key), state: expiryState(latest.get(t.key), t), required: isRequired(t, target) }));
+    .filter((t) => t.key !== "other" && (isRequired(t, target) || latest.has(t.key) || waivedFor(t, target)))
+    .map((t) => ({ type: t, doc: latest.get(t.key), state: expiryState(latest.get(t.key), t), required: isRequired(t, target), waived: waivedFor(t, target) }));
+}
+
+/** A required type marked Not required for this driver. */
+function waivedFor(t: DocType, target: DocTarget) {
+  return target.scope === "driver" && !!t.required_from && !!target.waived?.includes(t.key);
 }
 
 /** Required items that are missing or expired (what blocks billing / compliance). */
@@ -297,7 +312,7 @@ export interface Holder {
 export function fleetPaperwork(
   data: {
     companies: { id: string; name: string; status: string }[];
-    drivers: { id: string; company_id: string; name: string; status: string }[];
+    drivers: { id: string; company_id: string; name: string; status: string; termination_date?: string | null; waived_docs?: string[] }[];
     trucks: { id: string; company_id: string; unit_number: string; status: string }[];
     trailers?: { id: string; company_id: string; unit_number: string; status: string }[];
     documents: DocumentItem[];
@@ -313,8 +328,8 @@ export function fleetPaperwork(
   };
   for (const c of data.companies.filter((c) => c.status !== "inactive" && inScope(c.id)))
     add("company", { scope: "company", companyId: c.id }, c.id, c.id, c.name, `/fleet?company=${c.id}&tab=docs`);
-  for (const d of data.drivers.filter((d) => d.status === "active" && inScope(d.company_id)))
-    add("driver", { scope: "driver", id: d.id, companyId: d.company_id }, d.id, d.company_id, d.name, `/fleet?company=${d.company_id}&tab=drivers&driver=${d.id}`);
+  for (const d of data.drivers.filter((d) => d.status === "active" && !d.termination_date && inScope(d.company_id)))
+    add("driver", { scope: "driver", id: d.id, companyId: d.company_id, waived: d.waived_docs }, d.id, d.company_id, d.name, `/fleet?company=${d.company_id}&tab=drivers&driver=${d.id}`);
   for (const t of data.trucks.filter((t) => t.status !== "inactive" && inScope(t.company_id)))
     add("truck", { scope: "truck", id: t.id, companyId: t.company_id }, t.id, t.company_id, `Unit ${t.unit_number}`, `/fleet?company=${t.company_id}&tab=trucks&truck=${t.id}`);
   for (const t of (data.trailers || []).filter((t) => t.status !== "inactive" && inScope(t.company_id)))

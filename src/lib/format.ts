@@ -54,17 +54,21 @@ export function addDays(day: string, n: number) {
 }
 
 /** "Oct 14" (adds the year when it isn't this year). */
-export function fmtDay(s: string | null | undefined, withYear?: boolean) {
+/** MM/DD/YYYY, the one date format everywhere. (`withYear` is kept for old callers; the year always shows.) */
+export function fmtDay(s: string | null | undefined, _withYear?: boolean) {
+  void _withYear;
   const d = parseDay(s);
   if (!d) return "—";
-  const showYear = withYear ?? d.getFullYear() !== new Date().getFullYear();
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(showYear ? { year: "numeric" } : {}) });
+  return mdy(d);
 }
+
+/** A date as MM/DD/YYYY. */
+export const mdy = (d: Date) => `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
 
 export function fmtDateTime(s: string | null | undefined) {
   if (!s) return "—";
   const d = new Date(s);
-  return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return `${mdy(d)} ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 }
 
 export function relTime(s: string) {

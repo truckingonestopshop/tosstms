@@ -1,18 +1,21 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, FileText, UploadCloud } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, RefreshCw, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, Empty } from "@/components/ui/Bits";
 import { Checkbox, Field, Input, Select } from "@/components/ui/Field";
 import { DocumentsPanel, ExpiryBadge } from "@/components/docs/DocumentsPanel";
+import { SafetyEvents } from "./SafetyEvents";
+import { isTerminated } from "./Drivers";
+import { truckLabel } from "@/lib/pitch";
 import { useStore } from "@/lib/store";
 import { openDocument, errMsg } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn, daysUntil, fmtDay, today } from "@/lib/format";
 import { checklist, type CheckItem, type DocState } from "@/lib/docs";
-import type { Company, Compliance, ServiceInfo, ServiceKey } from "@/lib/types";
+import type { Company, Compliance, FmcsaSafety, ServiceInfo, ServiceKey } from "@/lib/types";
 
 // The DOT Compliance and MCPT tabs of a carrier (shown when it's active in that service).
 
@@ -80,10 +83,10 @@ function useTodos(company: Company) {
       }
     };
     add("Carrier", "/fleet?tab=docs", checklist(docTypes, documents, { scope: "company", companyId: company.id }));
-    for (const d of drivers.filter((x) => x.company_id === company.id && !x.termination_date))
-      add(`Driver ${d.name}`, `/fleet?tab=drivers&driver=${d.id}`, checklist(docTypes, documents, { scope: "driver", id: d.id, companyId: company.id, licenseExpiry: d.cdl_expiry }));
+    for (const d of drivers.filter((x) => x.company_id === company.id && !isTerminated(x)))
+      add(`Driver ${d.name}`, `/fleet?tab=drivers&driver=${d.id}`, checklist(docTypes, documents, { scope: "driver", id: d.id, companyId: company.id, licenseExpiry: d.cdl_expiry, waived: d.waived_docs }));
     for (const t of trucks.filter((x) => x.company_id === company.id && x.status !== "inactive"))
-      add(`Unit ${t.unit_number}`, `/fleet?tab=trucks&truck=${t.id}`, checklist(docTypes, documents, { scope: "truck", id: t.id, companyId: company.id }));
+      add(truckLabel(t), `/fleet?tab=trucks&truck=${t.id}`, checklist(docTypes, documents, { scope: "truck", id: t.id, companyId: company.id }));
     return out.sort((a, b) => RANK[a.item.state] - RANK[b.item.state] || (a.item.doc?.expires_on || "").localeCompare(b.item.doc?.expires_on || ""));
   }, [company.id, docTypes, documents, drivers, trucks]);
 }
@@ -122,42 +125,96 @@ function Todos({ company }: { company: Company }) {
   );
 }
 
-/** Documents of one driver or truck, picked from a list. */
+/** Views over every driver / truck at once, next to picking one. */
+const VIEWS = [
+  { id: "__pending", label: "Pending (missing)", empty: "Nothing missing." },
+  { id: "__expired", label: "Expired", empty: "Nothing expired." },
+  { id: "__todo", label: "To do (expired + next 30 days)", empty: "Nothing expired or expiring in the next 30 days." },
+] as const;
+
+/** Documents of one driver or truck picked from a list, or what's pending / expired / to do across all of them. */
 function PickedDocs({ company, scope }: { company: Company; scope: "driver" | "truck" }) {
-  const { drivers, trucks } = useStore();
+  const { drivers, trucks, docTypes, documents } = useStore();
+  const people = drivers.filter((d) => d.company_id === company.id);
+  const units = trucks.filter((t) => t.company_id === company.id);
   const options =
     scope === "driver"
-      ? drivers.filter((d) => d.company_id === company.id).map((d) => ({ id: d.id, label: `${d.name}${d.termination_date ? " (terminated)" : ""}`, extra: d.cdl_expiry }))
-      : trucks.filter((t) => t.company_id === company.id).map((t) => ({ id: t.id, label: `Unit ${t.unit_number}`, extra: null as string | null }));
+      ? people.map((d) => ({ id: d.id, label: `${d.name}${isTerminated(d) ? " (terminated)" : ""}`, extra: d.cdl_expiry, waived: d.waived_docs }))
+      : units.map((t) => ({ id: t.id, label: truckLabel(t), extra: null as string | null, waived: undefined as string[] | undefined }));
   const [id, setId] = useState(options[0]?.id ?? "");
-  const pick = options.find((o) => o.id === id) ?? options[0];
+  const view = VIEWS.find((v) => v.id === id);
+  const pick = view ? null : (options.find((o) => o.id === id) ?? options[0]);
+  // Across all active drivers / trucks: which documents are missing, expired or expiring.
+  const rows = (() => {
+    if (!view) return [];
+    const targets =
+      scope === "driver"
+        ? people.filter((d) => !isTerminated(d)).map((d) => ({ id: d.id, who: d.name, items: checklist(docTypes, documents, { scope: "driver", id: d.id, companyId: company.id, licenseExpiry: d.cdl_expiry, waived: d.waived_docs }) }))
+        : units.filter((t) => t.status !== "inactive").map((t) => ({ id: t.id, who: truckLabel(t), items: checklist(docTypes, documents, { scope: "truck", id: t.id, companyId: company.id }) }));
+    return targets
+      .flatMap((t) =>
+        t.items
+          .filter((i) => (view.id === "__pending" ? i.required && i.state === "missing" : view.id === "__expired" ? !!i.doc && i.state === "expired" : !!i.doc && (i.state === "expired" || i.state === "soon")))
+          .map((i) => ({ ...t, item: i })),
+      )
+      .sort((a, b) => (a.item.doc?.expires_on || "").localeCompare(b.item.doc?.expires_on || "") || a.who.localeCompare(b.who));
+  })();
   return (
     <Card>
       <CardHeader
         title={scope === "driver" ? "Driver documents" : "Truck documents"}
         actions={
           options.length > 0 && (
-            <Select value={pick?.id} onChange={(e) => setId(e.target.value)} className="h-8 w-52 text-[13px]">
-              {options.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
+            <Select value={view ? view.id : pick?.id} onChange={(e) => setId(e.target.value)} className="h-8 w-60 text-[13px]">
+              <optgroup label={scope === "driver" ? "All drivers" : "All trucks"}>
+                {VIEWS.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={scope === "driver" ? "One driver" : "One truck"}>
+                {options.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </optgroup>
             </Select>
           )
         }
       />
-      <div className="p-4 sm:p-5">
-        {!pick ? (
-          <Empty icon={FileText} title={scope === "driver" ? "No drivers yet" : "No trucks yet"} className="py-4" />
+      {view ? (
+        rows.length === 0 ? (
+          <div className="flex items-center gap-2 px-4 py-6 text-[13px] text-fg-3 sm:px-5">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> {view.empty}
+          </div>
         ) : (
-          <DocumentsPanel
-            key={pick.id}
-            target={scope === "driver" ? { scope: "driver", id: pick.id, companyId: company.id, licenseExpiry: pick.extra } : { scope: "truck", id: pick.id, companyId: company.id }}
-            compact
-          />
-        )}
-      </div>
+          <ul className="divide-y divide-line">
+            {rows.map((r) => (
+              <li key={`${r.id}:${r.item.type.key}`}>
+                <button type="button" onClick={() => setId(r.id)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[13px] hover:bg-surface-2/50 sm:px-5">
+                  <span className="w-48 shrink-0 truncate text-fg-3">{r.who}</span>
+                  <span className="min-w-0 flex-1 truncate text-fg">{r.item.type.name}</span>
+                  {r.item.state === "missing" ? <span className="text-xs font-medium text-red-700 dark:text-red-300">Missing</span> : <ExpiryBadge date={r.item.doc?.expires_on ?? null} />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : (
+        <div className="p-4 sm:p-5">
+          {!pick ? (
+            <Empty icon={FileText} title={scope === "driver" ? "No drivers yet" : "No trucks yet"} className="py-4" />
+          ) : (
+            <DocumentsPanel
+              key={pick.id}
+              target={scope === "driver" ? { scope: "driver", id: pick.id, companyId: company.id, licenseExpiry: pick.extra, waived: pick.waived } : { scope: "truck", id: pick.id, companyId: company.id }}
+              compact
+            />
+          )}
+        </div>
+      )}
     </Card>
   );
 }
@@ -169,126 +226,6 @@ function CompanyDocs({ company }: { company: Company }) {
       <div className="p-4 sm:p-5">
         <DocumentsPanel target={{ scope: "company", companyId: company.id }} compact />
       </div>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Inspection reports: filed on the carrier, linked to a truck and / or driver (so they also
-// show on that truck's and driver's documents)
-// ---------------------------------------------------------------------------
-function Inspections({ company }: { company: Company }) {
-  const { documents, drivers, trucks, uploadDocument } = useStore();
-  const [truck, setTruck] = useState("");
-  const [driver, setDriver] = useState("");
-  const [date, setDate] = useState(today());
-  const [notes, setNotes] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [drag, setDrag] = useState(false);
-  const input = useRef<HTMLInputElement>(null);
-  const list = documents
-    .filter((d) => d.company_id === company.id && d.doc_type === "inspection_report")
-    .sort((a, b) => (b.issued_on || b.uploaded_at).localeCompare(a.issued_on || a.uploaded_at));
-
-  const add = async (files: FileList | null) => {
-    if (!files?.length) return;
-    setBusy(true);
-    let n = 0;
-    for (const f of Array.from(files))
-      if (await uploadDocument(f, { company_id: company.id, doc_type: "inspection_report", truck_id: truck || null, driver_id: driver || null, issued_on: date || null, notes: notes || null })) n++;
-    setBusy(false);
-    if (n) {
-      toast.success(n === 1 ? "Inspection report added" : `${n} inspection reports added`);
-      setNotes("");
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader title="Inspection reports" subtitle="Also shown on the truck's and the driver's documents" />
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDrag(true);
-        }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDrag(false);
-          add(e.dataTransfer.files);
-        }}
-        className={cn("m-4 rounded-xl border border-dashed p-3 transition-colors sm:m-5", drag ? "border-brand bg-brand/5" : "border-line-strong bg-surface-2/40")}
-      >
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-4 sm:items-end">
-          <Field label="Inspection date">
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
-          <Field label="Truck">
-            <Select value={truck} onChange={(e) => setTruck(e.target.value)}>
-              <option value="">—</option>
-              {trucks
-                .filter((t) => t.company_id === company.id)
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    Unit {t.unit_number}
-                  </option>
-                ))}
-            </Select>
-          </Field>
-          <Field label="Driver">
-            <Select value={driver} onChange={(e) => setDriver(e.target.value)}>
-              <option value="">—</option>
-              {drivers
-                .filter((d) => d.company_id === company.id)
-                .map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-            </Select>
-          </Field>
-          <Button variant="secondary" onClick={() => input.current?.click()} loading={busy}>
-            {!busy && <UploadCloud className="h-4 w-4" />} Upload report
-          </Button>
-          <Field label="Notes" className="sm:col-span-4">
-            <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Level, location, violations, out of service…" />
-          </Field>
-        </div>
-        <p className="mt-2 text-[12px] text-fg-4">Drop the report here or use Upload report.</p>
-        <input
-          ref={input}
-          type="file"
-          multiple
-          accept={ACCEPT}
-          className="hidden"
-          onChange={(e) => {
-            add(e.target.files);
-            e.target.value = "";
-          }}
-        />
-      </div>
-      {list.length > 0 && (
-        <ul className="divide-y divide-line border-t border-line">
-          {list.map((d) => (
-            <li key={d.id} className="flex items-center gap-3 px-4 py-2.5 text-[13px] sm:px-5">
-              <span className="w-24 shrink-0 text-fg-3">{fmtDay(d.issued_on || d.uploaded_at.slice(0, 10), true)}</span>
-              <button
-                type="button"
-                className="min-w-0 flex-1 truncate text-left text-fg hover:underline"
-                onClick={() => openDocument(d.file_path, d.file_name).catch((e) => toast.error(`Couldn't open the file: ${errMsg(e)}`))}
-              >
-                {d.file_name}
-                {d.notes && <span className="ml-2 text-fg-4">{d.notes}</span>}
-              </button>
-              <span className="shrink-0 text-xs text-fg-3">
-                {[d.truck_id && `Unit ${trucks.find((t) => t.id === d.truck_id)?.unit_number ?? ""}`, d.driver_id && drivers.find((x) => x.id === d.driver_id)?.name]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
     </Card>
   );
 }
@@ -313,42 +250,116 @@ function Safety({ company }: { company: Company }) {
   const { updateCompany } = useStore();
   const saved: Compliance = company.compliance ?? {};
   const [c, setC] = useState<Compliance>(saved);
+  const [pulling, setPulling] = useState(false);
+  const [pullError, setPullError] = useState<string | null>(null);
   const dirty = JSON.stringify(c) !== JSON.stringify(saved);
+  const f = c.fmcsa ?? null;
   const basic = (k: string) => c.basics?.[k] ?? {};
   const setBasic = (k: string, p: { score?: number | null; threshold?: number | null }) => setC((x) => ({ ...x, basics: { ...x.basics, [k]: { ...x.basics?.[k], ...p } } }));
   const alerts = BASICS.filter((b) => {
     const s = basic(b.key).score;
-    return s != null && s >= (basic(b.key).threshold ?? b.threshold);
+    return (s != null && s >= (basic(b.key).threshold ?? b.threshold)) || !!f?.basics[b.key]?.alert;
   });
+
+  /** FMCSA numbers through Lead Hunter; saved right away (typed scores stay as they are). */
+  const pull = async (quiet = false) => {
+    if (!company.dot_number) return quiet ? undefined : toast.error("Add the USDOT number first");
+    setPulling(true);
+    setPullError(null);
+    try {
+      const res = await fetch(`/api/hunter/safety?dot=${encodeURIComponent(company.dot_number)}`, { cache: "no-store" });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || `Error ${res.status}`);
+      const fm = body as FmcsaSafety;
+      const next: Compliance = { ...(company.compliance ?? {}), fmcsa: fm, safety_rating: company.compliance?.safety_rating || fm.rating || null };
+      if (await updateCompany(company.id, { compliance: next })) {
+        setC((x) => ({ ...x, fmcsa: fm, safety_rating: x.safety_rating || fm.rating || null }));
+        if (!quiet) toast.success("Safety data updated from FMCSA");
+      }
+    } catch (e) {
+      setPullError((e as Error).message);
+      if (!quiet) toast.error((e as Error).message);
+    }
+    setPulling(false);
+  };
+
+  // Fresh data when the tab opens: pulled if never pulled or older than a week.
+  const autoRef = useRef(false);
+  useEffect(() => {
+    const stale = !saved.fmcsa || Date.now() - Date.parse(saved.fmcsa.pulled_at) > 7 * 86400000;
+    if (autoRef.current || !stale || !company.dot_number) return;
+    autoRef.current = true;
+    pull(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company.id]);
+
+  const pctTile = (label: string, rate: number | null | undefined, nat: number | null | undefined, inspections: number | null | undefined) => (
+    <Tile
+      label={label}
+      value={rate == null ? "—" : `${rate}%`}
+      tone={rate != null && nat != null && rate > nat ? "bad" : rate != null ? "good" : undefined}
+      sub={rate == null ? "No inspections" : `${inspections ?? 0} inspections${nat != null ? ` · national ${nat}%` : ""}`}
+    />
+  );
 
   return (
     <Card>
       <CardHeader
         title="Safety scores"
-        subtitle={saved.updated_on ? `Updated ${fmtDay(saved.updated_on, true)}` : "Typed from the carrier's SMS profile"}
+        subtitle={
+          f
+            ? `From FMCSA (via Lead Hunter) · updated ${fmtDay(f.pulled_at.slice(0, 10))}`
+            : saved.updated_on
+              ? `Updated ${fmtDay(saved.updated_on, true)}`
+              : company.dot_number
+                ? "Pulled from FMCSA through Lead Hunter"
+                : "Add the USDOT number to pull FMCSA data"
+        }
         actions={
-          dirty && (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => setC(saved)}>
-                Discard
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={async () => {
-                  const next = { ...c, updated_on: today() };
-                  if (await updateCompany(company.id, { compliance: next })) {
-                    setC(next);
-                    toast.success("Safety scores saved");
-                  }
-                }}
-              >
-                Save
-              </Button>
-            </>
-          )
+          <>
+            {dirty && (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => setC(saved)}>
+                  Discard
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={async () => {
+                    const next = { ...c, updated_on: today() };
+                    if (await updateCompany(company.id, { compliance: next })) {
+                      setC(next);
+                      toast.success("Safety scores saved");
+                    }
+                  }}
+                >
+                  Save
+                </Button>
+              </>
+            )}
+            <Button variant="outline" size="sm" onClick={() => pull()} loading={pulling} disabled={!company.dot_number}>
+              {!pulling && <RefreshCw className="h-3.5 w-3.5" />} {f ? "Refresh" : "Pull from FMCSA"}
+            </Button>
+          </>
         }
       />
+      {pullError && !f && <div className="mx-4 mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300 sm:mx-5">Couldn&apos;t pull FMCSA data: {pullError}</div>}
+
+      {f && (
+        <div className="grid grid-cols-2 gap-px border-b border-line bg-line sm:grid-cols-5">
+          <Tile label="Safety rating" value={f.rating || "Not rated"} sub={f.rating_date ? `since ${fmtDay(f.rating_date)}` : "FMCSA"} tone={f.rating === "Satisfactory" ? "good" : f.rating === "Conditional" || f.rating === "Unsatisfactory" ? "bad" : undefined} />
+          <Tile label="Inspections · 24 mo" value={f.inspections_24m == null ? "—" : String(f.inspections_24m)} sub={f.last_inspection ? `last ${fmtDay(f.last_inspection)}` : "None on record"} />
+          {pctTile("Driver out-of-service", f.driver_oos_rate, f.driver_oos_national, f.driver_inspections)}
+          {pctTile("Vehicle out-of-service", f.vehicle_oos_rate, f.vehicle_oos_national, f.vehicle_inspections)}
+          <Tile
+            label="Crashes · 24 mo"
+            value={f.crashes_24m == null ? "—" : String(f.crashes_24m)}
+            tone={f.crashes_24m ? "bad" : f.crashes_24m === 0 ? "good" : undefined}
+            sub={f.crashes_24m ? [f.crashes_fatal && `${f.crashes_fatal} fatal`, f.crashes_injury && `${f.crashes_injury} injury`, f.crashes_tow && `${f.crashes_tow} tow-away`].filter(Boolean).join(" · ") || "Reported" : "None reported"}
+          />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3 sm:p-5">
         <Field label="Safety rating">
           <Select value={c.safety_rating || ""} onChange={(e) => setC((x) => ({ ...x, safety_rating: e.target.value || null }))}>
@@ -360,24 +371,27 @@ function Safety({ company }: { company: Company }) {
             ))}
           </Select>
         </Field>
-        <Field label="ISS score" hint="1–100 (higher means more likely to be inspected)">
+        <Field label="ISS score" hint="1–100 (higher means more likely to be inspected) · not published by FMCSA, type it in">
           <Input type="number" min={1} max={100} value={c.iss_score ?? ""} onChange={(e) => setC((x) => ({ ...x, iss_score: numOrNull(e.target.value) }))} />
         </Field>
         <div className="flex items-end pb-1">
           {alerts.length > 0 ? (
             <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-amber-700 dark:text-amber-300">
-              <AlertTriangle className="h-4 w-4" /> {alerts.length} BASIC{alerts.length > 1 ? "s" : ""} over the threshold
+              <AlertTriangle className="h-4 w-4" /> {alerts.length} BASIC{alerts.length > 1 ? "s" : ""} in alert
             </span>
           ) : (
-            <span className="text-[13px] text-fg-4">No alerts</span>
+            <span className="inline-flex items-center gap-1.5 text-[13px] text-fg-3">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> No alerts
+            </span>
           )}
         </div>
       </div>
       <div className="overflow-x-auto border-t border-line">
-        <table className="w-full min-w-[520px] text-left text-[13px]">
+        <table className="w-full min-w-[640px] text-left text-[13px]">
           <thead className="text-[11px] uppercase tracking-wider text-fg-4">
             <tr>
               <th className="px-4 py-2 font-medium sm:px-5">BASIC</th>
+              <th className="w-32 px-2 py-2 font-medium">FMCSA measure</th>
               <th className="w-28 px-2 py-2 font-medium">Score %</th>
               <th className="w-28 px-2 py-2 font-medium">Threshold %</th>
               <th className="w-24 px-4 py-2 font-medium sm:px-5">Alert</th>
@@ -386,11 +400,15 @@ function Safety({ company }: { company: Company }) {
           <tbody className="divide-y divide-line">
             {BASICS.map((b) => {
               const v = basic(b.key);
+              const fm = f?.basics[b.key];
               const limit = v.threshold ?? b.threshold;
-              const alert = v.score != null && v.score >= limit;
+              const alert = (v.score != null && v.score >= limit) || !!fm?.alert;
               return (
                 <tr key={b.key}>
                   <td className="px-4 py-1.5 text-fg sm:px-5">{b.label}</td>
+                  <td className="tnum px-2 py-1.5 text-fg-2" title={fm?.inspections_with_violation != null ? `${fm.inspections_with_violation} inspections with a violation` : undefined}>
+                    {fm?.measure != null ? fm.measure.toFixed(2) : <span className="text-fg-4">{f ? (b.key === "crash" || b.key === "hazmat" ? "Not public" : "—") : "—"}</span>}
+                  </td>
                   <td className="px-2 py-1.5">
                     <Input className="h-8" type="number" min={0} max={100} value={v.score ?? ""} onChange={(e) => setBasic(b.key, { score: numOrNull(e.target.value) })} />
                   </td>
@@ -398,7 +416,7 @@ function Safety({ company }: { company: Company }) {
                     <Input className="h-8" type="number" min={0} max={100} value={v.threshold ?? ""} placeholder={String(b.threshold)} onChange={(e) => setBasic(b.key, { threshold: numOrNull(e.target.value) })} />
                   </td>
                   <td className="px-4 py-1.5 sm:px-5">
-                    {alert ? <span className="text-xs font-semibold text-red-700 dark:text-red-300">Alert</span> : <span className="text-xs text-fg-4">{v.score == null ? "—" : "OK"}</span>}
+                    {alert ? <span className="text-xs font-semibold text-red-700 dark:text-red-300">Alert</span> : <span className="text-xs text-fg-4">{v.score == null && !fm ? "—" : "OK"}</span>}
                   </td>
                 </tr>
               );
@@ -407,6 +425,17 @@ function Safety({ company }: { company: Company }) {
         </table>
       </div>
     </Card>
+  );
+}
+
+/** One number in the FMCSA strip. */
+function Tile({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "good" | "bad" }) {
+  return (
+    <div className="bg-surface px-4 py-3 sm:px-5">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-4">{label}</div>
+      <div className={cn("tnum mt-1 text-lg font-bold", tone === "bad" ? "text-red-600 dark:text-red-400" : tone === "good" ? "text-emerald-600 dark:text-emerald-400" : "text-fg")}>{value}</div>
+      {sub && <div className="mt-0.5 truncate text-[11px] text-fg-3">{sub}</div>}
+    </div>
   );
 }
 
@@ -421,13 +450,17 @@ export function DotComplianceTab({ company }: { company: Company }) {
               <Field label="SAM" className="sm:col-span-2">
                 <Input value={v.sam || ""} onChange={(e) => set({ sam: e.target.value })} list="toss-team-c" />
               </Field>
+              <Field label="Set up date" className="sm:col-span-2">
+                <Input type="date" value={v.activation_date || ""} onChange={(e) => set({ activation_date: e.target.value || null })} />
+              </Field>
             </>
           )}
         </ServiceCard>
         <Todos company={company} />
       </div>
       <Safety company={company} />
-      <Inspections company={company} />
+      <SafetyEvents company={company} kind="inspection" />
+      <SafetyEvents company={company} kind="accident" />
       <CompanyDocs company={company} />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <PickedDocs company={company} scope="driver" />
@@ -440,7 +473,7 @@ export function DotComplianceTab({ company }: { company: Company }) {
 // ---------------------------------------------------------------------------
 // MCPT: agent, documents, and the permits list (with expiry, optionally for one truck)
 // ---------------------------------------------------------------------------
-const PERMITS = ["ny_hut_permit", "nm_state_permit", "ky_state_permit", "or_state_permit", "ct_state_permit", "ifta", "ucr"];
+const PERMITS = ["ny_hut_permit", "nm_state_permit", "ky_state_permit", "or_state_permit", "ct_state_permit", "road_taxes_2290_permit", "ifta", "ucr"];
 
 function Permits({ company }: { company: Company }) {
   const { documents, docTypes, trucks, uploadDocument, addDocType, docTypeName } = useStore();
@@ -512,7 +545,7 @@ function Permits({ company }: { company: Company }) {
               .filter((t) => t.company_id === company.id)
               .map((t) => (
                 <option key={t.id} value={t.id}>
-                  Unit {t.unit_number}
+                  {truckLabel(t)}
                 </option>
               ))}
           </Select>
@@ -570,7 +603,12 @@ export function McptTab({ company }: { company: Company }) {
               <Field label="MCPT agent" className="sm:col-span-2">
                 <Input value={v.agent || ""} onChange={(e) => set({ agent: e.target.value })} list="toss-team-c" />
               </Field>
-              <Checkbox checked={!!v.fuel_taxes} onChange={(x) => set({ fuel_taxes: x })} label="Fuel taxes" />
+              <Field label="Set up date">
+                <Input type="date" value={v.activation_date || ""} onChange={(e) => set({ activation_date: e.target.value || null })} />
+              </Field>
+              <div className="flex items-end pb-2">
+                <Checkbox checked={!!v.fuel_taxes} onChange={(x) => set({ fuel_taxes: x })} label="Fuel taxes" />
+              </div>
             </>
           )}
         </ServiceCard>

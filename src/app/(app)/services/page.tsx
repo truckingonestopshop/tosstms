@@ -10,7 +10,7 @@ import { BarRow, Delta, Kpi, amber, green, red } from "@/components/dashboard/Wi
 import { sb } from "@/lib/db";
 import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
-import { cn, isCanceled, money, moneyShort, num, today } from "@/lib/format";
+import { cn, fmtDay, isCanceled, money, moneyShort, num, today } from "@/lib/format";
 import { SERVICES, hasService, sourceLabel } from "@/lib/services";
 import { monthly, runningSub, type Charge } from "@/lib/billing";
 import { isOpen, type Opportunity } from "@/lib/sales";
@@ -371,7 +371,7 @@ function ServiceCarriers({
                         {s.sold_by || "—"}
                         {s.source && <div className="text-[11px] text-fg-4">{sourceLabel(s.source)}</div>}
                       </td>
-                      <td className="px-3 py-2.5 text-fg-2">{since ? new Date(since).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—"}</td>
+                      <td className="px-3 py-2.5 text-fg-2">{since ? fmtDay(since) : "—"}</td>
                       <td className="tnum px-3 py-2.5 text-right text-fg">{tr}</td>
                       <td className="tnum px-3 py-2.5 text-right text-fg">{dr}</td>
                       {service === "dispatch" && (

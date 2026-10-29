@@ -26,6 +26,9 @@ export function availability(t: Truck) {
 }
 
 /** "2022 Peterbilt T680" */
+/** How a truck shows in pickers: "Unit 001 – VIN 4986" (last 4 of the VIN tells look-alike units apart). */
+export const truckLabel = (t: Pick<Truck, "unit_number" | "vin_number">) => `Unit ${t.unit_number}${t.vin_number && t.vin_number.length >= 4 ? ` – VIN ${t.vin_number.slice(-4).toUpperCase()}` : ""}`;
+
 export const truckModelLine = (t: Pick<Truck, "year" | "make" | "model">) => [t.year, t.make, t.model].filter(Boolean).join(" ");
 
 export function equipmentLine(t: Truck) {
