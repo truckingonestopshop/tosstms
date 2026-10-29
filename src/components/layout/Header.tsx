@@ -26,6 +26,7 @@ import { signOut } from "@/app/login/actions";
 import { SidebarDrawer } from "./Sidebar";
 import { SearchPalette } from "./SearchPalette";
 import { CompanySearch } from "./CompanySearch";
+import { CopilotButton } from "@/components/copilot/CopilotButton";
 import { useAppLeave } from "@/components/auth/AppSwitch";
 import { AppSwitcher } from "./AppSwitcher";
 import { canOpen } from "./nav";
@@ -91,6 +92,7 @@ export function Header() {
 
 
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+          {!accounting && <CopilotButton />}
           <button
             onClick={() => setSearchOpen(true)}
             className="hidden h-8 items-center gap-2 rounded-lg border border-line bg-surface-2/60 pl-2.5 pr-1.5 text-[13px] text-fg-3 transition-colors hover:border-line-strong hover:text-fg md:flex"
