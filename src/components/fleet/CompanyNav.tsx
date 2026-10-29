@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   Briefcase,
-  Building2,
   FileText,
   KeyRound,
   LayoutGrid,
@@ -155,48 +154,23 @@ function DispatchSubTabs() {
   );
 }
 
-type AllTab = "carriers" | "dispatch" | "billing";
-const ALL_HREF: Record<AllTab, string> = { carriers: "/fleet", dispatch: "/dispatch", billing: "/billing" };
-
-/** Carriers · Dispatch · Billing, when every carrier is shown ("All companies"). */
-export function AllCarriersTabs({ value }: { value: AllTab }) {
-  const router = useRouter();
-  return (
-    <Tabs<AllTab>
-      value={value}
-      onChange={(v) => router.push(ALL_HREF[v])}
-      className="mb-5"
-      tabs={[
-        { value: "carriers", label: <><Building2 className="h-4 w-4" /> Carriers</> },
-        { value: "dispatch", label: <><Route className="h-4 w-4" /> Dispatch</> },
-        { value: "billing", label: <><Wallet className="h-4 w-4" /> Billing</> },
-      ]}
-    />
-  );
-}
-
-/** Top of the Billing page: the carrier's header and tabs (Billing selected), or Carriers · Dispatch · Billing. */
+/** Top of the Billing page: the carrier's header and tabs (Billing selected); nothing for all companies (the menu has it). */
 export function BillingFrame() {
   const { scope, companies } = useStore();
   const router = useRouter();
   const company = scope !== "all" ? companies.find((c) => c.id === scope) : undefined;
+  if (!company) return null;
   return (
     <div className="no-print">
-      {company ? (
-        <>
-          <CompanyHeader company={company} />
-          <CompanyTabs company={company} value="billing" onChange={(t) => t !== "billing" && router.push(companyTabHref(t, company.id))} />
-        </>
-      ) : (
-        <AllCarriersTabs value="billing" />
-      )}
+      <CompanyHeader company={company} />
+      <CompanyTabs company={company} value="billing" onChange={(t) => t !== "billing" && router.push(companyTabHref(t, company.id))} />
     </div>
   );
 }
 
 /**
  * Top of the Dispatch pages: the carrier's header and tabs (Dispatch selected) when one carrier is
- * chosen, or Carriers · Dispatch for all of them; then Dashboard · Loads · Invoices · Analytics.
+ * chosen; then Dashboard · Loads · Invoices · Analytics.
  */
 export function DispatchFrame() {
   const { scope, companies } = useStore();
@@ -209,9 +183,7 @@ export function DispatchFrame() {
           <CompanyHeader company={company} />
           <CompanyTabs company={company} value="dispatch" onChange={(t) => t !== "dispatch" && router.push(companyTabHref(t, company.id))} />
         </>
-      ) : (
-        <AllCarriersTabs value="dispatch" />
-      )}
+      ) : null}
       <DispatchSubTabs />
     </div>
   );

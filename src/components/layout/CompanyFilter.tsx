@@ -1,48 +1,55 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import { useStore } from "@/lib/store";
+import { usePathname } from "next/navigation";
+import { inCompanyArea, useStore } from "@/lib/store";
 
 /**
  * "All companies ⌄" in a page's eyebrow: narrows that page to one company. It lives in the page
- * address (?company=…), so the menu always opens on all companies again.
+ * address (?company=…), so the menu always opens on all companies again. Inside one company's pages
+ * (its Dispatch, Billing…) there is nothing to pick, so it isn't shown; `before` goes with it.
  */
-export function CompanyFilter() {
+export function CompanyFilter({ before }: { before?: string }) {
   const { companies, scope, setScope } = useStore();
+  const path = usePathname();
+  if (scope !== "all" && inCompanyArea(path)) return null;
   const list = [...companies].sort((a, b) => Number(a.stage === "lead") - Number(b.stage === "lead") || a.name.localeCompare(b.name));
   const current = companies.find((c) => c.id === scope);
   return (
-    <span className="relative inline-flex max-w-[280px] items-center gap-1 rounded-md hover:text-fg">
-      <span className="truncate">{current ? current.name : "All companies"}</span>
-      <ChevronDown className="h-3 w-3 shrink-0" />
-      <select
-        value={current ? current.id : "all"}
-        onChange={(e) => setScope(e.target.value)}
-        className="absolute inset-0 cursor-pointer opacity-0"
-        aria-label="Filter by company"
-      >
-        <option value="all">All companies</option>
-        <optgroup label="Clients">
-          {list
-            .filter((c) => c.stage !== "lead")
-            .map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-        </optgroup>
-        {list.some((c) => c.stage === "lead") && (
-          <optgroup label="Leads">
+    <>
+      {before}
+      <span className="relative inline-flex max-w-[280px] items-center gap-1 rounded-md hover:text-fg">
+        <span className="truncate">{current ? current.name : "All companies"}</span>
+        <ChevronDown className="h-3 w-3 shrink-0" />
+        <select
+          value={current ? current.id : "all"}
+          onChange={(e) => setScope(e.target.value)}
+          className="absolute inset-0 cursor-pointer opacity-0"
+          aria-label="Filter by company"
+        >
+          <option value="all">All companies</option>
+          <optgroup label="Clients">
             {list
-              .filter((c) => c.stage === "lead")
+              .filter((c) => c.stage !== "lead")
               .map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
           </optgroup>
-        )}
-      </select>
-    </span>
+          {list.some((c) => c.stage === "lead") && (
+            <optgroup label="Leads">
+              {list
+                .filter((c) => c.stage === "lead")
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </optgroup>
+          )}
+        </select>
+      </span>
+    </>
   );
 }

@@ -191,7 +191,8 @@ function Dashboard() {
       <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-3">
-            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · <CompanyFilter />
+            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            <CompanyFilter before=" · " />
           </div>
           <h1 className="text-[22px] font-bold leading-tight text-fg sm:text-[26px]">
             {greeting()}, {me.fullName.split(" ")[0]}

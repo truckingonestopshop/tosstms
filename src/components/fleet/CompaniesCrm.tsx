@@ -6,7 +6,6 @@ import { AlertTriangle, LayoutGrid, List, Plus, Search, UserCheck, X } from "luc
 import { Button } from "@/components/ui/Button";
 import { Card, Empty, PageHeader, Pill, neutralPill } from "@/components/ui/Bits";
 import { Input, Segmented, Select } from "@/components/ui/Field";
-import { AllCarriersTabs } from "@/components/fleet/CompanyNav";
 import { driverAlert } from "@/components/fleet/Drivers";
 import { useStore } from "@/lib/store";
 import { useLiveTable } from "@/lib/live";
@@ -109,7 +108,6 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
 
   return (
     <>
-      <AllCarriersTabs value="carriers" />
       <PageHeader
         eyebrow="All companies"
         title="Companies"
