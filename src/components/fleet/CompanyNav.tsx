@@ -131,6 +131,8 @@ const DISPATCH = [
 /** Dashboard · Loads · Invoices · Analytics, under Dispatch. */
 function DispatchSubTabs() {
   const path = usePathname();
+  const { scope } = useStore();
+  const q = scope === "all" ? "" : `?company=${scope}`;
   return (
     <div className="mb-5 flex flex-wrap gap-1 rounded-xl border border-line bg-surface p-1">
       {DISPATCH.map((s) => {
@@ -138,7 +140,7 @@ function DispatchSubTabs() {
         return (
           <Link
             key={s.href}
-            href={s.href}
+            href={s.href + q}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors",
               on ? "bg-surface-2 text-fg" : "text-fg-3 hover:bg-surface-2/60 hover:text-fg",

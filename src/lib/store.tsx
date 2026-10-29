@@ -50,6 +50,24 @@ export interface Me {
 
 type Scope = "all" | string;
 
+/**
+ * A company's area: its page and its Dispatch / Loads / Invoices / Analytics / Billing. Inside it,
+ * links and buttons keep the company; only the menu, the logo or "All companies" leave it.
+ */
+export const inCompanyArea = (path: string) =>
+  path === "/fleet" || path === "/dispatch" || path === "/billing" || path === "/analytics" || path.startsWith("/loads") || path.startsWith("/invoices");
+
+let leaving = false;
+/** The next navigation goes to all companies (menu links, the logo, "All companies"). */
+export const leaveCompany = () => {
+  leaving = true;
+};
+const consumeLeave = () => {
+  const l = leaving;
+  leaving = false;
+  return l;
+};
+
 type NewLoad = Omit<Load, "id" | "created_at" | "updated_at" | "dispatcher_cut" | "created_by" | "dispatcher_id"> & {
   dispatcher_id?: string | null;
 };
@@ -390,6 +408,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   // companies, a company's own page and the Company filters set it, and leaving drops it.
   const setScope = useCallback(
     (s: Scope) => {
+      if (s === "all") leaveCompany();
       setScopeState(s);
       const url = new URL(window.location.href);
       if (s === "all") url.searchParams.delete("company");
@@ -1139,7 +1158,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   return (
     <Ctx.Provider value={value}>
       <Suspense>
-        <ScopeFromUrl onScope={setScopeState} />
+        <ScopeFromUrl onScope={setScopeState} scope={scope} />
       </Suspense>
       {children}
     </Ctx.Provider>
@@ -1156,14 +1175,29 @@ export function useStore() {
  * Keeps the company in focus in step with the page address: ?company=… sets it, no parameter means
  * all companies. Older company links (/fleet?tab=… without ?company) stay on the open company.
  */
-function ScopeFromUrl({ onScope }: { onScope: (s: Scope) => void }) {
+function ScopeFromUrl({ onScope, scope }: { onScope: (s: Scope) => void; scope: Scope }) {
   const params = useSearchParams();
   const path = usePathname();
+  const router = useRouter();
   const company = params.get("company");
-  const legacyFleet = path === "/fleet" && params.has("tab");
+  const scopeRef = useRef(scope);
+  useLayoutEffect(() => {
+    scopeRef.current = scope;
+  });
   useEffect(() => {
-    if (company) onScope(company);
-    else if (!legacyFleet) onScope("all");
-  }, [company, legacyFleet, path, onScope]);
+    if (company) return onScope(company);
+    // The menu, the logo or "All companies" asked for every company.
+    if (consumeLeave()) return onScope("all");
+    // Any other link or button inside a company's area keeps that company (and says so in the
+    // address, so a refresh or a shared link stays there too).
+    const cur = scopeRef.current;
+    if (cur !== "all" && inCompanyArea(path)) {
+      const next = new URLSearchParams(params.toString());
+      next.set("company", cur);
+      router.replace(`${path}?${next}`, { scroll: false });
+      return;
+    }
+    onScope("all");
+  }, [company, path, params, onScope, router]);
   return null;
 }

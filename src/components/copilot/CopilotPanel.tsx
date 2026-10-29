@@ -410,7 +410,7 @@ type ProposePart = Extract<Part, { type: `tool-propose_${string}` }>;
 
 /** A proposed change: the details, then Confirm / Cancel. Runs on the server with your access. */
 function ActionCard({ part, actionable, threadId, onDone }: { part: ProposePart; actionable: boolean; threadId: string; onDone: (id: string, out: { ok: boolean; message: string; href?: string; declined?: boolean }) => void }) {
-  const { companyById, loads, trucks } = useStore();
+  const { companyById, loads, trucks, refresh } = useStore();
   const [running, setRunning] = useState(false);
   const title = ACTION[part.type] || "Change";
   if (part.state === "input-streaming") return <p className="text-xs text-fg-4">Preparing: {title.toLowerCase()}…</p>;
@@ -449,6 +449,8 @@ function ActionCard({ part, actionable, threadId, onDone }: { part: ProposePart;
     const res = await fetch("/api/copilot/act", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: part.type.slice("tool-propose_".length), input, threadId }) })
       .then((r) => r.json())
       .catch(() => ({ ok: false, message: "Couldn't reach TOSS Cloud." }));
+    // The page's lists pick up what changed right away (companies, loads, trucks…).
+    if (res.ok) await refresh().catch(() => {});
     setRunning(false);
     onDone(part.toolCallId, res);
   };

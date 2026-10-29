@@ -7,11 +7,20 @@ import { createPortal } from "react-dom";
 import { LayoutGrid, Pin, PinOff, X } from "lucide-react";
 import { LogoMark } from "@/components/brand/Logo";
 import { cn } from "@/lib/format";
-import { useStore } from "@/lib/store";
+import { inCompanyArea, leaveCompany, useStore } from "@/lib/store";
 import { ACCOUNTING_SIDEBAR, SIDEBAR, canOpen } from "./nav";
+
+/** Inside one company's area the menu shows Companies; everywhere else, the page's own item. */
+function useActive() {
+  const path = usePathname();
+  const { scope } = useStore();
+  const inCompany = scope !== "all" && inCompanyArea(path);
+  return (n: { key: string; match: (p: string) => boolean }) => (inCompany ? n.key === "companies" : n.match(path));
+}
 
 function Items({ onPick }: { onPick?: () => void }) {
   const path = usePathname();
+  const isOn = useActive();
   const { me, memberById } = useStore();
   const self = memberById(me.id) ?? { role: me.role };
   // Sections this person can open (Users → access); empty groups drop out.
@@ -23,12 +32,15 @@ function Items({ onPick }: { onPick?: () => void }) {
       {groups.map((group, i) => (
         <div key={i} className={cn("flex flex-col gap-0.5", i > 0 && "border-t border-line pt-3")}>
           {group.map((n) => {
-            const on = n.match(path);
+            const on = isOn(n);
             return (
               <Link
                 key={n.href}
                 href={n.href}
-                onClick={onPick}
+                onClick={() => {
+                  leaveCompany();
+                  onPick?.();
+                }}
                 aria-current={on ? "page" : undefined}
                 className={cn(
                   "relative flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition-colors",
@@ -93,6 +105,7 @@ export function Sidebar() {
   const self = memberById(me.id) ?? { role: me.role };
   const accounting = path.startsWith("/accounting");
   const groups = (accounting ? ACCOUNTING_SIDEBAR : SIDEBAR).map((g) => g.filter((n) => canOpen(self, n.key))).filter((g) => g.length);
+  const isOn = useActive();
   const pinned = useSyncExternalStore(pinSubscribe, readPinned, () => false);
   const [hover, setHover] = useState(false);
   const open = pinned || hover;
@@ -152,12 +165,13 @@ export function Sidebar() {
           {groups.map((group, gi) => (
             <div key={gi} className={cn("relative flex flex-col gap-1", gi > 0 && "border-t border-line pt-3")}>
               {group.map((n) => {
-                const on = n.match(path);
+                const on = isOn(n);
                 const k = i++;
                 return (
                   <Link
                     key={n.href}
                     href={n.href}
+                    onClick={leaveCompany}
                     aria-current={on ? "page" : undefined}
                     title={open ? undefined : n.label}
                     className={cn("group/item relative flex h-10 items-center gap-3 rounded-xl pr-2 transition-colors duration-200", on ? "text-fg" : "text-fg-3 hover:text-fg")}

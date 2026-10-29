@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Building2, FileText, Plus, Route, Truck } from "lucide-react";
 import { cn } from "@/lib/format";
+import { leaveCompany } from "@/lib/store";
 
 const TABS = [
   { href: "/fleet", label: "Carriers", icon: Building2, match: (p: string) => p.startsWith("/fleet") },
@@ -23,7 +24,7 @@ export function MobileNav() {
           const on = t.match(path);
           if (t.primary) {
             return (
-              <Link key={t.href} href={t.href} className="flex items-center justify-center" aria-label={t.label}>
+              <Link key={t.href} href={t.href} onClick={leaveCompany} className="flex items-center justify-center" aria-label={t.label}>
                 <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand text-brand-fg shadow-sm active:scale-95">
                   <Plus className="h-5 w-5" strokeWidth={2.5} />
                 </span>
@@ -34,6 +35,7 @@ export function MobileNav() {
             <Link
               key={t.href}
               href={t.href}
+              onClick={leaveCompany}
               className={cn("flex flex-col items-center justify-center gap-1 text-[10px] font-medium", on ? "text-fg" : "text-fg-4")}
             >
               <t.icon className="h-5 w-5" strokeWidth={on ? 2.25 : 1.75} />

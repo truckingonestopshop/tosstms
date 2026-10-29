@@ -81,6 +81,13 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
   if (!parsed.success) return { ok: false, message: z.prettifyError(parsed.error) };
   const input = parsed.data as Record<string, unknown>;
   const fail = (e: { message: string } | null | undefined, fallback: string): Result => ({ ok: false, message: e?.message || fallback });
+  /** Checks the change really landed: reads the row back with the person's own access. */
+  const check = async (table: string, id: string, expect?: Record<string, unknown>): Promise<boolean> => {
+    const { data } = await sb.from(table).select("*").eq("id", id).maybeSingle();
+    if (!data) return false;
+    return !expect || Object.entries(expect).every(([k, v]) => (data as Record<string, unknown>)[k] === v);
+  };
+  const notSeen = (what: string): Result => ({ ok: false, message: `${what} didn't save (I checked and it isn't there). Try again or add it from the page.` });
 
   switch (name) {
     case "create_company": {
@@ -94,7 +101,7 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
         .insert({
           name: i.name,
           dot_number: i.dot_number ?? null,
-          mc_number: i.mc_number ?? null,
+          mc_number: i.mc_number ? i.mc_number.replace(/\D/g, "") : null,
           stage: i.stage,
           contact_first_name: i.contact_first_name ?? null,
           contact_last_name: i.contact_last_name ?? null,
@@ -108,7 +115,8 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
         .select("id,name")
         .single();
       if (error) return fail(error, "Couldn't add the company");
-      return { ok: true, message: `${data.name} added as a ${i.stage}.`, id: data.id, href: `/fleet?company=${data.id}` };
+      if (!(await check("tms_companies", data.id))) return notSeen(data.name);
+      return { ok: true, message: `${data.name} added as a ${i.stage}. Checked: it's in Companies.`, id: data.id, href: `/fleet?company=${data.id}` };
     }
 
     case "add_lead_from_hunter": {
@@ -125,7 +133,8 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
           contactId: null,
           type: "lead",
           dot: i.dot_number,
-          mc: s(lead.mcNumber),
+          // Cloud keeps MC numbers as digits ("1291694"); Lead Hunter writes "MC1291694".
+          mc: s(lead.mcNumber)?.replace(/\D/g, "") || null,
           name: s(lead.legalName),
           dba: s(lead.dbaName),
           ein: null,
@@ -148,14 +157,21 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
         "lead",
       );
       if (!r.companyId) return { ok: false, message: r.message };
-      return { ok: true, message: r.action === "created" ? `${s(lead.legalName)} added to TOSS Cloud as a lead.` : `${s(lead.legalName)} was already in TOSS Cloud (${r.message}).`, id: r.companyId, href: `/fleet?company=${r.companyId}` };
+      if (!(await check("tms_companies", r.companyId))) return notSeen(s(lead.legalName) || "The company");
+      return {
+        ok: true,
+        message: r.action === "created" ? `${s(lead.legalName)} added to Companies as a lead. Checked: it's there.` : `${s(lead.legalName)} was already in Companies; I filled in what was missing.`,
+        id: r.companyId,
+        href: `/fleet?company=${r.companyId}`,
+      };
     }
 
     case "add_company_note": {
       const i = input as z.infer<typeof ACTIONS.add_company_note>;
-      const { error } = await sb.from("tms_company_events").insert({ company_id: i.company_id, kind: "note", message: i.note, actor_id: me.id, actor_name: me.fullName });
+      const { data, error } = await sb.from("tms_company_events").insert({ company_id: i.company_id, kind: "note", message: i.note, actor_id: me.id, actor_name: me.fullName }).select("id").single();
       if (error) return fail(error, "Couldn't add the note");
-      return { ok: true, message: "Note added to the timeline.", href: `/fleet?company=${i.company_id}&tab=profile` };
+      if (!(await check("tms_company_events", data.id))) return notSeen("The note");
+      return { ok: true, message: "Note added to the timeline. Checked: it's there.", href: `/fleet?company=${i.company_id}&tab=profile` };
     }
 
     case "create_case": {
@@ -166,8 +182,9 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
         .select("id,number")
         .single();
       if (error) return fail(error, "Couldn't open the case");
+      if (!(await check("tms_cases", data.id))) return notSeen("The case");
       const base = i.kind === "work" ? "/cases" : "/customer-service";
-      return { ok: true, message: `Case #${data.number} opened.`, id: data.id, href: `${base}?case=${data.id}` };
+      return { ok: true, message: `Case #${data.number} opened. Checked: it's there.`, id: data.id, href: `${base}?case=${data.id}` };
     }
 
     case "create_opportunity": {
@@ -181,13 +198,15 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
         .select("id,number")
         .single();
       if (error) return fail(error, "Couldn't create the opportunity");
-      return { ok: true, message: `Opportunity created.`, id: data.id, href: `/sales?tab=opportunities&opp=${data.id}` };
+      if (!(await check("tms_opportunities", data.id))) return notSeen("The opportunity");
+      return { ok: true, message: `Opportunity #${data.number} created. Checked: it's in Sales.`, id: data.id, href: `/sales?tab=opportunities&opp=${data.id}` };
     }
 
     case "set_load_status": {
       const i = input as z.infer<typeof ACTIONS.set_load_status>;
       const { data, error } = await sb.from("tms_loads").update({ status: i.status }).eq("id", i.load_id).select("id,load_number").single();
       if (error) return fail(error, "Couldn't change the status");
+      if (!(await check("tms_loads", data.id, { status: i.status }))) return notSeen("The status change");
       return { ok: true, message: `Load ${data.load_number || ""} is now ${i.status.replace(/_/g, " ")}.`.replace("  ", " "), href: `/loads/${data.id}` };
     }
 
@@ -199,6 +218,7 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
       if (!Object.keys(patch).length) return { ok: false, message: "Nothing to change." };
       const { data, error } = await sb.from("tms_trucks").update(patch).eq("id", i.truck_id).select("id,unit_number,company_id").single();
       if (error) return fail(error, "Couldn't update the truck");
+      if (!(await check("tms_trucks", data.id, patch))) return notSeen("The truck update");
       return { ok: true, message: `Unit ${data.unit_number} updated.`, href: `/fleet?company=${data.company_id}&tab=trucks&truck=${data.id}` };
     }
   }
