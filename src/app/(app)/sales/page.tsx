@@ -14,6 +14,7 @@ import { Products } from "@/components/sales/Products";
 import { Templates } from "@/components/sales/Templates";
 import { AgreementsList } from "@/components/sales/Agreements";
 import { useStore } from "@/lib/store";
+import { CompanyFilter } from "@/components/layout/CompanyFilter";
 import { fmtDay, money } from "@/lib/format";
 import { Select } from "@/components/ui/Field";
 import { isOpen, oppNumber } from "@/lib/sales";
@@ -38,13 +39,13 @@ export default function SalesPage() {
 function Sales() {
   const params = useSearchParams();
   const tab: Tab = TABS.find((t) => t === params.get("tab")) || "dashboard";
-  const { scopedCompany, inScope, invoices } = useStore();
+  const { inScope, invoices } = useStore();
   const { opps, products, templates, pipelines, agreements } = useSales();
   const inv = invoices.filter((i) => !i.company_id || inScope(i.company_id));
 
   return (
     <Page>
-      <PageHeader eyebrow={scopedCompany ? scopedCompany.name : "All companies"} title="Sales" />
+      <PageHeader eyebrow={<CompanyFilter />} title="Sales" />
       <Tabs<Tab>
         value={tab}
         onChange={(v) => window.history.replaceState(null, "", `/sales?tab=${v}`)}

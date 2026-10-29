@@ -34,7 +34,9 @@ import type { Company } from "@/lib/types";
 export type CompanyTab = "units" | "trucks" | "trailers" | "drivers" | "equipment_list" | "docs" | "vault" | "profile" | "services" | "sales" | "cases" | "dot" | "mcpt" | "dispatch" | "billing";
 
 /** Where a carrier tab lives: Dispatch and Billing have their own pages, the rest are on Fleet & Company. */
-export const companyTabHref = (t: CompanyTab) => (t === "dispatch" ? "/dispatch" : t === "billing" ? "/billing" : `/fleet?tab=${t}`);
+/** A company tab's address; the company rides along in ?company= (Dispatch and Billing show only it). */
+export const companyTabHref = (t: CompanyTab, companyId: string) =>
+  t === "dispatch" ? `/dispatch?company=${companyId}` : t === "billing" ? `/billing?company=${companyId}` : `/fleet?company=${companyId}&tab=${t}`;
 
 /** Carrier name with its MC / DOT (and the dispatch fee when it has Dispatch). */
 export function CompanyHeader({ company }: { company: Company }) {
@@ -181,7 +183,7 @@ export function BillingFrame() {
       {company ? (
         <>
           <CompanyHeader company={company} />
-          <CompanyTabs company={company} value="billing" onChange={(t) => t !== "billing" && router.push(companyTabHref(t))} />
+          <CompanyTabs company={company} value="billing" onChange={(t) => t !== "billing" && router.push(companyTabHref(t, company.id))} />
         </>
       ) : (
         <AllCarriersTabs value="billing" />
@@ -203,7 +205,7 @@ export function DispatchFrame() {
       {company ? (
         <>
           <CompanyHeader company={company} />
-          <CompanyTabs company={company} value="dispatch" onChange={(t) => t !== "dispatch" && router.push(companyTabHref(t))} />
+          <CompanyTabs company={company} value="dispatch" onChange={(t) => t !== "dispatch" && router.push(companyTabHref(t, company.id))} />
         </>
       ) : (
         <AllCarriersTabs value="dispatch" />
@@ -233,7 +235,7 @@ export function DispatchGate({ children }: { children: React.ReactNode }) {
     <Page>
       <div className="no-print">
         <CompanyHeader company={company} />
-        <CompanyTabs company={company} value="dispatch" onChange={(t) => router.push(companyTabHref(t))} />
+        <CompanyTabs company={company} value="dispatch" onChange={(t) => router.push(companyTabHref(t, company.id))} />
       </div>
       <Card>
         <Empty

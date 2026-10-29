@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Plus, UploadCloud, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -657,7 +658,8 @@ function ServiceDoc({
 }
 
 export function NewCompanyModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated?: (c: Company) => void }) {
-  const { createCompany, setScope, uploadDocument } = useStore();
+  const { createCompany, uploadDocument } = useStore();
+  const router = useRouter();
   const [d, setD] = useState<CompanyDraft>(toDraft());
   const [pending, setPending] = useState<PendingDocs>({});
   const [saving, setSaving] = useState(false);
@@ -682,7 +684,7 @@ export function NewCompanyModal({ open, onClose, onCreated }: { open: boolean; o
     setSaving(false);
     if (c) {
       toast.success(`${c.name} added`);
-      setScope(c.id);
+      router.push(`/fleet?company=${c.id}`);
       onCreated?.(c);
       onClose();
     }

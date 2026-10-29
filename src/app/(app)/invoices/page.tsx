@@ -11,6 +11,7 @@ import { Card, CardHeader, Empty, Page, PageHeader, Pill, Stat } from "@/compone
 import { CountUp, MotionTabs, Progress, stagger } from "@/components/ui/Motion";
 import { InvoiceBuilder, useBillable } from "@/components/invoices/InvoiceBuilder";
 import { useStore } from "@/lib/store";
+import { CompanyFilter } from "@/components/layout/CompanyFilter";
 import { AGING, PAY_META, aging, balance, payState, type PayState } from "@/lib/invoice";
 import { downloadCsv } from "@/lib/csv";
 import { cn, daysUntil, fmtDay, money, today } from "@/lib/format";
@@ -96,7 +97,7 @@ function Invoices() {
     <Page>
       <DispatchFrame />
       <PageHeader
-        eyebrow={scopedCompany ? scopedCompany.name : "All companies"}
+        eyebrow={<CompanyFilter />}
         title="Invoices"
         actions={
           <>

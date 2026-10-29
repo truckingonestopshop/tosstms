@@ -9,6 +9,7 @@ import { Card, CardHeader, Empty, Page, Pill, Stat } from "@/components/ui/Bits"
 import { StatusPill } from "@/components/loads/StatusMenu";
 import { BarChart } from "@/components/analytics/Charts";
 import { useStore } from "@/lib/store";
+import { CompanyFilter } from "@/components/layout/CompanyFilter";
 import { series } from "@/lib/analytics";
 import { balance, payState } from "@/lib/invoice";
 import { availability } from "@/lib/pitch";
@@ -190,7 +191,7 @@ function Dashboard() {
       <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-3">
-            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · {scopedCompany ? scopedCompany.name : "All companies"}
+            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · <CompanyFilter />
           </div>
           <h1 className="text-[22px] font-bold leading-tight text-fg sm:text-[26px]">
             {greeting()}, {me.fullName.split(" ")[0]}
@@ -385,7 +386,7 @@ function BoardRow({
   return (
     <tr className="hover:bg-surface-2/50">
       <td className="py-2.5 pl-4 pr-2 sm:pl-5">
-        <Link href={`/fleet?tab=trucks&truck=${tr.id}`} className="block">
+        <Link href={`/fleet?company=${tr.company_id}&tab=trucks&truck=${tr.id}`} className="block">
           <div className="font-semibold text-fg">#{tr.unit_number}</div>
           <div className="max-w-[140px] truncate text-xs text-fg-3">{driver || "No driver"}</div>
         </Link>

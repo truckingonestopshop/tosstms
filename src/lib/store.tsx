@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type {
   Company,
   DocType,
@@ -170,7 +171,6 @@ interface Store {
 
 const Ctx = createContext<Store | null>(null);
 
-const SCOPE_KEY = "toss-tms-scope";
 
 function upsert<T extends { id: string }>(list: T[], row: T, prepend = false): T[] {
   const i = list.findIndex((x) => x.id === row.id);
@@ -290,10 +290,6 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   }, [preview, me.id]);
 
   useEffect(() => {
-    try {
-      const s = localStorage.getItem(SCOPE_KEY);
-      if (s) setScopeState(s);
-    } catch {}
     refresh();
   }, [refresh]);
 
@@ -319,6 +315,8 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   useEffect(() => {
     if (ready && scope !== "all" && !companies.some((c) => c.id === scope)) setScopeState("all");
   }, [ready, scope, companies]);
+
+  const router = useRouter();
 
   // Realtime: other dispatchers' changes appear without a reload.
   useEffect(() => {
@@ -388,12 +386,18 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     };
   }, []);
 
-  const setScope = useCallback((s: Scope) => {
-    setScopeState(s);
-    try {
-      localStorage.setItem(SCOPE_KEY, s);
-    } catch {}
-  }, []);
+  // The company in focus lives in the page address (?company=…): every menu page opens on all
+  // companies, a company's own page and the Company filters set it, and leaving drops it.
+  const setScope = useCallback(
+    (s: Scope) => {
+      setScopeState(s);
+      const url = new URL(window.location.href);
+      if (s === "all") url.searchParams.delete("company");
+      else url.searchParams.set("company", s);
+      router.replace(`${url.pathname}${url.search}`, { scroll: false });
+    },
+    [router],
+  );
 
   const scopedCompany = useMemo(() => (scope === "all" ? null : companies.find((c) => c.id === scope) || null), [scope, companies]);
   const inScope = useCallback((id: string | null | undefined) => scope === "all" || id === scope, [scope]);
@@ -1132,11 +1136,34 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     removeMember,
   };
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      <Suspense>
+        <ScopeFromUrl onScope={setScopeState} />
+      </Suspense>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export function useStore() {
   const v = useContext(Ctx);
   if (!v) throw new Error("useStore must be used inside StoreProvider");
   return v;
+}
+
+/**
+ * Keeps the company in focus in step with the page address: ?company=… sets it, no parameter means
+ * all companies. Older company links (/fleet?tab=… without ?company) stay on the open company.
+ */
+function ScopeFromUrl({ onScope }: { onScope: (s: Scope) => void }) {
+  const params = useSearchParams();
+  const path = usePathname();
+  const company = params.get("company");
+  const legacyFleet = path === "/fleet" && params.has("tab");
+  useEffect(() => {
+    if (company) onScope(company);
+    else if (!legacyFleet) onScope("all");
+  }, [company, legacyFleet, path, onScope]);
+  return null;
 }

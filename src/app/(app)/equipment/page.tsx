@@ -52,7 +52,7 @@ export default function EquipmentPage() {
 function Equipment() {
   const params = useSearchParams();
   const router = useRouter();
-  const { companies, trucks, trailers, drivers, loads, documents, docTypes, inScope, scopedCompany, setScope } = useStore();
+  const { companies, trucks, trailers, drivers, loads, documents, docTypes, inScope, scopedCompany } = useStore();
   const { mutes } = useMutes();
   const tab: Tab = TABS.find((t) => t === params.get("tab")) || "units";
   const co = (params.get("co") || "").split(",").filter(Boolean);
@@ -117,7 +117,7 @@ function Equipment() {
   const truckOfDriver = (id: string) => trucks.find((t) => t.assigned_driver_id === id);
   const companyCell = (c: Company | undefined) =>
     c ? (
-      <Link href={`/fleet?company=${c.id}&tab=${tab}`} onClick={(e) => (e.stopPropagation(), setScope(c.id))} className="text-fg-2 hover:text-fg hover:underline">
+      <Link href={`/fleet?company=${c.id}&tab=${tab}`} onClick={(e) => e.stopPropagation()} className="text-fg-2 hover:text-fg hover:underline">
         {c.name}
       </Link>
     ) : (

@@ -47,14 +47,9 @@ function Fleet() {
     null;
   useEffect(() => {
     if (!wantCompany || !companies.some((c) => c.id === wantCompany)) return;
-    if (scopedCompany?.id !== wantCompany) setScope(wantCompany);
-    // Drop ?company= once applied, so switching carriers in the header isn't undone.
-    if (params.get("company")) {
-      const next = new URLSearchParams(params.toString());
-      next.delete("company");
-      router.replace(`/fleet${next.size ? `?${next}` : ""}`, { scroll: false });
-    }
-    // Only when the link changes, not when the header switcher changes the scope.
+    // A link that names only a driver / truck / trailer: put its company in the address.
+    if (!params.get("company") && scopedCompany?.id !== wantCompany) setScope(wantCompany);
+    // Only when the link changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantCompany, companies.length]);
 
@@ -105,14 +100,14 @@ function CompanyView({ company }: { company: Company }) {
   const { view } = useStore();
   const office = view === "office";
   const tab = (params.get("tab") as Tab) || (office ? "profile" : "units");
-  const setTab = (t: Tab) => router.replace(`/fleet?tab=${t}`, { scroll: false });
+  const setTab = (t: Tab) => router.replace(`/fleet?company=${company.id}&tab=${t}`, { scroll: false });
 
 
   return (
     <>
       <CompanyHeader company={company} />
       {/* Dispatch and Billing open their own pages, still under this carrier */}
-      <CompanyTabs company={company} value={tab} onChange={(next) => (next === "dispatch" || next === "billing" ? router.push(companyTabHref(next)) : setTab(next))} />
+      <CompanyTabs company={company} value={tab} onChange={(next) => (next === "dispatch" || next === "billing" ? router.push(companyTabHref(next, company.id)) : setTab(next))} />
       {isEquipmentTab(tab) && <CompanyEquipment company={company} tab={tab} onTab={setTab} />}
       {tab === "docs" && <DocsTab company={company} />}
       {tab === "vault" && <Vault companyId={company.id} />}

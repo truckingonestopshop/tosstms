@@ -340,7 +340,7 @@ function CaseModal({
   onEntry: (e: CaseEntry) => void;
   onEntryDeleted: (id: string) => void;
 }) {
-  const { companyById, members, invoices, me, isOwner, setScope } = useStore();
+  const { companyById, members, invoices, me, isOwner } = useStore();
   const opps = useOpportunities(c?.company_id || "");
   const catLabel = useCategoryLabel(c?.kind ?? "work");
   const [entryKind, setEntryKind] = useState<EntryKind>("note");
@@ -580,7 +580,7 @@ function CaseModal({
 
       {company && (
         <div className="mt-3 text-right">
-          <Link href="/fleet?tab=profile" onClick={() => setScope(company.id)} className="text-xs font-medium text-fg-3 hover:text-fg">
+          <Link href={`/fleet?company=${company.id}&tab=profile`} className="text-xs font-medium text-fg-3 hover:text-fg">
             {company.name}: Profile & Timeline →
           </Link>
         </div>

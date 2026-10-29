@@ -11,6 +11,7 @@ import { Modal } from "@/components/ui/Modal";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { errMsg, sb } from "@/lib/db";
 import { useStore } from "@/lib/store";
+import { CompanyFilter } from "@/components/layout/CompanyFilter";
 import { toast } from "@/lib/toast";
 import { cn, fmtDay, money, today } from "@/lib/format";
 import { SERVICES, serviceLabel } from "@/lib/services";
@@ -85,7 +86,7 @@ export default function BillingPage() {
     <Page>
       <BillingFrame />
       <PageHeader
-        eyebrow={company ? company.name : "All companies"}
+        eyebrow={<CompanyFilter />}
         title="Billing"
         actions={
           <>

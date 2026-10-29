@@ -38,7 +38,7 @@ function NewLoad() {
             }
             action={
               companies.length ? (
-                <ButtonLink href="/fleet?tab=services" variant="primary">
+                <ButtonLink href="/fleet" variant="primary">
                   Open Services
                 </ButtonLink>
               ) : (

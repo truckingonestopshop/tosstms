@@ -22,7 +22,10 @@ export function useFleetHref() {
   return useCallback(
     (tab: FleetTab, key?: string, id?: string | null) => {
       const extra = key && id ? `${key}=${id}` : "";
-      if (place === "company") return `/fleet?tab=${tab}${extra ? `&${extra}` : ""}`;
+      if (place === "company") {
+        const company = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("company") : null;
+        return `/fleet?${company ? `company=${company}&` : ""}tab=${tab}${extra ? `&${extra}` : ""}`;
+      }
       // Equipment & Drivers keeps the companies picked there (?co=…).
       const co = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("co") : null;
       return `/equipment?tab=${tab}${co ? `&co=${co}` : ""}${extra ? `&${extra}` : ""}`;

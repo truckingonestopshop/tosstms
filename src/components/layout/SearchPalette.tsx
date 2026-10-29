@@ -20,7 +20,7 @@ const ICONS = { load: Package, company: Building2, truck: Truck, trailer: Contai
 
 /** Ctrl/Cmd+K: jump to any load, carrier, truck, driver or invoice. */
 export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { loads, companies, trucks, trailers, drivers, invoices, companyById, setScope } = useStore();
+  const { loads, companies, trucks, trailers, drivers, invoices, companyById } = useStore();
   const router = useRouter();
   const [q, setQ] = useState("");
   const [i, setI] = useState(0);
@@ -76,8 +76,7 @@ export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenCha
           kind: "company",
           title: c.name,
           sub: [c.mc_number && `MC ${c.mc_number}`, c.dot_number && `DOT ${c.dot_number}`, `${c.commission_percent}%`].filter(Boolean).join(" · "),
-          href: `/fleet?tab=profile`,
-          run: () => setScope(c.id),
+          href: `/fleet?company=${c.id}&tab=profile`,
         });
     for (const t of trucks)
       if (has(t.unit_number, t.trailer_number, t.vin_number, t.plate))
@@ -86,8 +85,7 @@ export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenCha
           kind: "truck",
           title: `Unit ${t.unit_number}${t.trailer_number ? ` · Trailer ${t.trailer_number}` : ""}`,
           sub: `${companyById(t.company_id)?.name || ""}${t.trailer_type ? ` · ${t.trailer_type}` : ""}`,
-          href: `/fleet?tab=trucks&truck=${t.id}`,
-          run: () => setScope(t.company_id),
+          href: `/fleet?company=${t.company_id}&tab=trucks&truck=${t.id}`,
         });
     for (const t of trailers)
       if (has(t.unit_number, t.vin_number, t.plate, t.trailer_type)) {
@@ -97,8 +95,7 @@ export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenCha
           kind: "trailer",
           title: `Trailer ${t.unit_number}`,
           sub: [companyById(t.company_id)?.name, [t.trailer_length, t.trailer_type].filter(Boolean).join(" "), holder ? `on unit ${holder.unit_number}` : "in the yard"].filter(Boolean).join(" · "),
-          href: `/fleet?tab=trailers&trailer=${t.id}`,
-          run: () => setScope(t.company_id),
+          href: `/fleet?company=${t.company_id}&tab=trailers&trailer=${t.id}`,
         });
       }
     for (const d of drivers)
@@ -108,8 +105,7 @@ export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenCha
           kind: "driver",
           title: d.name,
           sub: `${companyById(d.company_id)?.name || ""}${d.phone ? ` · ${d.phone}` : ""}`,
-          href: `/fleet?tab=drivers&driver=${d.id}`,
-          run: () => setScope(d.company_id),
+          href: `/fleet?company=${d.company_id}&tab=drivers&driver=${d.id}`,
         });
     for (const inv of invoices)
       if (has(inv.invoice_number, inv.bill_to_name))
@@ -121,7 +117,7 @@ export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenCha
           href: `/invoices/${inv.id}`,
         });
     return out.slice(0, 40);
-  }, [q, loads, companies, trucks, trailers, drivers, invoices, companyById, setScope]);
+  }, [q, loads, companies, trucks, trailers, drivers, invoices, companyById]);
 
   const go = (h: Hit) => {
     h.run?.();

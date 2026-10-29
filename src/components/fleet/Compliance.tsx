@@ -82,11 +82,11 @@ function useTodos(company: Company) {
         if (need) out.push({ key: `${href}:${i.type.key}`, who, href, item: i });
       }
     };
-    add("Carrier", "/fleet?tab=docs", checklist(docTypes, documents, { scope: "company", companyId: company.id }));
+    add("Carrier", `/fleet?company=${company.id}&tab=docs`, checklist(docTypes, documents, { scope: "company", companyId: company.id }));
     for (const d of drivers.filter((x) => x.company_id === company.id && !isTerminated(x)))
-      add(`Driver ${d.name}`, `/fleet?tab=drivers&driver=${d.id}`, checklist(docTypes, documents, { scope: "driver", id: d.id, companyId: company.id, licenseExpiry: d.cdl_expiry, waived: d.waived_docs }));
+      add(`Driver ${d.name}`, `/fleet?company=${company.id}&tab=drivers&driver=${d.id}`, checklist(docTypes, documents, { scope: "driver", id: d.id, companyId: company.id, licenseExpiry: d.cdl_expiry, waived: d.waived_docs }));
     for (const t of trucks.filter((x) => x.company_id === company.id && x.status !== "inactive"))
-      add(truckLabel(t), `/fleet?tab=trucks&truck=${t.id}`, checklist(docTypes, documents, { scope: "truck", id: t.id, companyId: company.id }));
+      add(truckLabel(t), `/fleet?company=${company.id}&tab=trucks&truck=${t.id}`, checklist(docTypes, documents, { scope: "truck", id: t.id, companyId: company.id }));
     return out.sort((a, b) => RANK[a.item.state] - RANK[b.item.state] || (a.item.doc?.expires_on || "").localeCompare(b.item.doc?.expires_on || ""));
   }, [company.id, docTypes, documents, drivers, trucks]);
 }

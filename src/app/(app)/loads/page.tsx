@@ -32,6 +32,7 @@ import { LoadsBoard } from "@/components/loads/LoadsBoard";
 import { LoadsCalendar } from "@/components/loads/LoadsCalendar";
 import { TruckMap } from "@/components/loads/TruckMap";
 import { useStore } from "@/lib/store";
+import { CompanyFilter } from "@/components/layout/CompanyFilter";
 import { truckLabel } from "@/lib/pitch";
 import { toast } from "@/lib/toast";
 import { downloadCsv } from "@/lib/csv";
@@ -71,7 +72,7 @@ function inRange(l: Load, r: Range) {
 function Loads() {
   const params = useSearchParams();
   const router = useRouter();
-  const { loads, inScope, scopedCompany, drivers, trucks, driverById, truckById, companyById, documents, setLoadStatus, deleteLoads, duplicateLoad, scope, members, memberName, me } = useStore();
+  const { loads, inScope, drivers, trucks, driverById, truckById, companyById, documents, setLoadStatus, deleteLoads, duplicateLoad, scope, members, memberName, me } = useStore();
 
   const [view, setViewState] = useState<View>((params.get("view") as View) || "list");
   const [tab, setTab] = useState<StatusTab>((params.get("status") as StatusTab) || "all");
@@ -227,7 +228,7 @@ function Loads() {
     <Page>
       <DispatchFrame />
       <PageHeader
-        eyebrow={scopedCompany ? scopedCompany.name : "All companies"}
+        eyebrow={<CompanyFilter />}
         title="Loads"
         actions={
           <>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AlertTriangle, LayoutGrid, List, Plus, Search, UserCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -53,7 +54,9 @@ function haystack(c: Company) {
 const phones = (c: Company) => [c.contact_phone, c.secondary_phone].map(digits).join(" ");
 
 export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
-  const { companies, trucks, drivers, loads, documents, setScope, updateCompany } = useStore();
+  const { companies, trucks, drivers, loads, documents, updateCompany } = useStore();
+  const router = useRouter();
+  const open = (id: string) => router.push(`/fleet?company=${id}`);
   const [stage, setStage] = useState<Stage>("all");
   const [age, setAge] = useState<Age>("any");
   const [service, setService] = useState<ServiceKey | "none" | "any">("any");
@@ -214,7 +217,7 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
                 const lead = c.stage === "lead";
                 const n = ageDays(lead ? c.created_at : c.became_client_at || c.created_at);
                 return (
-                  <tr key={c.id} onClick={() => setScope(c.id)} className="cursor-pointer border-b border-line last:border-b-0 hover:bg-surface-2/50">
+                  <tr key={c.id} onClick={() => open(c.id)} className="cursor-pointer border-b border-line last:border-b-0 hover:bg-surface-2/50">
                     <td className="px-4 py-2.5">
                       <div className="font-medium text-fg">{c.name}</div>
                       <div className="text-[11px] text-fg-4">{[c.dot_number && `DOT ${c.dot_number}`, c.mc_number && `MC ${c.mc_number}`, c.ein && `EIN ${c.ein}`].filter(Boolean).join(" · ")}</div>
@@ -266,8 +269,8 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
                 key={c.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => setScope(c.id)}
-                onKeyDown={(e) => e.key === "Enter" && setScope(c.id)}
+                onClick={() => open(c.id)}
+                onKeyDown={(e) => e.key === "Enter" && open(c.id)}
                 className="group flex cursor-pointer flex-col rounded-xl border border-line bg-surface p-4 text-left transition-colors hover:border-line-strong sm:p-5"
               >
                 <div className="flex items-start justify-between gap-3">

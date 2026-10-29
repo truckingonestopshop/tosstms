@@ -4,14 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
-  Building2,
-  Check,
-  ChevronsUpDown,
-  Layers,
   LogOut,
   Monitor,
   Moon,
-  Plus,
   Search,
   Settings,
   Sun,
@@ -90,7 +85,6 @@ export function Header() {
         {!accounting && (
           <>
             <div className="mx-1 hidden h-5 w-px bg-line sm:block" />
-            <CompanySwitcher />
             <CompanySearch />
           </>
         )}
@@ -123,127 +117,6 @@ export function Header() {
   );
 }
 
-function CompanySwitcher() {
-  const { companies, scope, setScope, scopedCompany, loads } = useStore();
-  const router = useRouter();
-  const [q, setQ] = useState("");
-  const list = companies.filter(
-    (c) =>
-      !q ||
-      c.name.toLowerCase().includes(q.toLowerCase()) ||
-      (c.mc_number || "").includes(q),
-  );
-  const activeLoads = (id: string) =>
-    loads.filter(
-      (l) =>
-        l.company_id === id &&
-        ["new", "booked", "in_transit"].includes(l.status),
-    ).length;
-
-  return (
-    <Popover
-      width={300}
-      onOpenChange={(o) => !o && setQ("")}
-      trigger={({ toggle, ref }) => (
-        <button
-          ref={ref}
-          onClick={toggle}
-          className="flex h-8 min-w-0 items-center gap-2 rounded-lg px-2 text-[13px] font-medium text-fg hover:bg-surface-2"
-        >
-          {scopedCompany ? (
-            <Building2 className="h-4 w-4 shrink-0 text-fg-3" />
-          ) : (
-            <Layers className="h-4 w-4 shrink-0 text-fg-3" />
-          )}
-          <span className="max-w-[120px] truncate sm:max-w-[200px]">
-            {scopedCompany ? scopedCompany.name : "All companies"}
-          </span>
-          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-fg-4" />
-        </button>
-      )}
-    >
-      {(close) => (
-        <div>
-          {companies.length > 6 && (
-            <div className="p-1">
-              <input
-                autoFocus
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Find a company…"
-                className="h-8 w-full rounded-md border border-line bg-surface-2 px-2.5 text-[13px] text-fg placeholder:text-fg-4 focus:outline-none"
-              />
-            </div>
-          )}
-          <MenuItem
-            icon={Layers}
-            active={scope === "all"}
-            hint={
-              scope === "all" ? <Check className="h-3.5 w-3.5" /> : undefined
-            }
-            onClick={() => {
-              setScope("all");
-              close();
-            }}
-          >
-            All companies
-          </MenuItem>
-          <MenuSep />
-          <MenuLabel>Carriers</MenuLabel>
-          {list.length === 0 && (
-            <div className="px-2.5 py-2 text-[13px] text-fg-4">
-              {companies.length ? "No match" : "No companies yet"}
-            </div>
-          )}
-          {list.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => {
-                setScope(c.id);
-                close();
-              }}
-              className={cn(
-                "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left hover:bg-surface-2",
-                scope === c.id && "bg-surface-2",
-              )}
-            >
-              <div className="min-w-0 flex-1">
-                <div
-                  className={cn(
-                    "truncate text-[13px] text-fg",
-                    scope === c.id && "font-semibold",
-                  )}
-                >
-                  {c.name}
-                </div>
-                <div className="truncate text-[11px] text-fg-4">
-                  {c.mc_number ? `MC ${c.mc_number} · ` : ""}
-                  {c.commission_percent}% · {activeLoads(c.id)} active
-                </div>
-              </div>
-              {c.status === "inactive" && (
-                <span className="text-[10px] uppercase text-fg-4">
-                  Inactive
-                </span>
-              )}
-              {scope === c.id && <Check className="h-3.5 w-3.5 text-fg" />}
-            </button>
-          ))}
-          <MenuSep />
-          <MenuItem
-            icon={Plus}
-            onClick={() => {
-              close();
-              router.push("/fleet?new=company");
-            }}
-          >
-            Add carrier company
-          </MenuItem>
-        </div>
-      )}
-    </Popover>
-  );
-}
 
 function UserMenu() {
   const { me, memberById, isSuperAdmin, hasLeads } = useStore();

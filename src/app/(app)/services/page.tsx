@@ -10,6 +10,7 @@ import { BarRow, Delta, Kpi, amber, green, red } from "@/components/dashboard/Wi
 import { sb } from "@/lib/db";
 import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
+import { CompanyFilter } from "@/components/layout/CompanyFilter";
 import { cn, fmtDay, isCanceled, money, moneyShort, num, today } from "@/lib/format";
 import { SERVICES, hasService, sourceLabel } from "@/lib/services";
 import { monthly, runningSub, type Charge } from "@/lib/billing";
@@ -49,7 +50,7 @@ function top(values: (string | null | undefined)[]) {
 type Clients = "active" | "all";
 
 export default function ServicesPage() {
-  const { companies, loads, trucks, drivers, trailers, documents, docTypes, payments, invoices, inScope, scope, scopedCompany } = useStore();
+  const { companies, loads, trucks, drivers, trailers, documents, docTypes, payments, invoices, inScope, scope } = useStore();
   const opps = useLiveTable<Opportunity>("tms_opportunities");
   const cases = useLiveTable<Case>("tms_cases");
   const { mutes } = useMutes();
@@ -179,7 +180,7 @@ export default function ServicesPage() {
   return (
     <Page>
       <PageHeader
-        eyebrow={scopedCompany ? scopedCompany.name : "All companies"}
+        eyebrow={<CompanyFilter />}
         title="Services"
         actions={
           <>
@@ -321,10 +322,10 @@ function ServiceCarriers({
   charges: Charge[];
   issuesBy: Map<string, { expired: number; soon: number; missing: number }>;
 }) {
-  const { setScope, trucks, drivers, loads } = useStore();
+  const { trucks, drivers, loads } = useStore();
   const t = today();
   const tab = service === "dispatch" ? "dispatch" : service === "dot_compliance" ? "dot" : service === "mcpt" ? "mcpt" : "services";
-  const href = (id: string) => (tab === "dispatch" ? "/dispatch" : `/fleet?company=${id}&tab=${tab}`);
+  const href = (id: string) => (tab === "dispatch" ? `/dispatch?company=${id}` : `/fleet?company=${id}&tab=${tab}`);
   return (
     <Card className="mt-4" id="service-carriers">
       <CardHeader title={`${label} · ${list.length} carrier${list.length === 1 ? "" : "s"}`} subtitle="Click a carrier to open it" />
@@ -361,7 +362,7 @@ function ServiceCarriers({
                   return (
                     <tr key={c.id} className="border-b border-line last:border-b-0 hover:bg-surface-2/50">
                       <td className="px-4 py-2.5 sm:px-5">
-                        <Link href={href(c.id)} onClick={() => setScope(c.id)} className="font-medium text-fg hover:underline">
+                        <Link href={href(c.id)} className="font-medium text-fg hover:underline">
                           {c.name}
                         </Link>
                         <div className="text-[11px] text-fg-4">{[c.mc_number && `MC ${c.mc_number}`, c.dot_number && `DOT ${c.dot_number}`].filter(Boolean).join(" · ")}</div>
@@ -391,7 +392,7 @@ function ServiceCarriers({
                         )}
                       </td>
                       <td className="px-3 py-2.5">
-                        <Link href={href(c.id)} onClick={() => setScope(c.id)} aria-label={`Open ${c.name}`} className="text-fg-4 hover:text-fg">
+                        <Link href={href(c.id)} aria-label={`Open ${c.name}`} className="text-fg-4 hover:text-fg">
                           <ArrowRight className="h-4 w-4" />
                         </Link>
                       </td>

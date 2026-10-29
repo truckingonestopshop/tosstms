@@ -22,6 +22,7 @@ import { BarRow, Kpi, Mini, Panel, amber, green, red } from "@/components/dashbo
 import { sb } from "@/lib/db";
 import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
+import { CompanyFilter } from "@/components/layout/CompanyFilter";
 import { addDays, cn, isCanceled, money, moneyShort, num, today } from "@/lib/format";
 import { SERVICES, serviceLabel } from "@/lib/services";
 import { billingTotals, invoiceOpen, monthly, runningSub, type Charge, type ChargeService } from "@/lib/billing";
@@ -172,7 +173,11 @@ export default function DashboardPage() {
   return (
     <Page>
       <PageHeader
-        eyebrow={`${new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · ${scopedCompany ? scopedCompany.name : "All companies"}`}
+        eyebrow={
+          <>
+            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · <CompanyFilter />
+          </>
+        }
         title={`${greeting()}${firstName ? `, ${firstName}` : ""}`}
         actions={<Segmented value={period} onChange={setPeriod} options={PERIODS.map((p) => ({ value: p.v, label: p.label }))} className="scrollbar-none overflow-x-auto" />}
       />

@@ -8,6 +8,7 @@ import { Input, Select } from "@/components/ui/Field";
 import { Card, CardHeader, Page, PageHeader, Stat, Tabs } from "@/components/ui/Bits";
 import { BarChart, LineChart, RankTable } from "@/components/analytics/Charts";
 import { useStore } from "@/lib/store";
+import { CompanyFilter } from "@/components/layout/CompanyFilter";
 import { RANGE_LABEL, grainFor, groupBy, inWindow, rangeDates, series, type RangeKey, type Row } from "@/lib/analytics";
 import { downloadCsv } from "@/lib/csv";
 import { STATUS, STATUS_ORDER, money, moneyShort, num, today } from "@/lib/format";
@@ -86,7 +87,7 @@ function Analytics() {
     <Page>
       <DispatchFrame />
       <PageHeader
-        eyebrow={scopedCompany ? scopedCompany.name : "All companies"}
+        eyebrow={<CompanyFilter />}
         title="Analytics"
         actions={
           <Button

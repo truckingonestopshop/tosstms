@@ -77,7 +77,7 @@ function valueOf(c: Company, f: Field, q: string, opp?: Opp) {
 }
 
 export function CompanySearch() {
-  const { companies, scope, setScope } = useStore();
+  const { companies, scope } = useStore();
   // Opportunity numbers and titles, for "OPP-1003" / "1003".
   const opps = useLiveTable<Opp>("tms_opportunities", { order: "number", ascending: true }).rows;
   const router = useRouter();
@@ -122,19 +122,14 @@ export function CompanySearch() {
   }, [open]);
 
   /** Picks the carrier; an OPP # match opens that opportunity in Sales. */
+  /** Opens the carrier's page; an OPP # match opens that opportunity in Sales. */
   const pick = (c: Company, opp?: Opp) => {
-    setScope(c.id);
     setQ("");
     setOpen(false);
     input.current?.blur();
-    if (opp) router.push(`/sales?tab=opportunities&opp=${opp.id}`);
+    router.push(opp ? `/sales?tab=opportunities&opp=${opp.id}` : `/fleet?company=${c.id}`);
   };
-  const openPage = (c: Company) => {
-    setScope(c.id);
-    setQ("");
-    setOpen(false);
-    router.push(`/fleet?company=${c.id}`);
-  };
+  const openPage = (c: Company) => pick(c);
 
   const showList = open && q.trim().length > 0;
 

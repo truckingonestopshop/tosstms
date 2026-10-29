@@ -9,6 +9,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { errMsg, sb } from "@/lib/db";
 import { useStore } from "@/lib/store";
+import { CompanyFilter } from "@/components/layout/CompanyFilter";
 import { useLiveTable } from "@/lib/live";
 import { toast } from "@/lib/toast";
 import { cn, fmtDay, num } from "@/lib/format";
@@ -40,7 +41,7 @@ function stateLine(i: PendingItem) {
 }
 
 export default function PendingPage() {
-  const { companies, drivers, trucks, trailers, documents, docTypes, loads, inScope, scopedCompany, companyById, setScope } = useStore();
+  const { companies, drivers, trucks, trailers, documents, docTypes, loads, inScope, scopedCompany, companyById } = useStore();
   const { mutes, setMutes } = useMutes();
   const [view, setView] = useState<View>("expired");
   const [kind, setKind] = useState<PendingKind | "all">("all");
@@ -76,7 +77,7 @@ export default function PendingPage() {
 
   return (
     <Page>
-      <PageHeader eyebrow={scopedCompany ? scopedCompany.name : "All companies"} title="Pending" />
+      <PageHeader eyebrow={<CompanyFilter />} title="Pending" />
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Expired" value={<span className={counts.expired ? "text-red-600 dark:text-red-400" : ""}>{num(counts.expired)}</span>} sub="Documents past their date" />
@@ -164,7 +165,6 @@ export default function PendingPage() {
                 <div className="flex shrink-0 gap-1.5">
                   <Link
                     href={i.href}
-                    onClick={() => i.companyId && setScope(i.companyId)}
                     className="inline-flex h-8 items-center rounded-lg border border-line px-3 text-xs font-medium text-fg hover:bg-surface-2"
                   >
                     Open
