@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { GeoJSONSource, Map as MapboxMap, Marker } from "mapbox-gl";
 import { useTheme } from "@/lib/theme";
@@ -76,16 +76,9 @@ export function FleetMap({
     onSelect,
     resolved,
   });
-  latest.current = {
-    dots,
-    lines,
-    target,
-    focus,
-    fitKey,
-    selected,
-    onSelect,
-    resolved,
-  };
+  useLayoutEffect(() => {
+    latest.current = { dots, lines, target, focus, fitKey, selected, onSelect, resolved };
+  });
 
   const draw = useCallback(() => {
     const m = map.current;

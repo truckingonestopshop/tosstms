@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Building2,
   Check,
@@ -19,6 +19,7 @@ import {
   UserRound,
   ShieldCheck,
   ArrowUpRight,
+  Menu,
 } from "lucide-react";
 import { LogoMark } from "@/components/brand/Logo";
 import { Popover, MenuItem, MenuLabel, MenuSep } from "@/components/ui/Menu";
@@ -27,10 +28,12 @@ import { MemberAvatar } from "@/components/team/MemberAvatar";
 import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/format";
 import { signOut } from "@/app/login/actions";
-import { NAV } from "./nav";
+import { SidebarDrawer } from "./Sidebar";
 import { SearchPalette } from "./SearchPalette";
 import { CompanySearch } from "./CompanySearch";
-import { HeaderAppSwitch, useAppLeave } from "@/components/auth/AppSwitch";
+import { useAppLeave } from "@/components/auth/AppSwitch";
+import { AppSwitcher } from "./AppSwitcher";
+import { canOpen } from "./nav";
 import { toast } from "@/lib/toast";
 
 /** /go/leads sends people back with ?switch_error=… when Lead Hunter can't open. */
@@ -46,9 +49,14 @@ function useSwitchError() {
 }
 
 export function Header() {
-  const path = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
-  const { hasLeads } = useStore();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const { hasLeads, me, memberById } = useStore();
+  const path = usePathname();
+  const accounting = path.startsWith("/accounting");
+  // A single app (no Lead Hunter, no Accounting access) shows its name next to the logo instead.
+  const switcher = hasLeads || canOpen(memberById(me.id) ?? { role: me.role }, "accounting");
   useSwitchError();
 
   return (
@@ -56,48 +64,37 @@ export function Header() {
       className="no-print sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-xl"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
-      <div className="mx-auto flex h-14 w-full max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+      <div className="flex h-14 w-full items-center gap-3 px-4 sm:px-6 lg:px-5">
+        <button onClick={() => setMenuOpen(true)} className="-ml-1.5 rounded-lg p-2 text-fg-2 hover:bg-surface-2 lg:hidden" aria-label="Open menu">
+          <Menu className="h-[18px] w-[18px]" />
+        </button>
         <Link
-          href="/"
+          href={accounting ? "/accounting" : "/"}
           className="flex shrink-0 items-center gap-2 text-fg"
           aria-label="TOSS Cloud home"
         >
           <LogoMark className="h-[22px] w-auto" />
-          {!hasLeads && (
+          {!switcher && (
             <span className="hidden rounded border border-line-strong px-1 py-px text-[9px] font-bold uppercase tracking-[0.14em] text-fg-3 sm:inline">
               Cloud
             </span>
           )}
         </Link>
-        {hasLeads && (
+        {switcher && (
           <div className="hidden sm:block">
-            <HeaderAppSwitch current="cloud" href="/go/leads" />
+            <AppSwitcher />
           </div>
         )}
 
-        <div className="mx-1 hidden h-5 w-px bg-line sm:block" />
-        <CompanySwitcher />
-        <CompanySearch />
+        {/* Companies are TOSS Cloud's; Accounting is TOSS's own money. */}
+        {!accounting && (
+          <>
+            <div className="mx-1 hidden h-5 w-px bg-line sm:block" />
+            <CompanySwitcher />
+            <CompanySearch />
+          </>
+        )}
 
-        <nav className="ml-2 hidden items-center gap-0.5 lg:flex">
-          {NAV.map((n) => {
-            const on = n.match(path);
-            return (
-              <Link
-                key={n.href}
-                href={n.href}
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors",
-                  on
-                    ? "bg-surface-2 text-fg"
-                    : "text-fg-3 hover:bg-surface-2/60 hover:text-fg",
-                )}
-              >
-                {n.label}
-              </Link>
-            );
-          })}
-        </nav>
 
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
           <button
@@ -121,6 +118,7 @@ export function Header() {
         </div>
       </div>
       <SearchPalette open={searchOpen} onOpenChange={setSearchOpen} />
+      <SidebarDrawer open={menuOpen} onClose={closeMenu} />
     </header>
   );
 }

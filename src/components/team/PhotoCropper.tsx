@@ -16,6 +16,7 @@ export function PhotoCropper({ file, onCancel, onDone }: { file: File; onCancel:
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [saving, setSaving] = useState(false);
   const drag = useRef<{ px: number; py: number; x: number; y: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
 
@@ -73,17 +74,24 @@ export function PhotoCropper({ file, onCancel, onDone }: { file: File; onCancel:
       <div className="flex flex-col items-center gap-4">
         <div
           className="relative touch-none select-none overflow-hidden rounded-xl bg-surface-3"
-          style={{ width: BOX, height: BOX, cursor: drag.current ? "grabbing" : "grab" }}
+          style={{ width: BOX, height: BOX, cursor: dragging ? "grabbing" : "grab" }}
           onPointerDown={(e) => {
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
             drag.current = { px: e.clientX, py: e.clientY, x: pos.x, y: pos.y };
+            setDragging(true);
           }}
           onPointerMove={(e) => {
             const d = drag.current;
             if (d) setPos(clamp(d.x + e.clientX - d.px, d.y + e.clientY - d.py));
           }}
-          onPointerUp={() => (drag.current = null)}
-          onPointerCancel={() => (drag.current = null)}
+          onPointerUp={() => {
+            drag.current = null;
+            setDragging(false);
+          }}
+          onPointerCancel={() => {
+            drag.current = null;
+            setDragging(false);
+          }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

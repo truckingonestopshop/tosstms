@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CalendarClock, CheckCircle2, Circle, ExternalLink, FileText, Loader2, RefreshCw, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
@@ -148,7 +148,9 @@ function DocSlot({
   const [drag, setDrag] = useState(false);
   const [exp, setExp] = useState(saved?.expires_on || "");
   const expRef = useRef(exp);
-  expRef.current = exp;
+  useLayoutEffect(() => {
+    expRef.current = exp;
+  });
   // Follow the saved document's date (another dispatcher, or a newer upload).
   const savedExp = saved?.expires_on || "";
   const [seen, setSeen] = useState(savedExp);

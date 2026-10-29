@@ -143,13 +143,13 @@ export function LoadEditor({ load, onDone }: { load?: Load; onDone?: (l: Load) =
   const route = useRoute(d.stops, { from: d.deadhead_from });
   useEffect(() => {
     if (milesAuto && route.data?.miles) set({ loaded_miles: String(route.data.miles) });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [route.data?.miles, milesAuto]);
   // Deadhead follows the routed empty leg until it is typed by hand.
   const routedDh = route.data?.deadhead?.point ? route.data.deadhead.miles : null;
   useEffect(() => {
     if (dhAuto && routedDh !== null) set({ deadhead_miles: routedDh ? String(routedDh) : "0" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [routedDh, dhAuto]);
 
   const gross = Number(d.gross_amount) || 0;

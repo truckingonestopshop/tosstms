@@ -14,6 +14,7 @@ import { balance, payState } from "@/lib/invoice";
 import { availability } from "@/lib/pitch";
 import { addDays, cn, daysUntil, fmtDay, isCanceled, lane, money, moneyShort, num, today } from "@/lib/format";
 import { checklist, fleetPaperwork, problems, shortName } from "@/lib/docs";
+import { muteActive, useMutes } from "@/lib/pending";
 import type { Load, Truck } from "@/lib/types";
 
 function greeting() {
@@ -97,6 +98,9 @@ function Dashboard() {
   const needLoad = board.filter((b) => b.state === "available").length;
 
   // Attention
+  // Reminders turned off on Pending stay off here too.
+  const { mutes } = useMutes();
+  const muted = useMemo(() => new Set(mutes.filter(muteActive).map((m) => m.key)), [mutes]);
   const alerts = useMemo(() => {
     const out: { key: string; icon: typeof AlertTriangle; text: string; href: string; tone: "red" | "amber" }[] = [];
     const scopedInvoices = invoices.filter((i) => !i.company_id || inScope(i.company_id));
@@ -105,7 +109,7 @@ function Dashboard() {
     // Loads on the road or waiting to be paid that are missing required paperwork (BOL, POD…).
     let shownLoads = 0;
     for (const l of L.filter((l) => ["in_transit", "delivered", "invoiced"].includes(l.status))) {
-      const miss = problems(checklist(docTypes, documents, { scope: "load", id: l.id, companyId: l.company_id, status: l.status }));
+      const miss = problems(checklist(docTypes, documents, { scope: "load", id: l.id, companyId: l.company_id, status: l.status })).filter((i) => !muted.has(`load:${l.id}:${i.type.key}`));
       if (!miss.length || shownLoads++ >= 6) continue;
       const names = miss.map((i) => shortName(i.type)).join(", ");
       out.push({ key: `ldoc${l.id}`, icon: FileWarning, text: `${names} missing · ${lane(l)}`, href: `/loads/${l.id}`, tone: l.status === "in_transit" ? "amber" : "red" });
@@ -118,6 +122,8 @@ function Dashboard() {
     const missingBy = new Map<string, number>();
     for (const h of holders) {
       for (const i of [...h.bad, ...h.soon]) {
+        // Turned off on Pending (with a reason).
+        if (muted.has(`${h.scope}:${h.id}:${i.type.key}:${i.doc?.id || "none"}`)) continue;
         if (i.state === "missing") {
           missingBy.set(h.companyId, (missingBy.get(h.companyId) || 0) + 1);
           continue;
@@ -141,14 +147,14 @@ function Dashboard() {
       ] as const) {
         const covered = holders.some((h) => h.scope === "driver" && h.id === d.id && h.items.some((i) => i.type.key === key && i.doc?.expires_on));
         const n = daysUntil(date);
-        if (!covered && n !== null && n <= 30)
+        if (!covered && n !== null && n <= 30 && !muted.has(`driver:${d.id}:${key}:typed:${date}`))
           out.push({ key: `${key}${d.id}`, icon: CalendarClock, text: `${d.name}: ${label} ${n < 0 ? "expired" : `expires in ${n}d`}`, href: `/fleet?company=${d.company_id}&tab=drivers&driver=${d.id}`, tone: n < 0 ? "red" : "amber" });
       }
     }
     for (const [cid, n] of missingBy)
       out.push({ key: `miss${cid}`, icon: FileWarning, text: `${companyById(cid)?.name}: ${n} required document${n === 1 ? "" : "s"} missing`, href: `/fleet?company=${cid}&tab=docs`, tone: "amber" });
     return out;
-  }, [L, invoices, documents, docTypes, companies, drivers, trucks, trailers, inScope, companyById, t]);
+  }, [L, invoices, documents, docTypes, companies, drivers, trucks, trailers, inScope, companyById, t, muted]);
 
   const weeks = useMemo(() => series(L.filter((l) => !isCanceled(l.status)), { from: addDays(t, -7 * 11 - ((new Date().getDay() + 6) % 7)), to: t }, "week"), [L, t]);
   const recent = useMemo(() => [...L].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 6), [L]);

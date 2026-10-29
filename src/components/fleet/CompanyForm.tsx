@@ -11,7 +11,7 @@ import { openDocument, errMsg } from "@/lib/db";
 import { cn, US_STATES } from "@/lib/format";
 import { docsOf } from "@/lib/docs";
 import { AUTHORITY_STATUSES, SERVICES, SOURCES } from "@/lib/services";
-import type { AuthorityStatus, Company, ServiceInfo, ServiceKey, ServiceSource, Services } from "@/lib/types";
+import type { AuthorityStatus, Company, CompanyStage, ServiceInfo, ServiceKey, ServiceSource, Services } from "@/lib/types";
 
 /** Service details as typed (numbers stay text until saved). */
 type ServiceDraft = Omit<ServiceInfo, "percent" | "cards"> & {
@@ -28,6 +28,7 @@ export type CompanyDraft = {
   dot_status: AuthorityStatus | "";
   mc_status: AuthorityStatus | "";
   status: "active" | "inactive";
+  stage: CompanyStage;
   street: string;
   city: string;
   county: string;
@@ -73,6 +74,7 @@ export const toDraft = (c?: Company | null): CompanyDraft => {
     dot_status: c?.dot_status ?? "",
     mc_status: c?.mc_status ?? "",
     status: c?.status ?? "active",
+    stage: c?.stage ?? "client",
     // Carriers from before the address parts: the old one-line address goes in Street.
     street: c?.street ?? (hasParts ? "" : (c?.address ?? "").replace(/\n/g, ", ")),
     city: c?.city ?? "",
@@ -121,6 +123,7 @@ export const fromDraft = (d: CompanyDraft): Partial<Company> => {
     dot_status: d.dot_status || null,
     mc_status: d.mc_status || null,
     status: d.status,
+    stage: d.stage,
     street: nz(d.street),
     city: nz(d.city),
     county: nz(d.county),
@@ -370,6 +373,12 @@ export function CompanyFields({
                 {s.label}
               </option>
             ))}
+          </Select>
+        </Field>
+        <Field label="Stage" hint="Lead = prospect · Client = customer" className="sm:col-span-3">
+          <Select value={d.stage} onChange={(e) => set({ stage: e.target.value as CompanyStage })}>
+            <option value="client">Client</option>
+            <option value="lead">Lead</option>
           </Select>
         </Field>
         <Field label="Client status" hint="Working with TOSS" className="sm:col-span-3">

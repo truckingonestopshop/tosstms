@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/format";
@@ -21,7 +21,9 @@ function useLockScroll(open: boolean) {
 
 function useEscape(open: boolean, onClose: () => void) {
   const cb = useRef(onClose);
-  cb.current = onClose;
+  useLayoutEffect(() => {
+    cb.current = onClose;
+  });
   useEffect(() => {
     if (!open) return;
     const h = (e: KeyboardEvent) => {

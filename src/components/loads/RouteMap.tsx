@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { GeoJSONSource, Map as MapboxMap, Marker } from "mapbox-gl";
 import { MapPin, Maximize2, Minimize2 } from "lucide-react";
@@ -109,7 +109,9 @@ export function RouteMap({
   const [size, setSize] = useState({ w: 600, h: 300 });
   const styleReady = useRef(false);
   const latest = useRef({ route, types, resolved });
-  latest.current = { route, types, resolved };
+  useLayoutEffect(() => {
+    latest.current = { route, types, resolved };
+  });
 
   // Draw the current route on the live map; waits for the style if it is still loading.
   const draw = useCallback(function drawRoute() {

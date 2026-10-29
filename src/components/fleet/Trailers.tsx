@@ -11,6 +11,7 @@ import { confirmDialog } from "@/components/ui/Confirm";
 import { stagger } from "@/components/ui/Motion";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { useStore } from "@/lib/store";
+import { useFleetHref } from "./fleetLinks";
 import { toast } from "@/lib/toast";
 import { DOOR_TYPES, TRAILER_GROUPS, TRAILER_LENGTHS, TRAILER_TYPES, cn, num } from "@/lib/format";
 import { specGroupsFor, specsFor, specsLine, type SpecGroup, type Specs } from "@/lib/trailerSpecs";
@@ -486,13 +487,14 @@ function TrailerCard({ t, onOpen, i }: { t: Trailer; onOpen: () => void; i: numb
 export function TrailersTab({ company }: { company: Company }) {
   const params = useSearchParams();
   const router = useRouter();
+  const href = useFleetHref();
   const { trailers, trucks } = useStore();
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
   const [form, setForm] = useState<{ open: boolean; trailer?: Trailer | null }>({ open: false });
   const own = trailers.filter((t) => t.company_id === company.id);
   const sheet = own.find((x) => x.id === params.get("trailer")) || null;
-  const openSheet = (id: string | null) => router.replace(id ? `/fleet?tab=trailers&trailer=${id}` : "/fleet?tab=trailers", { scroll: false });
+  const openSheet = (id: string | null) => router.replace(id ? href("trailers", "trailer", id) : href("trailers"), { scroll: false });
   const types = TRAILER_TYPES.filter((t) => own.some((x) => x.trailer_type === t));
   const list = own.filter(
     (t) =>

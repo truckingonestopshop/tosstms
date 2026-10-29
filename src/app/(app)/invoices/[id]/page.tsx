@@ -28,6 +28,8 @@ import { Popover, MenuItem, MenuSep } from "@/components/ui/Menu";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { CountUp, DrawnCheck, Progress, stagger } from "@/components/ui/Motion";
 import { StatusPill } from "@/components/loads/StatusMenu";
+import { useLiveTable } from "@/lib/live";
+import { statusOf, type Case } from "@/lib/cases";
 import { InvoiceDoc } from "@/components/invoices/InvoiceDoc";
 import { useBillable } from "@/components/invoices/InvoiceBuilder";
 import { useStore } from "@/lib/store";
@@ -378,6 +380,8 @@ function InvoiceView({ id }: { id: string }) {
             </Card>
           )}
 
+          {inv.company_id && <InvoiceCases inv={inv} />}
+
           <Timeline inv={inv} />
         </div>
       </div>
@@ -385,6 +389,41 @@ function InvoiceView({ id }: { id: string }) {
       {addOpen && <AddLoadsModal companyId={inv.company_id} existing={d.lines.map((l) => l.load_id).filter(Boolean) as string[]} onClose={() => setAddOpen(false)} onAdd={(lines) => setD((x) => ({ ...x, lines: [...x.lines, ...lines] }))} />}
       {payOpen && <PaymentModal inv={inv} onClose={() => setPayOpen(false)} />}
     </Page>
+  );
+}
+
+/** Cases about this invoice (an overcharge, a dispute), and a quick way to open one. */
+function InvoiceCases({ inv }: { inv: Invoice }) {
+  const cases = useLiveTable<Case>("tms_cases", { order: "updated_at", filter: { invoice_id: inv.id } }).rows.filter((c) => c.invoice_id === inv.id);
+  return (
+    <Card className="animate-rise" style={stagger(4, 60)}>
+      <CardHeader
+        title="Cases"
+        actions={
+          <ButtonLink href={`/customer-service?new=1&company=${inv.company_id}&invoice=${inv.id}`} size="sm" variant="ghost">
+            <Plus className="h-3.5 w-3.5" /> Open a case
+          </ButtonLink>
+        }
+      />
+      {cases.length === 0 ? (
+        <div className="px-4 pb-4 text-xs text-fg-4">None about this invoice.</div>
+      ) : (
+        <ul className="divide-y divide-line">
+          {cases.map((c) => {
+            const st = statusOf(c.status);
+            return (
+              <li key={c.id}>
+                <Link href={`${c.kind === "work" ? "/cases" : "/customer-service"}?case=${c.id}`} className="flex items-center gap-2 px-4 py-2.5 transition-colors hover:bg-surface-2/60">
+                  <span className="tnum text-xs font-semibold text-fg-4">#{c.number}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{c.title}</span>
+                  <Pill className={st.pill}>{st.label}</Pill>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
   );
 }
 

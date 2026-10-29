@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GhlCustomer } from "@/lib/ghl";
-import type { Company, ServiceInfo, Services } from "@/lib/types";
+import type { Company, CompanyStage, ServiceInfo, Services } from "@/lib/types";
 
 // Carriers coming from outside (GoHighLevel workflow, TOSS Lead Hunter's "Send to TOSS"): create
 // the carrier, or fill in what's missing on the one it already is (same GHL contact or same DOT).
@@ -24,7 +24,7 @@ function services(c: CarrierInput, current: Services = {}): Services {
   return out;
 }
 
-function newCompany(c: CarrierInput, from: string) {
+function newCompany(c: CarrierInput, from: string, stage: CompanyStage) {
   return {
     name: c.name!,
     dba_name: c.dba,
@@ -44,6 +44,7 @@ function newCompany(c: CarrierInput, from: string) {
     services: services(c),
     ghl_contact_id: c.contactId,
     status: "active",
+    stage,
     // Dispatch terms start blank: the team fills them in (same as a new carrier from the form).
     commission_percent: 0,
     notes: `Added from ${from} on ${new Date().toISOString().slice(0, 10)}.`,
@@ -89,22 +90,42 @@ export async function carrierByDot(a: SupabaseClient, dot: string): Promise<Comp
 
 /**
  * Create or fill in. `from` names the source in the new carrier's notes ("GoHighLevel",
- * "TOSS Lead Hunter"). Expects c.dot and c.name to be set.
+ * "TOSS Lead Hunter"). Expects c.dot and c.name to be set. `stage`: a new company is created as a
+ * lead (Lead Hunter) or a client (GHL "Customer"); a client never goes back to lead, and a lead
+ * sent as a client becomes one.
  */
-export async function upsertCarrier(a: SupabaseClient, c: CarrierInput, from: string): Promise<{ action: CarrierAction; message: string; companyId: string | null }> {
+export async function upsertCarrier(
+  a: SupabaseClient,
+  c: CarrierInput,
+  from: string,
+  stage: CompanyStage = "client",
+): Promise<{ action: CarrierAction; message: string; companyId: string | null }> {
   // Same GHL contact first, then the same DOT.
   let existing: Company | null = null;
   if (c.contactId) existing = ((await a.from("tms_companies").select("*").eq("ghl_contact_id", c.contactId).maybeSingle()).data as Company | null) ?? null;
   if (!existing) existing = await carrierByDot(a, c.dot!);
 
   if (!existing) {
-    const { data, error } = await a.from("tms_companies").insert(newCompany(c, from)).select("id").single();
+    const { data, error } = await a.from("tms_companies").insert(newCompany(c, from, stage)).select("id").single();
     if (error) return { action: "failed", message: error.message, companyId: null };
-    return { action: "created", message: `Carrier created: ${c.name}`, companyId: data.id as string };
+    return { action: "created", message: `${stage === "lead" ? "Lead" : "Client"} created: ${c.name}`, companyId: data.id as string };
   }
   const patch = fillIn(existing, c);
+  if (stage === "client" && existing.stage === "lead") patch.stage = "client";
   if (!Object.keys(patch).length) return { action: "unchanged", message: `Already in TOSS Cloud with these details: ${existing.name}`, companyId: existing.id };
   const { error } = await a.from("tms_companies").update(patch).eq("id", existing.id);
   if (error) return { action: "failed", message: error.message, companyId: existing.id };
   return { action: "updated", message: `Filled in: ${Object.keys(patch).join(", ")}`, companyId: existing.id };
+}
+
+/**
+ * A new lead starts as an opportunity in the first stage of the first active pipeline (like GHL),
+ * owned by whoever sent it. Best effort: the lead is created either way.
+ */
+export async function startLeadOpportunity(a: SupabaseClient, companyId: string, name: string, source: string, ownerId: string | null) {
+  const { data: p } = await a.from("tms_pipelines").select("id").eq("active", true).order("sort").limit(1).maybeSingle();
+  if (!p) return;
+  const { data: s } = await a.from("tms_pipeline_stages").select("id").eq("pipeline_id", p.id).order("sort").limit(1).maybeSingle();
+  if (!s) return;
+  await a.from("tms_opportunities").insert({ company_id: companyId, title: name, pipeline_id: p.id, stage_id: s.id, source, owner_id: ownerId, created_by: ownerId, value: 0 });
 }

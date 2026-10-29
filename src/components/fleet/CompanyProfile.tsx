@@ -1,6 +1,8 @@
 "use client";
 
-import { ArrowRight, ExternalLink, FileText, Layers } from "lucide-react";
+import { ArrowRight, ExternalLink, FileText, Layers, UserCheck } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { StagePill } from "./CompaniesCrm";
 import { Card, Empty, KV } from "@/components/ui/Bits";
 import { useStore } from "@/lib/store";
 import { CompanyTimeline } from "./CompanyTimeline";
@@ -142,6 +144,22 @@ function Section({ title, children, className }: { title: string; children: Reac
   );
 }
 
+/** Turns a lead into a client (stamps when, for the CRM). */
+function MarkClient({ company }: { company: Company }) {
+  const { updateCompany } = useStore();
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      onClick={async () => {
+        if (await updateCompany(company.id, { stage: "client" })) toast.success(`${company.name} is now a client`);
+      }}
+    >
+      <UserCheck className="h-3.5 w-3.5" /> Mark as client
+    </Button>
+  );
+}
+
 /** Everything about the carrier on one page, read-only (Edit opens the form). */
 export function CompanyOverview({ company, onServices }: { company: Company; onServices: () => void }) {
   const second = [company.secondary_first_name, company.secondary_last_name].filter(Boolean).join(" ");
@@ -155,7 +173,15 @@ export function CompanyOverview({ company, onServices }: { company: Company; onS
           </KV>
           <KV label="DBA">{company.dba_name}</KV>
           <KV label="EIN">{company.ein}</KV>
-          <KV label="Client status">{company.status === "active" ? "Active" : "Inactive"}</KV>
+          <KV label="Stage">
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <StagePill c={company} />
+              <span className="text-xs text-fg-3">
+                {company.stage === "lead" ? `since ${fmtDay(company.created_at.slice(0, 10))}` : company.became_client_at ? `since ${fmtDay(company.became_client_at.slice(0, 10))}` : ""}
+              </span>
+              {company.stage === "lead" && <MarkClient company={company} />}
+            </span>
+          </KV>
           <KV label="USDOT">{company.dot_number}</KV>
           <KV label="DOT status">
             <AuthorityPill v={company.dot_status} />

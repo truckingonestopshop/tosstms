@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/Field";
 import { Popover, MenuItem, MenuLabel, MenuSep } from "@/components/ui/Menu";
 import { stagger } from "@/components/ui/Motion";
 import { useStore } from "@/lib/store";
+import { useFleetHref, useOpenSheet } from "./fleetLinks";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
 import { availability, truckModelLine } from "@/lib/pitch";
@@ -52,6 +53,8 @@ const rigState = (t: Truck): RigState =>
 export function UnitsTab({ company }: { company: Company }) {
   const { trucks, trailers, drivers, hookTrailer, assignDriver, trailerById, driverById } = useStore();
   const router = useRouter();
+  const href = useFleetHref();
+  const openSheet = useOpenSheet();
   const [newTrailerFor, setNewTrailerFor] = useState<string | null>(null);
   const own = useMemo(() => trucks.filter((t) => t.company_id === company.id && t.status !== "inactive"), [trucks, company.id]);
   const ownTrailers = trailers.filter((t) => t.company_id === company.id && t.status !== "inactive");
@@ -89,7 +92,7 @@ export function UnitsTab({ company }: { company: Company }) {
           title="No trucks yet"
           body="Add the carrier's trucks first. Then hook a trailer and put a driver on each one here."
           action={
-            <Button variant="primary" onClick={() => router.replace("/fleet?tab=trucks")}>
+            <Button variant="primary" onClick={() => router.replace(href("trucks"))}>
               Go to trucks
             </Button>
           }
@@ -128,7 +131,7 @@ export function UnitsTab({ company }: { company: Company }) {
               onDropTrailer={onDrop(truck, "trailer")}
               onDropDriver={onDrop(truck, "driver")}
               onNewTrailer={() => setNewTrailerFor(truck.id)}
-              open={(tab, key, id) => router.replace(`/fleet?tab=${tab}&${key}=${id}`, { scroll: false })}
+              open={(_tab, key, id) => openSheet(key, id)}
             />
           ))}
         </ul>
@@ -138,12 +141,12 @@ export function UnitsTab({ company }: { company: Company }) {
       <aside className="space-y-4 xl:sticky xl:top-[72px] xl:self-start">
         <Pool title="Trailers in the yard" empty="Every trailer is hooked." count={yard.length}>
           {yard.map((t, i) => (
-            <Chip key={t.id} i={i} drag={{ kind: "trailer", id: t.id }} icon={Container} title={t.unit_number} sub={trailerLine(t)} onClick={() => router.replace(`/fleet?tab=trailers&trailer=${t.id}`, { scroll: false })} />
+            <Chip key={t.id} i={i} drag={{ kind: "trailer", id: t.id }} icon={Container} title={t.unit_number} sub={trailerLine(t)} onClick={() => openSheet("trailer", t.id)} />
           ))}
         </Pool>
         <Pool title="Drivers without a truck" empty="Every driver has a truck." count={free.length}>
           {free.map((d, i) => (
-            <Chip key={d.id} i={i} drag={{ kind: "driver", id: d.id }} icon={User} title={d.name} sub={d.phone || "No phone"} onClick={() => router.replace(`/fleet?tab=drivers&driver=${d.id}`, { scroll: false })} />
+            <Chip key={d.id} i={i} drag={{ kind: "driver", id: d.id }} icon={User} title={d.name} sub={d.phone || "No phone"} onClick={() => openSheet("driver", d.id)} />
           ))}
         </Pool>
       </aside>
@@ -180,7 +183,7 @@ function RigRow({
   onDropTrailer: (e: React.DragEvent) => void;
   onDropDriver: (e: React.DragEvent) => void;
   onNewTrailer: () => void;
-  open: (tab: string, key: string, id: string) => void;
+  open: (tab: "trucks" | "trailers" | "drivers", key: "truck" | "trailer" | "driver", id: string) => void;
 }) {
   const st = RIG[rigState(truck)];
   const onTruck = (pred: (t: Truck) => boolean) => trucks.find((t) => t.id !== truck.id && pred(t));
@@ -433,7 +436,7 @@ function Chip({
  */
 export function DriverRig({ driver }: { driver: Driver }) {
   const { trucks, trailerById, assignDriver } = useStore();
-  const router = useRouter();
+  const openSheet = useOpenSheet();
   const [busy, setBusy] = useState(false);
   const truck = trucks.find((t) => t.assigned_driver_id === driver.id);
   const trailer = trailerById(truck?.trailer_id);
@@ -472,12 +475,12 @@ export function DriverRig({ driver }: { driver: Driver }) {
       </div>
       {truck && (
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[13px]">
-          <button onClick={() => router.replace(`/fleet?tab=trucks&truck=${truck.id}`, { scroll: false })} className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-1 font-medium text-fg hover:bg-surface-3">
+          <button onClick={() => openSheet("truck", truck.id)} className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-1 font-medium text-fg hover:bg-surface-3">
             <TruckIcon className="h-3.5 w-3.5" /> Unit {truck.unit_number}
           </button>
           <span className="h-px w-4 bg-brand" aria-hidden />
           {trailer ? (
-            <button onClick={() => router.replace(`/fleet?tab=trailers&trailer=${trailer.id}`, { scroll: false })} className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-1 font-medium text-fg hover:bg-surface-3">
+            <button onClick={() => openSheet("trailer", trailer.id)} className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-1 font-medium text-fg hover:bg-surface-3">
               <Container className="h-3.5 w-3.5" /> {trailer.unit_number} · {trailerLine(trailer)}
             </button>
           ) : (

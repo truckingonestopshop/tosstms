@@ -53,8 +53,9 @@ const blank = (v?: Partial<VaultItem>): Draft => ({
   dispatch_only: v?.dispatch_only ?? false,
 });
 
-/** Portal logins and key contacts for a carrier. Passwords are encrypted in the database. */
-export function Vault({ companyId }: { companyId: string }) {
+/** Portal logins and key contacts for a carrier. Passwords are encrypted in the database.
+ * A carrier's credentials, or TOSS's own (companyId null: the Credentials section of the menu). */
+export function Vault({ companyId }: { companyId: string | null }) {
   const [items, setItems] = useState<VaultItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [cat, setCat] = useState<"all" | VaultCategory>("all");
@@ -64,7 +65,8 @@ export function Vault({ companyId }: { companyId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await sb().from("tms_vault_items").select("*").eq("company_id", companyId).order("sort_order").order("created_at");
+    const base = sb().from("tms_vault_items").select("*");
+    const { data, error } = await (companyId ? base.eq("company_id", companyId) : base.is("company_id", null)).order("sort_order").order("created_at");
     if (error) toast.error(`Couldn't load credentials: ${errMsg(error)}`);
     setItems((data || []) as VaultItem[]);
     setLoading(false);
@@ -105,7 +107,7 @@ export function Vault({ companyId }: { companyId: string }) {
     <div className="space-y-4">
       <div className="flex items-start gap-3 rounded-xl border border-line bg-surface-2/40 p-3.5 text-[13px] text-fg-2">
         <Lock className="mt-0.5 h-4 w-4 shrink-0 text-fg-3" />
-        <p>Logins and contacts for this carrier, visible to the whole TOSS team. Load boards are dispatch only. Passwords are encrypted.</p>
+        <p>{companyId ? "Logins and contacts for this carrier, visible to the whole TOSS team. Load boards are dispatch only." : "TOSS's own master accounts and company logins, visible to the whole TOSS team. Load boards are dispatch only."} Passwords are encrypted.</p>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -267,7 +269,7 @@ function VaultForm({
   onClose,
   onSaved,
 }: {
-  companyId: string;
+  companyId: string | null;
   item?: VaultItem;
   preset?: Partial<VaultItem>;
   nextOrder: number;

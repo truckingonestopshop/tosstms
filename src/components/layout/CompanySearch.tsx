@@ -4,49 +4,73 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowUpRight, Check, Search, X } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { useLiveTable } from "@/lib/live";
 import { cn } from "@/lib/format";
 import type { Company } from "@/lib/types";
 
-// Carrier lookup next to the company switcher: by name, DOT, MC, phone, email or owner.
+// Company lookup next to the company switcher: by name, EIN, DOT, MC, representative (owner or second
+// contact), opportunity # (OPP-1003 or 1003), email or phone.
 // Numbers match however they're typed ("MC 1721527", "1721527", "(708) 555-0144").
 // Enter / click selects the carrier (like the switcher); the arrow opens its page.
 
-type Field = "name" | "dot" | "mc" | "phone" | "email" | "owner";
-const FIELD_LABEL: Record<Field, string> = { name: "Name", dot: "DOT", mc: "MC", phone: "Phone", email: "Email", owner: "Owner" };
+type Field = "name" | "opp" | "ein" | "dot" | "mc" | "phone" | "email" | "owner";
+const FIELD_LABEL: Record<Field, string> = { name: "Name", opp: "Opportunity", ein: "EIN", dot: "DOT", mc: "MC", phone: "Phone", email: "Email", owner: "Rep" };
+type Opp = { id: string; number: number; company_id: string; title: string };
 
 const digits = (s: string | null | undefined) => (s || "").replace(/\D/g, "");
 
-/** Which field matched (best first), or null. */
-function matchOf(c: Company, q: string): Field | null {
+/** Owner and second contact. */
+const reps = (c: Company) =>
+  [[c.contact_first_name, c.contact_last_name].filter(Boolean).join(" ") || c.contact_name, [c.secondary_first_name, c.secondary_last_name].filter(Boolean).join(" ")].filter(Boolean) as string[];
+
+/** Which field matched (best first) and, for an opportunity, which one; or null. */
+function matchOf(c: Company, q: string, opps: Opp[]): { f: Field; opp?: Opp } | null {
   const t = q.trim().toLowerCase();
   if (!t) return null;
   const n = digits(t);
-  // "mc 123" / "dot 123" point at one field.
-  if (/^mc\b/.test(t) && n) return digits(c.mc_number).includes(n) ? "mc" : null;
-  if (/^(us)?dot\b/.test(t) && n) return digits(c.dot_number).includes(n) ? "dot" : null;
-  if (c.name.toLowerCase().includes(t) || (c.dba_name || "").toLowerCase().includes(t)) return "name";
-  if (n.length >= 3) {
-    if (digits(c.dot_number).includes(n)) return "dot";
-    if (digits(c.mc_number).includes(n)) return "mc";
-    if (digits(c.contact_phone).includes(n)) return "phone";
+  // "mc 123" / "dot 123" / "ein 12…" / "opp 1003" point at one field.
+  if (/^mc\b/.test(t) && n) return digits(c.mc_number).includes(n) ? { f: "mc" } : null;
+  if (/^(us)?dot\b/.test(t) && n) return digits(c.dot_number).includes(n) ? { f: "dot" } : null;
+  if (/^ein\b/.test(t) && n) return digits(c.ein).includes(n) ? { f: "ein" } : null;
+  const own = opps.filter((o) => o.company_id === c.id);
+  if (/^opp/.test(t) && n) {
+    const o = own.find((x) => String(x.number).startsWith(n));
+    return o ? { f: "opp", opp: o } : null;
   }
-  if ((c.contact_email || "").toLowerCase().includes(t)) return "email";
-  if ((c.contact_name || "").toLowerCase().includes(t)) return "owner";
+  if (c.name.toLowerCase().includes(t) || (c.dba_name || "").toLowerCase().includes(t)) return { f: "name" };
+  if (n.length >= 3) {
+    const o = n.length <= 6 ? own.find((x) => String(x.number) === n) : undefined;
+    if (o) return { f: "opp", opp: o };
+    if (digits(c.ein).includes(n)) return { f: "ein" };
+    if (digits(c.dot_number).includes(n)) return { f: "dot" };
+    if (digits(c.mc_number).includes(n)) return { f: "mc" };
+    if ([c.contact_phone, c.secondary_phone].some((p) => digits(p).includes(n))) return { f: "phone" };
+  }
+  if ([c.contact_email, c.secondary_email].some((e) => (e || "").toLowerCase().includes(t))) return { f: "email" };
+  if (reps(c).some((r) => r.toLowerCase().includes(t))) return { f: "owner" };
+  const o = t.length >= 3 ? own.find((x) => x.title.toLowerCase().includes(t)) : undefined;
+  if (o) return { f: "opp", opp: o };
   return null;
 }
 
-function valueOf(c: Company, f: Field) {
+function valueOf(c: Company, f: Field, q: string, opp?: Opp) {
+  const t = q.trim().toLowerCase();
+  const n = digits(t);
   switch (f) {
+    case "opp":
+      return opp ? `OPP-${opp.number} · ${opp.title}` : "";
+    case "ein":
+      return c.ein || "";
     case "dot":
-      return `DOT ${c.dot_number}`;
+      return c.dot_number || "";
     case "mc":
-      return `MC ${c.mc_number}`;
+      return c.mc_number || "";
     case "phone":
-      return c.contact_phone || "";
+      return [c.contact_phone, c.secondary_phone].find((p) => n && digits(p).includes(n)) || c.contact_phone || "";
     case "email":
-      return c.contact_email || "";
+      return [c.contact_email, c.secondary_email].find((e) => (e || "").toLowerCase().includes(t)) || c.contact_email || "";
     case "owner":
-      return c.contact_name || "";
+      return reps(c).find((r) => r.toLowerCase().includes(t)) || reps(c)[0] || "";
     default:
       return [c.mc_number && `MC ${c.mc_number}`, c.dot_number && `DOT ${c.dot_number}`].filter(Boolean).join(" · ");
   }
@@ -54,6 +78,8 @@ function valueOf(c: Company, f: Field) {
 
 export function CompanySearch() {
   const { companies, scope, setScope } = useStore();
+  // Opportunity numbers and titles, for "OPP-1003" / "1003".
+  const opps = useLiveTable<Opp>("tms_opportunities", { order: "number", ascending: true }).rows;
   const router = useRouter();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -63,13 +89,14 @@ export function CompanySearch() {
 
   const results = useMemo(() => {
     if (!q.trim()) return [];
-    const order: Field[] = ["name", "dot", "mc", "phone", "email", "owner"];
+    const order: Field[] = ["opp", "name", "ein", "dot", "mc", "phone", "email", "owner"];
     return companies
-      .map((c) => ({ c, f: matchOf(c, q) }))
-      .filter((x): x is { c: Company; f: Field } => !!x.f)
+      .map((c) => ({ c, m: matchOf(c, q, opps) }))
+      .filter((x): x is { c: Company; m: { f: Field; opp?: Opp } } => !!x.m)
+      .map(({ c, m }) => ({ c, f: m.f, opp: m.opp }))
       .sort((a, b) => order.indexOf(a.f) - order.indexOf(b.f) || a.c.name.localeCompare(b.c.name))
       .slice(0, 8);
-  }, [companies, q]);
+  }, [companies, q, opps]);
 
   // "/" jumps into the search from anywhere (not while typing in another field).
   useEffect(() => {
@@ -94,11 +121,13 @@ export function CompanySearch() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
-  const pick = (c: Company) => {
+  /** Picks the carrier; an OPP # match opens that opportunity in Sales. */
+  const pick = (c: Company, opp?: Opp) => {
     setScope(c.id);
     setQ("");
     setOpen(false);
     input.current?.blur();
+    if (opp) router.push(`/sales?tab=opportunities&opp=${opp.id}`);
   };
   const openPage = (c: Company) => {
     setScope(c.id);
@@ -116,7 +145,7 @@ export function CompanySearch() {
           "group flex h-8 items-center gap-2 rounded-lg border border-line bg-surface-2/60 px-2.5 text-[13px] transition-[width,border-color] duration-300 focus-within:w-64 focus-within:border-line-strong",
           q ? "w-64" : "w-9 2xl:w-60",
         )}
-        title="Find a carrier by name, DOT, MC, phone, email or owner (press /)"
+        title="Find a company by EIN, DOT, MC, name, representative, opportunity #, email or phone (press /)"
       >
         <Search className="h-3.5 w-3.5 shrink-0 text-fg-3" />
         <input
@@ -138,14 +167,14 @@ export function CompanySearch() {
             } else if (e.key === "Enter" && results[i]) {
               e.preventDefault();
               if (e.ctrlKey || e.metaKey) openPage(results[i].c);
-              else pick(results[i].c);
+              else pick(results[i].c, results[i].opp);
             } else if (e.key === "Escape") {
               setQ("");
               setOpen(false);
               input.current?.blur();
             }
           }}
-          placeholder="Carrier: name, DOT, MC, phone…"
+          placeholder="EIN, DOT, MC, name, rep, OPP #, email, phone…"
           aria-label="Find a carrier"
           className="min-w-0 flex-1 bg-transparent text-fg placeholder:text-fg-4 focus:outline-none"
         />
@@ -159,22 +188,22 @@ export function CompanySearch() {
       {showList && (
         <div className="animate-pop absolute left-0 top-10 z-50 w-[360px] overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-pop">
           {results.length === 0 ? (
-            <div className="px-3 py-3 text-[13px] text-fg-4">No carrier matches “{q.trim()}”.</div>
+            <div className="px-3 py-3 text-[13px] text-fg-4">No company matches “{q.trim()}”.</div>
           ) : (
-            results.map(({ c, f }, k) => (
+            results.map(({ c, f, opp }, k) => (
               <div
                 key={c.id}
                 onMouseEnter={() => setI(k)}
                 className={cn("group/row flex items-center gap-2 rounded-lg px-2.5 py-2", k === i && "bg-surface-2")}
               >
-                <button type="button" onClick={() => pick(c)} className="min-w-0 flex-1 text-left">
+                <button type="button" onClick={() => pick(c, opp)} className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-[13px] font-medium text-fg">{c.name}</span>
                     {c.status === "inactive" && <span className="text-[10px] uppercase text-fg-4">Inactive</span>}
                   </div>
                   <div className="truncate text-[11px] text-fg-4">
                     {f !== "name" && <span className="mr-1 font-semibold text-fg-3">{FIELD_LABEL[f]}</span>}
-                    {valueOf(c, f) || (c.contact_name ? `Owner ${c.contact_name}` : "")}
+                    {valueOf(c, f, q, opp) || (reps(c)[0] ? `Rep ${reps(c)[0]}` : "")}
                   </div>
                 </button>
                 {scope === c.id && <Check className="h-3.5 w-3.5 shrink-0 text-fg" />}

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   Company,
   DocType,
@@ -209,7 +209,9 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
 
   // Latest state for async callbacks without re-creating them.
   const ref = useRef({ companies, drivers, trucks, trailers, loads, documents, invoices, docTypes, payments, members });
-  ref.current = { companies, drivers, trucks, trailers, loads, documents, invoices, docTypes, payments, members };
+  useLayoutEffect(() => {
+    ref.current = { companies, drivers, trucks, trailers, loads, documents, invoices, docTypes, payments, members };
+  });
 
   const refresh = useCallback(async () => {
     if (preview && process.env.NODE_ENV !== "production") {
@@ -285,7 +287,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     c.rpc("toss_is_super_admin").then(({ data }) => setSuperAdmin(data === true));
     c.from("workspace_members").select("user_id").eq("user_id", me.id).limit(1).then(({ data }) => setHasLeads(!!data?.length));
     setReady(true);
-  }, []);
+  }, [preview, me.id]);
 
   useEffect(() => {
     try {
@@ -529,7 +531,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     setTrailers((l) => upsert(l, normTrailer(data as Trailer)));
     await reloadTrucks(ref.current.trucks.filter((t) => t.trailer_id === id).map((t) => t.id));
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
   const deleteTrailer = useCallback(async (id: string) => {
     const holders = ref.current.trucks.filter((t) => t.trailer_id === id).map((t) => t.id);
@@ -543,7 +545,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     setLoads((l) => l.map((x) => (x.trailer_id === id ? { ...x, trailer_id: null } : x)));
     await reloadTrucks(holders);
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
   const hookTrailer = useCallback(async (truckId: string, trailerId: string | null) => {
     const others = trailerId ? ref.current.trucks.filter((t) => t.trailer_id === trailerId && t.id !== truckId).map((t) => t.id) : [];
@@ -551,7 +553,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     if (error) return fail(error, "Couldn't change the trailer"), false;
     await reloadTrucks([truckId, ...others]);
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const assignDriver = useCallback(async (truckId: string, driverId: string | null) => {
@@ -778,7 +780,9 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     return Promise.resolve(true);
   };
   const setLoadStatusRef = useRef(setLoadStatus);
-  setLoadStatusRef.current = setLoadStatus;
+  useLayoutEffect(() => {
+    setLoadStatusRef.current = setLoadStatus;
+  });
 
   const createInvoiceFromLoads = useCallback<Store["createInvoiceFromLoads"]>(
     async (companyId, loadIds, opts) => {
@@ -900,7 +904,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     const loadIds = draft.lines.map((l) => l.load_id).filter((x): x is string => !!x);
     if (loadIds.length) await releaseLoads(loadIds, "invoiced", ["delivered", "booked", "in_transit", "new"]);
     return full;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const saveInvoice = useCallback<Store["saveInvoice"]>(async (id, draft) => {
@@ -924,7 +928,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     const added = ins.data.map((l) => l.load_id).filter((x): x is string => !!x && !prev.lines.some((p) => p.load_id === x));
     if (added.length) await releaseLoads(added, data.status === "paid" ? "paid" : "invoiced", ["new", "booked", "in_transit", "delivered"]);
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // Re-reads an invoice and its loads after the database applied payments to them.
@@ -960,7 +964,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     else if (next === "paid") await releaseLoads(loadIds, "paid", ["invoiced", "delivered"]);
     else await releaseLoads(loadIds, "invoiced", ["paid", "delivered"]);
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const recordPayment = useCallback<Store["recordPayment"]>(async (invoiceId, p) => {
@@ -973,7 +977,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     setPayments((l) => upsert(l, normPayment(data as InvoicePayment)).sort(byPaidOn));
     await reloadInvoice(invoiceId);
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const deletePayment = useCallback(async (id: string) => {
@@ -983,7 +987,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     setPayments((l) => l.filter((x) => x.id !== id));
     if (pay) await reloadInvoice(pay.invoice_id);
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const deleteInvoice = useCallback(async (id: string) => {
@@ -994,7 +998,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     const loadIds = (inv?.lines || []).map((l) => l.load_id).filter((x): x is string => !!x);
     if (loadIds.length) await releaseLoads(loadIds, "delivered", ["invoiced", "paid"]);
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // ------------------------------------------------------------- settings/team

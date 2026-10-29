@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   if (!c.name) return log("skipped", "No business name on the contact");
 
   try {
-    const r = await upsertCarrier(a, c, "GoHighLevel");
+    const r = await upsertCarrier(a, c, "GoHighLevel", "client");
     return log(r.action, r.message, r.companyId);
   } catch (e) {
     return log("failed", (e as Error).message || "Unexpected error");

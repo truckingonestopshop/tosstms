@@ -4,19 +4,18 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
+  Briefcase,
   Building2,
-  Container,
   FileText,
   KeyRound,
   LayoutGrid,
   Layers,
-  Network,
   Route,
   Settings2,
   ShieldCheck,
   Stamp,
+  Target,
   Truck as TruckIcon,
-  Users,
   Wallet,
 } from "lucide-react";
 import { useState } from "react";
@@ -32,7 +31,7 @@ import type { Company } from "@/lib/types";
 // Loads, Invoices, Analytics), so Dispatch sits among the carrier's sections like DOT Compliance
 // and MCPT. TOSS Cloud serves every service; dispatch is one of them.
 
-export type CompanyTab = "units" | "trucks" | "trailers" | "drivers" | "docs" | "vault" | "profile" | "services" | "dot" | "mcpt" | "dispatch" | "billing";
+export type CompanyTab = "units" | "trucks" | "trailers" | "drivers" | "docs" | "vault" | "profile" | "services" | "sales" | "cases" | "dot" | "mcpt" | "dispatch" | "billing";
 
 /** Where a carrier tab lives: Dispatch and Billing have their own pages, the rest are on Fleet & Company. */
 export const companyTabHref = (t: CompanyTab) => (t === "dispatch" ? "/dispatch" : t === "billing" ? "/billing" : `/fleet?tab=${t}`);
@@ -68,7 +67,11 @@ export function CompanyHeader({ company }: { company: Company }) {
   );
 }
 
-/** The carrier's sections. Dispatch, DOT Compliance and MCPT show when the carrier has that service. */
+/**
+ * The carrier's sections. Units, Trucks, Trailers and Drivers sit together under one tab,
+ * Equipment & Drivers (its own sub-tabs). Dispatch, DOT Compliance and MCPT show when the carrier
+ * has that service.
+ */
 export function CompanyTabs({ company, value, onChange }: { company: Company; value: CompanyTab; onChange: (t: CompanyTab) => void }) {
   const { trucks, trailers, drivers, documents, view } = useStore();
   const office = view === "office";
@@ -77,23 +80,23 @@ export function CompanyTabs({ company, value, onChange }: { company: Company; va
   const d = drivers.filter((x) => x.company_id === company.id);
   const docs = documents.filter((x) => x.company_id === company.id);
 
-  const all: Record<CompanyTab, { value: CompanyTab; label: React.ReactNode; count?: number }> = {
-    units: { value: "units", label: <><Network className="h-4 w-4" /> Units</>, count: t.filter((x) => x.status !== "inactive").length },
-    trucks: { value: "trucks", label: <><TruckIcon className="h-4 w-4" /> Trucks</>, count: t.length },
-    trailers: { value: "trailers", label: <><Container className="h-4 w-4" /> Trailers</>, count: tl.length },
-    drivers: { value: "drivers", label: <><Users className="h-4 w-4" /> Drivers</>, count: d.length },
+  type Shown = Exclude<CompanyTab, "units" | "trucks" | "trailers" | "drivers"> | "equipment";
+  const all: Record<Shown, { value: Shown; label: React.ReactNode; count?: number }> = {
+    equipment: { value: "equipment", label: <><TruckIcon className="h-4 w-4" /> Equipment & Drivers</>, count: t.length + tl.length + d.length },
     docs: { value: "docs", label: <><FileText className="h-4 w-4" /> Documents</>, count: docs.length },
     vault: { value: "vault", label: <><KeyRound className="h-4 w-4" /> Credentials</> },
     profile: { value: "profile", label: <><Settings2 className="h-4 w-4" /> Profile</> },
     services: { value: "services", label: <><Layers className="h-4 w-4" /> Services</> },
+    sales: { value: "sales", label: <><Target className="h-4 w-4" /> Sales</> },
+    cases: { value: "cases", label: <><Briefcase className="h-4 w-4" /> Cases</> },
     dispatch: { value: "dispatch", label: <><Route className="h-4 w-4" /> Dispatch</> },
     billing: { value: "billing", label: <><Wallet className="h-4 w-4" /> Billing</> },
     dot: { value: "dot", label: <><ShieldCheck className="h-4 w-4" /> DOT Compliance</> },
     mcpt: { value: "mcpt", label: <><Stamp className="h-4 w-4" /> MCPT</> },
   };
-  const order: CompanyTab[] = office
-    ? ["profile", "services", "billing", "dispatch", "dot", "mcpt", "drivers", "trucks", "trailers", "docs", "vault", "units"]
-    : ["dispatch", "units", "trucks", "trailers", "drivers", "docs", "vault", "services", "dot", "mcpt", "billing", "profile"];
+  const order: Shown[] = office
+    ? ["profile", "services", "sales", "cases", "billing", "dispatch", "dot", "mcpt", "equipment", "docs", "vault"]
+    : ["dispatch", "equipment", "docs", "vault", "services", "sales", "cases", "dot", "mcpt", "billing", "profile"];
   const tabs = order
     .filter((k) =>
       k === "dispatch"
@@ -105,7 +108,15 @@ export function CompanyTabs({ company, value, onChange }: { company: Company; va
             : true,
     )
     .map((k) => all[k]);
-  return <Tabs<CompanyTab> value={value} onChange={onChange} className="mb-5" tabs={tabs} />;
+  const equipment = value === "units" || value === "trucks" || value === "trailers" || value === "drivers";
+  return (
+    <Tabs<Shown>
+      value={equipment ? "equipment" : (value as Shown)}
+      onChange={(v) => onChange(v === "equipment" ? (office ? "drivers" : "units") : v)}
+      className="mb-5"
+      tabs={tabs}
+    />
+  );
 }
 
 const DISPATCH = [

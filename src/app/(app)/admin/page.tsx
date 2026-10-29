@@ -63,7 +63,7 @@ function Admin() {
     load();
   }, [load]);
 
-  const users = data?.users || [];
+  const users = useMemo(() => data?.users || [], [data]);
   const stats = useMemo(
     () => ({
       total: users.length,

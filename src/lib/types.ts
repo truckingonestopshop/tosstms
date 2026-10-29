@@ -27,6 +27,8 @@ export interface Member {
   /** path in the public tms-avatars bucket */
   avatar_path?: string | null;
   updated_at?: string;
+  /** menu sections this person can open (null = all; owners always see all) */
+  sections?: string[] | null;
 }
 
 /** The fields a member edits on their profile. */
@@ -75,7 +77,13 @@ export interface Company {
   /** USDOT and MC authority status, kept apart (typed by the team; null = not recorded) */
   dot_status?: AuthorityStatus | null;
   mc_status?: AuthorityStatus | null;
+  /** CRM stage: a lead (prospect) or a client (customer) */
+  stage?: CompanyStage;
+  /** when it became a client */
+  became_client_at?: string | null;
 }
+
+export type CompanyStage = "lead" | "client";
 
 export type AuthorityStatus = "active" | "inactive" | "oos";
 
@@ -308,7 +316,7 @@ export interface LoadEvent {
 export interface CompanyEvent {
   id: string;
   company_id: string;
-  kind: "created" | "note" | "document" | "service" | "status" | "update";
+  kind: "created" | "note" | "document" | "service" | "status" | "update" | "case" | "sale";
   message: string | null;
   attachments: { id: string; name: string; path: string; mime: string | null }[];
   actor_id: string | null;
@@ -453,7 +461,8 @@ export type VaultCategory = "login" | "contact" | "custom";
 
 export interface VaultItem {
   id: string;
-  company_id: string;
+  /** null = TOSS's own login (Credentials section), not a carrier's */
+  company_id: string | null;
   category: VaultCategory;
   title: string;
   url: string | null;

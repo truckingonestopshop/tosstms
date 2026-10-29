@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { adminClient, adminConfigured } from "@/lib/server/admin";
-import { carrierByDot, upsertCarrier, type CarrierInput } from "@/lib/server/carriers";
+import { carrierByDot, startLeadOpportunity, upsertCarrier, type CarrierInput } from "@/lib/server/carriers";
 import { cloudOrigin } from "@/lib/server/handoff";
 
 export const runtime = "nodejs";
@@ -37,7 +37,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: Request) {
-  if (!(await member(req))) return fail(403, "No TOSS Cloud access");
+  const user = await member(req);
+  if (!user) return fail(403, "No TOSS Cloud access");
   const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!b) return fail(400, "Expected JSON");
   const input: CarrierInput = {
@@ -65,7 +66,9 @@ export async function POST(req: Request) {
   };
   if (!input.dot) return fail(400, "No USDOT number");
   if (!input.name) return fail(400, "No company name");
-  const r = await upsertCarrier(adminClient(), input, "TOSS Lead Hunter");
+  const r = await upsertCarrier(adminClient(), input, "TOSS Lead Hunter", "lead");
   if (r.action === "failed") return fail(500, r.message);
+  // A brand-new lead also starts in the Sales pipeline.
+  if (r.action === "created" && r.companyId) await startLeadOpportunity(adminClient(), r.companyId, input.name, "Lead Hunter", user.id);
   return NextResponse.json({ action: r.action, message: r.message, company: { id: r.companyId, name: input.name }, url: openUrl(req, r.companyId!) });
 }
