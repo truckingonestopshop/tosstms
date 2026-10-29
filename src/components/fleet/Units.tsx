@@ -434,7 +434,7 @@ function Chip({
  * The rig a driver drives: pick the truck (moves the driver off any other truck) and see
  * the trailer it pulls. Used in the driver sheet.
  */
-export function DriverRig({ driver }: { driver: Driver }) {
+export function DriverRig({ driver, readOnly }: { driver: Driver; readOnly?: boolean }) {
   const { trucks, trailerById, assignDriver } = useStore();
   const openSheet = useOpenSheet();
   const [busy, setBusy] = useState(false);
@@ -453,6 +453,9 @@ export function DriverRig({ driver }: { driver: Driver }) {
     <div className="rounded-xl border border-line bg-surface p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <span className="text-xs font-semibold uppercase tracking-wider text-fg-4 sm:w-14">Drives</span>
+        {readOnly ? (
+          <span className="text-[13px] text-fg-2">{truck ? "" : "No truck"}</span>
+        ) : (
         <Select
           value={truck?.id || ""}
           disabled={busy}
@@ -472,6 +475,7 @@ export function DriverRig({ driver }: { driver: Driver }) {
             );
           })}
         </Select>
+        )}
       </div>
       {truck && (
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[13px]">

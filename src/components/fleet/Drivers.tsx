@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { FilePlus2, Mail, Pencil, Phone, Trash2, User, X } from "lucide-react";
+import { Check, FilePlus2, Mail, Pencil, Phone, Trash2, User, X } from "lucide-react";
+import { SheetFiles } from "./SheetFiles";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Drawer, Modal } from "@/components/ui/Modal";
@@ -343,9 +344,12 @@ function PendingFiles({ files, onChange }: { files: PendingFile[]; onChange: (f:
   );
 }
 
+/** A driver at a glance (read only). Edit shows the truck picker, photos and document uploads. */
 export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null; onClose: () => void; onEdit: (d: Driver) => void }) {
-  const { trucks, loads, deleteDriver } = useStore();
+  const { trucks, loads, deleteDriver, documents } = useStore();
+  const [manageId, setManageId] = useState<string | null>(null);
   if (!driver) return null;
+  const manage = manageId === driver.id;
   const truck = trucks.find((t) => t.assigned_driver_id === driver.id);
   const recent = loads
     .filter((l) => l.driver_id === driver.id)
@@ -359,9 +363,20 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
       subtitle={truck ? `Unit ${truck.unit_number}` : "No truck assigned"}
       actions={
         <>
-          <Button size="sm" variant="ghost" onClick={() => onEdit(driver)}>
-            <Pencil className="h-3.5 w-3.5" /> Edit
-          </Button>
+          {manage ? (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => onEdit(driver)}>
+                <Pencil className="h-3.5 w-3.5" /> Edit details
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setManageId(null)}>
+                <Check className="h-3.5 w-3.5" /> Done
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="ghost" onClick={() => setManageId(driver.id)}>
+              <Pencil className="h-3.5 w-3.5" /> Edit
+            </Button>
+          )}
           <Button
             size="icon-sm"
             variant="danger-ghost"
@@ -393,7 +408,7 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
           <ExpiryPill label="Medical" date={driver.medical_card_expiry} />
           {driver.status === "inactive" && <Pill className={neutralPill}>Inactive</Pill>}
         </div>
-        <DriverRig driver={driver} />
+        <DriverRig driver={driver} readOnly={!manage} />
         <div className="grid grid-cols-2 gap-4">
           <KV label="Phone">
             {driver.phone ? (
@@ -443,14 +458,20 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
           )}
         </section>
 
-        <section>
-          <DriverPhotos driverId={driver.id} companyId={driver.company_id} compact />
-        </section>
+        {manage ? (
+          <>
+            <section>
+              <DriverPhotos driverId={driver.id} companyId={driver.company_id} compact />
+            </section>
 
-        <section>
-          <Eyebrow className="mb-2">Driver documents</Eyebrow>
-          <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId: driver.company_id, licenseExpiry: driver.cdl_expiry }} compact emptyText="No driver files yet." />
-        </section>
+            <section>
+              <Eyebrow className="mb-2">Driver documents</Eyebrow>
+              <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId: driver.company_id, licenseExpiry: driver.cdl_expiry }} compact emptyText="No driver files yet." />
+            </section>
+          </>
+        ) : (
+          <SheetFiles title="Files" docs={documents.filter((x) => x.driver_id === driver.id)} empty="No driver files yet. Click Edit to add them." />
+        )}
       </div>
     </Drawer>
   );

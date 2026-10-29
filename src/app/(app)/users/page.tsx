@@ -15,12 +15,13 @@ import { toast } from "@/lib/toast";
 import type { Member, Role } from "@/lib/types";
 
 // Users: the TOSS Cloud team, their roles, and which menu sections each person can open.
-// Owners always see everything. Settings (your own profile) is always open. Inviting, disabling and
+// Owners see every Cloud section. Settings (your own profile) is always open. TOSS Accounting is only
+// for people given it, owners included, and only someone who has it can give it. Inviting, disabling and
 // removing people stays in Settings → Team and the admin panel.
 
 // Cloud sections; Accounting (TOSS's own money) is its own tick, never part of "every section".
 const PICKABLE = SECTIONS.filter((s) => s.key !== "settings" && s.key !== "users" && s.key !== "accounting");
-const hasAccounting = (m: Member) => m.role === "owner" || !!m.sections?.includes("accounting");
+const hasAccounting = (m: Member) => !!m.sections?.includes("accounting");
 /** "All sections" stays null unless Accounting is added, then it's every key plus accounting. */
 const cloudAll = (m: Member) => !m.sections || PICKABLE.every((s) => m.sections!.includes(s.key));
 
@@ -124,6 +125,8 @@ export default function UsersPage() {
 
 /** Pick the sections one person can open. */
 function AccessModal({ member, onClose }: { member: Member | null; onClose: () => void }) {
+  const { me, memberById } = useStore();
+  const canGiveAccounting = hasAccounting(memberById(me.id) ?? ({} as Member));
   const [all, setAll] = useState(true);
   const [picked, setPicked] = useState<string[]>([]);
   const [acc, setAcc] = useState(false);
@@ -183,6 +186,7 @@ function AccessModal({ member, onClose }: { member: Member | null; onClose: () =
         ))}
       </div>
       {!all && picked.length === 0 && <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">They&apos;ll only be able to open Settings.</p>}
+      {canGiveAccounting && (
       <div className="mt-4 border-t border-line pt-4">
         <Checkbox
           checked={acc}
@@ -194,6 +198,7 @@ function AccessModal({ member, onClose }: { member: Member | null; onClose: () =
           }
         />
       </div>
+      )}
     </Modal>
   );
 }

@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Container, Link2, Link2Off, Pencil, Plus, Search, Trash2, Truck as TruckIcon } from "lucide-react";
+import { Check, Container, Link2, Link2Off, Pencil, Plus, Search, Trash2, Truck as TruckIcon } from "lucide-react";
+import { SheetFiles } from "./SheetFiles";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Drawer, Modal } from "@/components/ui/Modal";
@@ -346,9 +347,12 @@ function HookControl({ trailer }: { trailer: Trailer }) {
   );
 }
 
+/** A trailer at a glance (read only). Edit shows hooking, photos and document uploads. */
 export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | null; onClose: () => void; onEdit: (t: Trailer) => void }) {
-  const { trucks, loads, deleteTrailer, driverById } = useStore();
+  const { trucks, loads, deleteTrailer, driverById, documents } = useStore();
+  const [manageId, setManageId] = useState<string | null>(null);
   if (!trailer) return null;
+  const manage = manageId === trailer.id;
   const holder = trucks.find((t) => t.trailer_id === trailer.id);
   const recent = loads.filter((l) => l.trailer_id === trailer.id).length;
   const specs: [string, React.ReactNode][] = [
@@ -369,9 +373,20 @@ export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | 
       subtitle={[trailerLine(trailer), holder ? `on unit ${holder.unit_number}` : "in the yard", driverById(holder?.assigned_driver_id)?.name].filter(Boolean).join(" · ")}
       actions={
         <>
-          <Button size="sm" variant="ghost" onClick={() => onEdit(trailer)}>
-            <Pencil className="h-3.5 w-3.5" /> Edit
-          </Button>
+          {manage ? (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => onEdit(trailer)}>
+                <Pencil className="h-3.5 w-3.5" /> Edit details
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setManageId(null)}>
+                <Check className="h-3.5 w-3.5" /> Done
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="ghost" onClick={() => setManageId(trailer.id)}>
+              <Pencil className="h-3.5 w-3.5" /> Edit
+            </Button>
+          )}
           <Button
             size="icon-sm"
             variant="danger-ghost"
@@ -397,7 +412,7 @@ export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | 
       }
     >
       <div className="space-y-6 p-5">
-        <HookControl trailer={trailer} />
+        {manage && <HookControl trailer={trailer} />}
         <section>
           <Eyebrow className="mb-2">Specs</Eyebrow>
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
@@ -429,13 +444,19 @@ export function TrailerSheet({ trailer, onClose, onEdit }: { trailer: Trailer | 
           {trailer.notes && <p className="mt-2 whitespace-pre-wrap text-[13px] text-fg-3">{trailer.notes}</p>}
           {recent > 0 && <p className="mt-2 text-xs text-fg-4">Used on {recent} load{recent === 1 ? "" : "s"}</p>}
         </section>
-        <section>
-          <TrailerPhotos trailerId={trailer.id} companyId={trailer.company_id} trailerType={trailer.trailer_type} compact />
-        </section>
-        <section>
-          <Eyebrow className="mb-2">Trailer documents</Eyebrow>
-          <DocumentsPanel target={{ scope: "trailer", id: trailer.id, companyId: trailer.company_id }} compact emptyText="No trailer files yet." />
-        </section>
+        {manage ? (
+          <>
+            <section>
+              <TrailerPhotos trailerId={trailer.id} companyId={trailer.company_id} trailerType={trailer.trailer_type} compact />
+            </section>
+            <section>
+              <Eyebrow className="mb-2">Trailer documents</Eyebrow>
+              <DocumentsPanel target={{ scope: "trailer", id: trailer.id, companyId: trailer.company_id }} compact emptyText="No trailer files yet." />
+            </section>
+          </>
+        ) : (
+          <SheetFiles title="Files and photos" docs={documents.filter((x) => x.trailer_id === trailer.id)} empty="No trailer files yet. Click Edit to add them." />
+        )}
       </div>
     </Drawer>
   );

@@ -82,7 +82,8 @@ export const sectionFor = (path: string) => (ACCOUNTING_SECTION.match(path) ? AC
  * Accounting (TOSS's own money) is the exception: only owners and people given it on Users.
  */
 export function canOpen(m: { role: string; sections?: string[] | null } | undefined, key: string) {
-  if (key === "accounting") return !!m && (m.role === "owner" || !!m.sections?.includes("accounting"));
+  // Accounting is never automatic, not even for owners: only people given it (database: can_accounting).
+  if (key === "accounting") return !!m?.sections?.includes("accounting");
   if (!m || m.role === "owner" || ALWAYS.has(key)) return true;
   return !m.sections || m.sections.includes(key);
 }

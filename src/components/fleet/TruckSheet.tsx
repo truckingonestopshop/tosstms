@@ -17,10 +17,14 @@ import { toast } from "@/lib/toast";
 import { ACTIVE_STATUSES, cn, fmtDay, lane, num, uid } from "@/lib/format";
 import { availability, defaultPitch, equipmentLine, pitchFor, truckModelLine } from "@/lib/pitch";
 import type { DeskBlock, Truck } from "@/lib/types";
+import { SheetFiles, SheetNotes } from "./SheetFiles";
+import { trailerLine } from "./Trailers";
 
 /** Everything a dispatcher needs on a broker call, one tap to copy. */
 export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; onClose: () => void; onEdit: (t: Truck) => void }) {
-  const { companyById, driverById, trailerById, memberById, me, updateTruck, loads } = useStore();
+  const { companyById, driverById, trailerById, memberById, me, updateTruck, loads, documents } = useStore();
+  // Read only until Edit: then the pitch, trailer, location, gear, notes and files can be changed.
+  const [manageId, setManageId] = useState<string | null>(null);
   const [pitchEdit, setPitchEdit] = useState(false);
   const [pitch, setPitch] = useState("");
   const [loc, setLoc] = useState("");
@@ -38,6 +42,7 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
   }, [truck?.id]);
 
   if (!truck) return null;
+  const manage = manageId === truck.id;
   const company = companyById(truck.company_id);
   const driver = driverById(truck.assigned_driver_id);
   const trailer = trailerById(truck.trailer_id);
@@ -79,10 +84,20 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
       }
       subtitle={`${company?.name || ""} · ${equipmentLine(truck)}`}
       actions={
-        <Button size="sm" variant="ghost" onClick={() => onEdit(truck)}>
-          <Pencil className="h-3.5 w-3.5" />
-          Edit
-        </Button>
+        manage ? (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => onEdit(truck)}>
+              <Pencil className="h-3.5 w-3.5" /> Edit details
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => (setManageId(null), setPitchEdit(false))}>
+              <Check className="h-3.5 w-3.5" /> Done
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={() => setManageId(truck.id)}>
+            <Pencil className="h-3.5 w-3.5" /> Edit
+          </Button>
+        )
       }
     >
       <div className="space-y-6 p-5">
@@ -90,7 +105,7 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
         <section>
           <div className="mb-2 flex items-center justify-between">
             <Eyebrow>Broker pitch</Eyebrow>
-            <div className="flex gap-1">
+            <div className={cn("flex gap-1", !manage && "hidden")}>
               {truck.custom_pitch && !pitchEdit && (
                 <Button
                   size="xs"
@@ -164,11 +179,21 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
         {/* Location & availability */}
         <section>
           <Eyebrow className="mb-2">Trailer</Eyebrow>
-          <TrailerPicker companyId={truck.company_id} value={truck.trailer_id} truckId={truck.id} />
+          {manage ? (
+            <TrailerPicker companyId={truck.company_id} value={truck.trailer_id} truckId={truck.id} />
+          ) : (
+            <div className="rounded-xl border border-line px-3.5 py-2.5 text-[13px] text-fg-2">{trailer ? `${trailer.unit_number} · ${trailerLine(trailer)}` : "Power only (no trailer)"}</div>
+          )}
         </section>
 
         <section>
           <Eyebrow className="mb-2">Where is it now</Eyebrow>
+          {!manage ? (
+            <div className="rounded-xl border border-line px-3.5 py-2.5 text-[13px] text-fg-2">
+              {truck.current_location || "Location not set"}
+              {truck.available_date ? ` · available ${fmtDay(truck.available_date)}${truck.available_time ? ` ${truck.available_time.slice(0, 5)}` : ""}` : ""}
+            </div>
+          ) : (
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input value={loc} onChange={(e) => setLoc(e.target.value)} placeholder="City, ST" className="flex-1" />
             <Input type="date" value={avail} onChange={(e) => setAvail(e.target.value)} className="sm:w-44" />
@@ -183,6 +208,7 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
               Update
             </Button>
           </div>
+          )}
         </section>
 
         {/* Quick copy */}
@@ -218,6 +244,10 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
                     <div className="truncate text-[13px] font-medium text-fg">{a.name}</div>
                     {a.details && <div className="truncate text-xs text-fg-3">{a.details}</div>}
                   </div>
+                  {!manage ? (
+                    <span className="tnum text-[13px] text-fg-2">× {a.quantity}</span>
+                  ) : (
+                  <>
                   <QtyStepper
                     value={a.quantity}
                     onChange={(q) => updateTruck(truck.id, { accessories: truck.accessories.map((x) => (x.id === a.id ? { ...x, quantity: q } : x)) })}
@@ -229,11 +259,13 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
                   >
                     <X className="h-4 w-4" />
                   </button>
+                  </>
+                  )}
                 </li>
               ))}
             </ul>
             <form
-              className="flex gap-2 border-t border-line p-2"
+              className={cn("flex gap-2 border-t border-line p-2", !manage && "hidden")}
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!gearName.trim()) return;
@@ -250,7 +282,7 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
         </section>
 
         {/* Pinned notes */}
-        <DeskBlocks blocks={truck.desk_blocks} onChange={saveBlocks} />
+        {manage ? <DeskBlocks blocks={truck.desk_blocks} onChange={saveBlocks} /> : <SheetNotes blocks={truck.desk_blocks} />}
 
         {/* Loads */}
         <section>
@@ -276,14 +308,20 @@ export function TruckSheet({ truck, onClose, onEdit }: { truck: Truck | null; on
           )}
         </section>
 
-        <section>
-          <TruckPhotos truckId={truck.id} companyId={truck.company_id} compact />
-        </section>
+        {manage ? (
+          <>
+            <section>
+              <TruckPhotos truckId={truck.id} companyId={truck.company_id} compact />
+            </section>
 
-        <section>
-          <Eyebrow className="mb-2">Truck documents</Eyebrow>
-          <DocumentsPanel target={{ scope: "truck", id: truck.id, companyId: truck.company_id }} compact emptyText="No truck files yet." />
-        </section>
+            <section>
+              <Eyebrow className="mb-2">Truck documents</Eyebrow>
+              <DocumentsPanel target={{ scope: "truck", id: truck.id, companyId: truck.company_id }} compact emptyText="No truck files yet." />
+            </section>
+          </>
+        ) : (
+          <SheetFiles title="Files and photos" docs={documents.filter((x) => x.truck_id === truck.id)} empty="No truck files yet. Click Edit to add them." />
+        )}
       </div>
     </Drawer>
   );
