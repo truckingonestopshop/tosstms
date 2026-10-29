@@ -16,7 +16,6 @@ import {
   Wallet,
 } from "lucide-react";
 import { Card, Page, PageHeader } from "@/components/ui/Bits";
-import { Segmented } from "@/components/ui/Field";
 import { BarChart } from "@/components/analytics/Charts";
 import { BarRow, Kpi, Mini, Panel, amber, green, red } from "@/components/dashboard/Widgets";
 import { sb } from "@/lib/db";
@@ -32,7 +31,8 @@ import { useOptions } from "@/components/ui/OptionList";
 import { muteActive, ownDocItems, pendingItems, useMutes } from "@/lib/pending";
 import { payState } from "@/lib/invoice";
 import { loadDay, series } from "@/lib/analytics";
-import { PERIODS, inRange, lastMonths, ranges, revenue, weeksIn, type Period } from "@/lib/dashboard";
+import { inRange, lastMonths, periodName, PERIODS, ranges, revenue, weeksIn, type Period } from "@/lib/dashboard";
+import { PeriodMenu, defaultCustom } from "@/components/dashboard/PeriodPicker";
 import type { ServiceKey } from "@/lib/types";
 
 // Dashboard: every area at a glance. Key numbers with the change vs the period before, TOSS revenue
@@ -58,8 +58,9 @@ export default function DashboardPage() {
   const { mutes } = useMutes();
   const [charges, setCharges] = useState<Charge[]>([]);
   const [period, setPeriod] = useState<Period>("month");
+  const [custom, setCustom] = useState(defaultCustom);
   const t = today();
-  const { cur, prev } = ranges(period, t);
+  const { cur, prev } = ranges(period, t, custom);
 
   useEffect(() => {
     let alive = true;
@@ -164,7 +165,7 @@ export default function DashboardPage() {
   if (idle) attention.push({ key: "idle", icon: Route, text: `${idle} truck${idle > 1 ? "s" : ""} without a load`, sub: "Find them freight", href: "/loads?view=map", tone: "blue" });
 
   const firstName = (me.fullName || "").split(" ")[0];
-  const periodLabel = PERIODS.find((p) => p.v === period)!.label.toLowerCase();
+  const periodLabel = periodName(period, cur);
   const maxStage = Math.max(1, ...mainStages.map((s) => openOpps.filter((o) => o.stage_id === s.id).reduce((a, o) => a + Number(o.value), 0)));
   const subsBySvc = new Map<string, number>();
   for (const c of subs) subsBySvc.set(c.service, (subsBySvc.get(c.service) || 0) + monthly(c));
@@ -179,7 +180,7 @@ export default function DashboardPage() {
           </>
         }
         title={`${greeting()}${firstName ? `, ${firstName}` : ""}`}
-        actions={<Segmented value={period} onChange={setPeriod} options={PERIODS.map((p) => ({ value: p.v, label: p.label }))} className="scrollbar-none overflow-x-auto" />}
+        actions={<PeriodMenu value={period} onChange={setPeriod} options={PERIODS} custom={custom} onCustom={setCustom} />}
       />
 
       {/* Key numbers, vs the period before */}

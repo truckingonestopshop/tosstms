@@ -10,6 +10,7 @@ import { sb } from "@/lib/db";
 import { useStore } from "@/lib/store";
 import { cn, fmtDay, money, num, today } from "@/lib/format";
 import { PERIODS, inRange, lastMonths, ranges, type Period, type Range } from "@/lib/dashboard";
+import { PeriodMenu, defaultCustom } from "@/components/dashboard/PeriodPicker";
 import { billingTotals, type Charge } from "@/lib/billing";
 import { payState, balance } from "@/lib/invoice";
 import { isRotting, oppNumber, weighted, type Opportunity } from "@/lib/sales";
@@ -24,6 +25,7 @@ export function SalesDashboard() {
   const { pipelines, stages, opps, tasks, reasons, agreements } = useSales();
   const { inScope, memberName, invoices, payments, scope, companies } = useStore();
   const [period, setPeriod] = useState<Period>("month");
+  const [custom, setCustom] = useState(defaultCustom);
   const [pid, setPid] = useState("");
   const [now] = useState(() => Date.now());
   const [charges, setCharges] = useState<Charge[]>([]);
@@ -38,7 +40,7 @@ export function SalesDashboard() {
     };
   }, [scope]);
 
-  const { cur, prev } = ranges(period, t);
+  const { cur, prev } = ranges(period, t, custom);
   const all = opps.rows.filter((o) => inScope(o.company_id) && (!pid || o.pipeline_id === pid));
   const stageOf = (o: Opportunity) => stages.rows.find((s) => s.id === o.stage_id);
   const open = all.filter((o) => o.status === "open");
@@ -120,13 +122,7 @@ export function SalesDashboard() {
   return (
     <>
       <div className="mb-4 flex flex-wrap gap-2">
-        <Select value={period} onChange={(e) => setPeriod(e.target.value as Period)} className="w-auto" aria-label="Period">
-          {PERIODS.map((p) => (
-            <option key={p.v} value={p.v}>
-              {p.label}
-            </option>
-          ))}
-        </Select>
+        <PeriodMenu value={period} onChange={setPeriod} options={PERIODS} custom={custom} onCustom={setCustom} />
         <Select value={pid} onChange={(e) => setPid(e.target.value)} className="w-auto" aria-label="Pipeline">
           <option value="">All pipelines</option>
           {pipelines.rows.map((p) => (

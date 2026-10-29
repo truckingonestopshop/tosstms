@@ -18,7 +18,8 @@ import { isOpen, type Opportunity } from "@/lib/sales";
 import type { Case } from "@/lib/cases";
 import { muteActive, pendingItems, useMutes } from "@/lib/pending";
 import { loadDay } from "@/lib/analytics";
-import { PERIODS, inRange, ranges, revenue, type Period, type Range } from "@/lib/dashboard";
+import { PERIODS, inRange, periodName, ranges, revenue, type Period, type Range } from "@/lib/dashboard";
+import { PeriodMenu, defaultCustom } from "@/components/dashboard/PeriodPicker";
 import type { Company, ServiceInfo, ServiceKey } from "@/lib/types";
 
 // Services: a dashboard of every TOSS service across the companies in view. For each service: how
@@ -56,10 +57,11 @@ export default function ServicesPage() {
   const { mutes } = useMutes();
   const [charges, setCharges] = useState<Charge[]>([]);
   const [period, setPeriod] = useState<Period>("month");
+  const [custom, setCustom] = useState(defaultCustom);
   const [clients, setClients] = useState<Clients>("active");
   const [open, setOpen] = useState<ServiceKey | null>(null);
   const t = today();
-  const { cur, prev } = ranges(period, t);
+  const { cur, prev } = ranges(period, t, custom);
 
   useEffect(() => {
     let alive = true;
@@ -173,7 +175,7 @@ export default function ServicesPage() {
   const revPrev = cards.reduce((a, c) => a + c.prevRevenue, 0);
   const mrr = cards.reduce((a, c) => a + c.mrr, 0);
   const perClient = withService.length ? sold / withService.length : 0;
-  const periodLabel = PERIODS.find((p) => p.v === period)!.label.toLowerCase();
+  const periodLabel = periodName(period, cur);
   const maxCount = Math.max(1, ...cards.map((c) => c.count));
   const sel = cards.find((c) => c.key === open) || null;
 
@@ -192,7 +194,7 @@ export default function ServicesPage() {
                 { value: "all", label: "Incl. inactive" },
               ]}
             />
-            <Segmented value={period} onChange={setPeriod} options={PERIODS.map((p) => ({ value: p.v, label: p.label }))} className="scrollbar-none overflow-x-auto" />
+            <PeriodMenu value={period} onChange={setPeriod} options={PERIODS} custom={custom} onCustom={setCustom} />
           </>
         }
       />

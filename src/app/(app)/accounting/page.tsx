@@ -12,7 +12,8 @@ import { useAcc } from "@/components/accounting/AccountingProvider";
 import { TxModal } from "@/components/accounting/TxModal";
 import { useStore } from "@/lib/store";
 import { addDays, cn, fmtDay, money, moneyShort, today } from "@/lib/format";
-import { PERIODS, inRange, lastMonths, ranges, type Period, type Range } from "@/lib/dashboard";
+import { PERIODS, inRange, lastMonths, periodName, ranges, type Period, type Range } from "@/lib/dashboard";
+import { PeriodMenu, defaultCustom } from "@/components/dashboard/PeriodPicker";
 import { balances, missingFile, perMonth, type AccTransaction, type TxKind } from "@/lib/accounting";
 
 // TOSS Accounting dashboard: money in / out / net and available funds, vs the period before (or all
@@ -23,7 +24,7 @@ import { balances, missingFile, perMonth, type AccTransaction, type TxKind } fro
 // "All time" is Accounting's own: total money in / out since the first transaction.
 type AccPeriod = Period | "all";
 const ACC_PERIODS: { v: AccPeriod; label: string }[] = [...PERIODS, { v: "all", label: "All time" }];
-const accRanges = (p: AccPeriod, t: string) => (p === "all" ? { cur: { from: "1900-01-01", to: t }, prev: null } : ranges(p, t));
+const accRanges = (p: AccPeriod, t: string, custom: Range) => (p === "all" ? { cur: { from: "1900-01-01", to: t }, prev: null } : ranges(p, t, custom));
 type Chart = "out" | "in" | "net";
 
 const days = (r: Range) => Math.round((new Date(r.to).getTime() - new Date(r.from).getTime()) / 86400000) + 1;
@@ -32,12 +33,13 @@ export default function AccountingDashboard() {
   const { memberName, me } = useStore();
   const { txs, categories, merchants, methods, accounts, recurring, settings } = useAcc();
   const [period, setPeriod] = useState<AccPeriod>("month");
+  const [custom, setCustom] = useState(defaultCustom);
   const [chart, setChart] = useState<Chart>("out");
   const [adding, setAdding] = useState<TxKind | null>(null);
   const [editing, setEditing] = useState<AccTransaction | null>(null);
   const t = today();
-  const { cur, prev } = accRanges(period, t);
-  const periodLabel = ACC_PERIODS.find((p) => p.v === period)!.label.toLowerCase();
+  const { cur, prev } = accRanges(period, t, custom);
+  const periodLabel = period === "all" ? "all time" : periodName(period, cur);
 
   const sum = (kind: TxKind, r: Range) => txs.rows.filter((x) => x.kind === kind && inRange(x.date, r)).reduce((s, x) => s + Number(x.amount), 0);
   const inCur = sum("income", cur);
@@ -119,7 +121,7 @@ export default function AccountingDashboard() {
         title={firstName ? `Money, ${firstName}` : "Money"}
         actions={
           <>
-            <Segmented value={period} onChange={setPeriod} options={ACC_PERIODS.map((p) => ({ value: p.v, label: p.label }))} className="scrollbar-none overflow-x-auto" />
+            <PeriodMenu value={period} onChange={setPeriod} options={ACC_PERIODS} custom={custom} onCustom={setCustom} />
             <Button variant="secondary" onClick={() => setAdding("income")}>
               <ArrowDownLeft className="h-4 w-4" /> Incoming
             </Button>
