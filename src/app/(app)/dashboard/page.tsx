@@ -26,7 +26,8 @@ import { addDays, cn, isCanceled, money, moneyShort, num, today } from "@/lib/fo
 import { SERVICES, serviceLabel } from "@/lib/services";
 import { billingTotals, invoiceOpen, monthly, runningSub, type Charge, type ChargeService } from "@/lib/billing";
 import { isOpen, type Agreement, type OppTask, type Opportunity, type Pipeline, type Stage } from "@/lib/sales";
-import { CS_CATEGORIES, PRIORITIES, type Case } from "@/lib/cases";
+import { PRIORITIES, type Case } from "@/lib/cases";
+import { useOptions } from "@/components/ui/OptionList";
 import { muteActive, ownDocItems, pendingItems, useMutes } from "@/lib/pending";
 import { payState } from "@/lib/invoice";
 import { loadDay, series } from "@/lib/analytics";
@@ -119,6 +120,7 @@ export default function DashboardPage() {
   // ---- cases ------------------------------------------------------------------------------------------------
   const work = cs.filter((c) => c.kind === "work");
   const service = cs.filter((c) => c.kind === "customer_service");
+  const csCats = useOptions("case_cs");
   const open = (l: Case[]) => l.filter((c) => c.status !== "closed");
   const closedCases = cs.filter((c) => inRange(c.closed_at, cur));
   const avgClose = closedCases.length ? closedCases.reduce((s, c) => s + (new Date(c.closed_at!).getTime() - new Date(c.created_at).getTime()) / 86400000, 0) / closedCases.length : null;
@@ -350,9 +352,9 @@ export default function DashboardPage() {
             ]}
           />
           <div className="mt-4 space-y-2">
-            {CS_CATEGORIES.map((c) => {
-              const n = service.filter((x) => x.category === c.v && inRange(x.created_at, cur)).length;
-              return n ? <BarRow key={c.v} label={c.label} value={n} max={Math.max(1, service.filter((x) => inRange(x.created_at, cur)).length)} right={num(n)} color="bg-sky-500" /> : null;
+            {csCats.rows.map((c) => {
+              const n = service.filter((x) => x.category === c.value && inRange(x.created_at, cur)).length;
+              return n ? <BarRow key={c.value} label={c.label} value={n} max={Math.max(1, service.filter((x) => inRange(x.created_at, cur)).length)} right={num(n)} color="bg-sky-500" /> : null;
             })}
             {service.filter((x) => inRange(x.created_at, cur)).length === 0 && <div className="text-xs text-fg-4">No customer service cases {periodLabel}.</div>}
           </div>

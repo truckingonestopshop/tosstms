@@ -13,6 +13,7 @@ export interface Product {
   billing_interval: ChargeInterval | null;
   description: string | null;
   active: boolean;
+  sort: number;
   created_at: string;
   updated_at: string;
 }
@@ -70,8 +71,6 @@ export const OPP_STATUSES: { v: OppStatus; label: string; pill: string }[] = [
   { v: "abandoned", label: "Abandoned", pill: "bg-surface-2 text-fg-3 ring-line" },
 ];
 export const statusMeta = (s: OppStatus) => OPP_STATUSES.find((x) => x.v === s) ?? OPP_STATUSES[0];
-
-export const SOURCES = ["Call list", "Lead Hunter", "GoHighLevel", "Referral", "Website", "Facebook", "Instagram", "LinkedIn", "Email", "Text", "WhatsApp", "Fiverr", "Cross sale", "Other"];
 
 export interface Opportunity {
   id: string;

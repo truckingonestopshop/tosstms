@@ -7,10 +7,10 @@ import type { AccAccount, AccCategory, AccField, AccMerchant, AccMethod, AccRecu
 
 /** Everything TOSS Accounting reads, kept live. */
 export function useAccounting() {
-  const accounts = useLiveTable<AccAccount>("acc_accounts", { order: "name", ascending: true });
+  const accounts = useLiveTable<AccAccount>("acc_accounts", { order: "sort", ascending: true });
   const categories = useLiveTable<AccCategory>("acc_categories", { order: "sort", ascending: true });
   const merchants = useLiveTable<AccMerchant>("acc_merchants", { order: "name", ascending: true });
-  const methods = useLiveTable<AccMethod>("acc_payment_methods", { order: "name", ascending: true });
+  const methods = useLiveTable<AccMethod>("acc_payment_methods", { order: "sort", ascending: true });
   const fields = useLiveTable<AccField>("acc_custom_fields", { order: "sort", ascending: true });
   const recurring = useLiveTable<AccRecurring>("acc_recurring", { order: "next_date", ascending: true });
   const txs = useLiveTable<AccTransaction>("acc_transactions", { order: "date" });

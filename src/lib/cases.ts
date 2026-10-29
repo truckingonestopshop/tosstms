@@ -57,15 +57,5 @@ export const PRIORITIES: { v: CasePriority; label: string; pill: string }[] = [
 export const statusOf = (s: CaseStatus) => CASE_STATUSES.find((x) => x.v === s)!;
 export const priorityOf = (p: CasePriority) => PRIORITIES.find((x) => x.v === p)!;
 
-/** Customer service: what the customer reported. */
-export const CS_CATEGORIES: { v: string; label: string }[] = [
-  { v: "overcharge", label: "Overcharge" },
-  { v: "service", label: "Unhappy with the service" },
-  { v: "dispatcher", label: "Unhappy with the dispatcher" },
-  { v: "safety_manager", label: "Unhappy with the safety account manager" },
-  { v: "suggestion", label: "Suggestion" },
-  { v: "other", label: "Other" },
-];
-
 /** "1h 30m" */
 export const hoursLabel = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? ` ${min % 60}m` : ""}` : `${min}m`);

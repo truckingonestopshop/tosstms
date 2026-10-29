@@ -5,6 +5,7 @@ import { FileText, Paperclip, Trash2, UploadCloud, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { EditLink } from "@/components/ui/OptionList";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { errMsg, sb } from "@/lib/db";
 import { useStore } from "@/lib/store";
@@ -415,7 +416,7 @@ export function TxModal({ open, kind, tx, onClose }: { open: boolean; kind: TxKi
           </Field>
         )}
         {k !== "transfer" && (
-          <Field label="Category" required>
+          <Field label="Category" required action={<EditLink href="/accounting/setup?tab=categories" />}>
             <SelectAdd
               value={d.category_id}
               onChange={(v) => set({ category_id: v })}
@@ -427,7 +428,7 @@ export function TxModal({ open, kind, tx, onClose }: { open: boolean; kind: TxKi
           </Field>
         )}
         {k === "expense" && (
-          <Field label="Payment method" required>
+          <Field label="Payment method" required action={<EditLink href="/accounting/setup?tab=methods" />}>
             <SelectAdd
               value={d.payment_method_id}
               onChange={(v) => set({ payment_method_id: v })}
@@ -439,7 +440,7 @@ export function TxModal({ open, kind, tx, onClose }: { open: boolean; kind: TxKi
           </Field>
         )}
         {(k === "income" || k === "transfer") && (
-          <Field label={k === "income" ? "Available in" : "From account"} required>
+          <Field label={k === "income" ? "Available in" : "From account"} required action={<EditLink href="/accounting/setup?tab=accounts" />}>
             <SelectAdd
               value={d.account_id}
               onChange={(v) => set({ account_id: v })}

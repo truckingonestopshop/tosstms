@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Avatar, Card, Empty, Pill, neutralPill } from "@/components/ui/Bits";
 import { Checkbox, Field, Input, Segmented, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { EditLink, EditListButton, useOptions } from "@/components/ui/OptionList";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { errMsg, sb } from "@/lib/db";
 import { useStore } from "@/lib/store";
@@ -16,7 +17,7 @@ import { cn, fmtDay, money, today } from "@/lib/format";
 import { SERVICES, serviceLabel } from "@/lib/services";
 import type { ChargeService } from "@/lib/billing";
 import type { ServiceKey } from "@/lib/types";
-import { OPP_STATUSES, SOURCES, daysInStage, isRotting, oppNumber, statusMeta, weighted, type OppStatus, type Opportunity, type Stage } from "@/lib/sales";
+import { OPP_STATUSES, daysInStage, isRotting, oppNumber, statusMeta, weighted, type OppStatus, type Opportunity, type Stage } from "@/lib/sales";
 import { stagesOf, useSales } from "./SalesProvider";
 import { useCloseFlow, usePatchOpps } from "./OppClose";
 import { OpportunityDetail } from "./OpportunityDetail";
@@ -27,6 +28,7 @@ type CloseFilter = "" | "overdue" | "month" | "30" | "none";
 
 /** Opportunities like GHL: a board per pipeline (drag between stages) and a list with bulk actions. */
 export function Opportunities() {
+  const sources = useOptions("opp_source");
   const pathname = usePathname();
   const params = useSearchParams();
   const { pipelines, stages, opps, tasks } = useSales();
@@ -183,11 +185,11 @@ export function Opportunities() {
         </Select>
         <Select value={source} onChange={(e) => setSource(e.target.value)} className="w-auto" aria-label="Source">
           <option value="">All sources</option>
-          {SOURCES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
+          {sources.choices(source).map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
         </Select>
         {allTags.length > 0 && (
           <Select value={tag} onChange={(e) => setTag(e.target.value)} className="w-auto" aria-label="Tag">
@@ -365,7 +367,7 @@ export function Opportunities() {
                       </td>
                       <td className="tnum px-3 py-2.5 text-right font-medium text-fg">{money(Number(o.value), { cents: false })}</td>
                       <td className="px-3 py-2.5 text-fg-2">{o.owner_id ? memberName(o.owner_id) : "—"}</td>
-                      <td className="px-3 py-2.5 text-fg-2">{o.source || "—"}</td>
+                      <td className="px-3 py-2.5 text-fg-2">{sources.label(o.source) || "—"}</td>
                       <td className={cn("px-3 py-2.5", o.status === "open" && o.expected_close && o.expected_close < t ? "text-red-600 dark:text-red-400" : "text-fg-2")}>{o.expected_close ? fmtDay(o.expected_close) : "—"}</td>
                       <td className="px-4 py-2.5 text-right text-[11px] text-fg-4">{fmtDay(o.updated_at.slice(0, 10))}</td>
                     </tr>
@@ -523,6 +525,7 @@ function BulkBar({ selected, onDone, close, exportCsv }: { selected: Opportunity
 
 /** New opportunity: the essentials, then the full card opens. */
 export function NewOpportunity({ open, onClose, onCreated, pipelineId, companyId }: { open: boolean; onClose: () => void; onCreated: (o: Opportunity) => void; pipelineId?: string; companyId?: string }) {
+  const sources = useOptions("opp_source");
   const { pipelines, stages, opps, products, items } = useSales();
   const { companies, members, me, scopedCompany, companyById } = useStore();
   type D = { company_id: string; title: string; pipeline_id: string; stage_id: string; value: string; owner_id: string; source: string; contact_name: string; expected_close: string; service: ChargeService; product_id: string };
@@ -630,7 +633,7 @@ export function NewOpportunity({ open, onClose, onCreated, pipelineId, companyId
             ))}
           </Select>
         </Field>
-        <Field label="Product" hint="Added as the first line; more in the card">
+        <Field label="Product" hint="Added as the first line; more in the card" action={<EditLink href="/sales?tab=products" />}>
           <Select
             value={d.product_id}
             onChange={(e) => {
@@ -639,7 +642,8 @@ export function NewOpportunity({ open, onClose, onCreated, pipelineId, companyId
             }}
           >
             <option value="">None</option>
-            {products.rows
+            {[...products.rows]
+              .sort((a, b) => a.sort - b.sort)
               .filter((p) => p.active)
               .map((p) => (
                 <option key={p.id} value={p.id}>
@@ -671,12 +675,12 @@ export function NewOpportunity({ open, onClose, onCreated, pipelineId, companyId
             ))}
           </Select>
         </Field>
-        <Field label="Source">
+        <Field label="Source" action={<EditListButton list="opp_source" />}>
           <Select value={d.source} onChange={(e) => set({ source: e.target.value })}>
             <option value="">—</option>
-            {SOURCES.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {sources.choices(d.source).map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
               </option>
             ))}
           </Select>

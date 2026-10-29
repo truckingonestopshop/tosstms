@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Checkbox, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { confirmDialog } from "@/components/ui/Confirm";
+import { SortHandle, sortRow, useSortable } from "@/components/ui/Sortable";
 import { useStore } from "@/lib/store";
 import { byTypeOrder, isPhotoDoc } from "@/lib/docs";
 import { cn } from "@/lib/format";
@@ -39,12 +40,13 @@ export function DocTypesModal({ open, onClose }: { open: boolean; onClose: () =>
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
-  const row = (t: DocType) => {
+  const row = (t: DocType, sort: ReturnType<typeof useSortable>) => {
     const used = documents.filter((d) => d.doc_type === t.key).length;
     const req = t.scope === "load" ? LOAD_REQ : OTHER_REQ;
     return (
-      <li key={t.key} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+      <li key={t.key} {...sort.rowProps(t.key)} className={cn("flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3", sortRow)}>
         <div className="flex min-w-0 flex-1 items-center gap-2">
+          <SortHandle {...sort.handle(t.key)} />
           {editing === t.key ? (
             <>
               <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8 flex-1" autoFocus />
@@ -160,14 +162,23 @@ export function DocTypesModal({ open, onClose }: { open: boolean; onClose: () =>
         {SCOPES.map((s) => {
           const list = docTypes.filter((t) => t.scope === s.v && !isPhotoDoc(t.key)).sort(byTypeOrder);
           if (!list.length) return null;
-          return (
-            <section key={s.v}>
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-fg-3">{s.title}</div>
-              <ul className="divide-y divide-line rounded-xl border border-line">{list.map(row)}</ul>
-            </section>
-          );
+          return <TypeSection key={s.v} title={s.title} list={list} row={row} onReorder={(keys) => keys.forEach((k, i) => list.find((t) => t.key === k)?.sort !== i && updateDocType(k, { sort: i }))} />;
         })}
       </div>
     </Modal>
+  );
+}
+
+/** One group of types, in the order they're offered; drag or use the arrows to change it. */
+function TypeSection({ title, list, row, onReorder }: { title: string; list: DocType[]; row: (t: DocType, sort: ReturnType<typeof useSortable>) => React.ReactNode; onReorder: (keys: string[]) => void }) {
+  const sort = useSortable(
+    list.map((t) => t.key),
+    onReorder,
+  );
+  return (
+    <section>
+      <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-fg-3">{title}</div>
+      <ul className="divide-y divide-line rounded-xl border border-line">{list.map((t) => row(t, sort))}</ul>
+    </section>
   );
 }

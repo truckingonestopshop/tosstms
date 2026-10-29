@@ -6,29 +6,36 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, Pill, neutralPill } from "@/components/ui/Bits";
 import { Checkbox, Field, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { ChoicesEditor } from "@/components/ui/ChoicesEditor";
+import { SortHandle, bySort, saveOrder, sortRow, useSortable } from "@/components/ui/Sortable";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { errMsg, sb } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
-import type { OppField, Pipeline, Stage } from "@/lib/sales";
+import type { LostReason, OppField, Pipeline, Stage } from "@/lib/sales";
 import { stagesOf, useSales } from "./SalesProvider";
 
 // Pipelines setup (like GHL): pipelines, their stages (add, rename, color, win %, "too long after
 // X days", drag to reorder, delete and move the opportunities), lost reasons and opportunity custom
-// fields.
+// fields. Every list here can be added to, renamed, reordered and deleted.
 
 const COLORS = ["#a1a1aa", "#0ea5e9", "#6366f1", "#8b5cf6", "#ec4899", "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#16a34a", "#14b8a6", "#64748b"];
 
 export function PipelinesSetup() {
   const { pipelines, stages, opps } = useSales();
   const [sel, setSel] = useState<string | null>(null);
-  const current = pipelines.rows.find((p) => p.id === sel) || pipelines.rows[0] || null;
+  const current = pipelines.rows.find((p) => p.id === sel) || [...pipelines.rows].sort(bySort)[0] || null;
   const list = stagesOf(stages.rows, current?.id);
   const [drag, setDrag] = useState<string | null>(null);
   const [moving, setMoving] = useState<{ kind: "stage"; stage: Stage } | { kind: "pipeline"; pipeline: Pipeline } | null>(null);
+  const pipes = [...pipelines.rows].sort(bySort);
+  const pipeSort = useSortable(
+    pipes.map((p) => p.id),
+    (ids) => saveOrder("tms_pipelines", ids.map((id) => pipes.find((p) => p.id === id)!), pipelines.put),
+  );
 
   const addPipeline = async () => {
-    const { data, error } = await sb().from("tms_pipelines").insert({ name: "New pipeline", sort: pipelines.rows.length }).select().single();
+    const { data, error } = await sb().from("tms_pipelines").insert({ name: "New pipeline", sort: pipes.length }).select().single();
     if (error) return toast.error(errMsg(error));
     pipelines.put(data as Pipeline);
     // A pipeline starts with the usual stages.
@@ -78,13 +85,16 @@ export function PipelinesSetup() {
     <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
       <Card className="self-start p-2">
         <div className="px-2 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-4">Pipelines</div>
-        {pipelines.rows.map((p) => {
+        {pipes.map((p) => {
           const n = opps.rows.filter((o) => o.pipeline_id === p.id && o.status === "open").length;
           return (
-            <button key={p.id} onClick={() => setSel(p.id)} className={cn("flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px]", current?.id === p.id ? "bg-surface-2 font-semibold text-fg" : "text-fg-2 hover:bg-surface-2/60", !p.active && "opacity-50")}>
-              <span className="flex-1 truncate">{p.name}</span>
-              <span className="text-[11px] text-fg-4">{n} open</span>
-            </button>
+            <div key={p.id} {...pipeSort.rowProps(p.id)} className={cn("flex items-center gap-1 rounded-lg pl-1", sortRow, current?.id === p.id && "bg-surface-2")}>
+              <SortHandle {...pipeSort.handle(p.id)} />
+              <button onClick={() => setSel(p.id)} className={cn("flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-2 text-left text-[13px]", current?.id === p.id ? "font-semibold text-fg" : "text-fg-2 hover:text-fg", !p.active && "opacity-50")}>
+                <span className="flex-1 truncate">{p.name}</span>
+                <span className="text-[11px] text-fg-4">{n} open</span>
+              </button>
+            </div>
           );
         })}
         <Button size="sm" variant="ghost" className="mt-1 w-full justify-start" onClick={addPipeline}>
@@ -269,9 +279,21 @@ function MoveModal({ value, onClose, onDone }: { value: { kind: "stage"; stage: 
 function LostReasons() {
   const { reasons, opps } = useSales();
   const [name, setName] = useState("");
+  const list = [...reasons.rows].sort(bySort);
+  const sort = useSortable(
+    list.map((r) => r.id),
+    (ids) => saveOrder("tms_lost_reasons", ids.map((id) => list.find((r) => r.id === id)!), reasons.put),
+  );
+  const remove = async (r: LostReason) => {
+    const n = opps.rows.filter((o) => o.lost_reason_id === r.id).length;
+    if (!(await confirmDialog({ title: `Delete ${r.name}?`, body: n ? `${n} lost opportunit${n === 1 ? "y loses" : "ies lose"} the reason (their history keeps it). To stop offering it, untick Active instead.` : undefined, confirmLabel: "Delete", danger: true }))) return;
+    const { error } = await sb().from("tms_lost_reasons").delete().eq("id", r.id);
+    if (error) return toast.error(errMsg(error));
+    reasons.drop(r.id);
+  };
   const add = async () => {
     if (!name.trim()) return;
-    const { data, error } = await sb().from("tms_lost_reasons").insert({ name: name.trim(), sort: reasons.rows.length * 10 }).select().single();
+    const { data, error } = await sb().from("tms_lost_reasons").insert({ name: name.trim(), sort: list.length }).select().single();
     if (error) return toast.error(errMsg(error));
     reasons.put(data as never);
     setName("");
@@ -280,10 +302,11 @@ function LostReasons() {
     <Card>
       <CardHeader title="Lost reasons" subtitle="Picked when an opportunity is marked lost" />
       <ul className="divide-y divide-line">
-        {reasons.rows.map((r) => (
-          <li key={r.id} className={cn("flex items-center gap-2 px-4 py-2 sm:px-5", !r.active && "opacity-50")}>
+        {list.map((r) => (
+          <li key={r.id} {...sort.rowProps(r.id)} className={cn("flex items-center gap-2 py-2 pl-2 pr-4 sm:pr-5", sortRow, !r.active && "opacity-50")}>
+            <SortHandle {...sort.handle(r.id)} />
             <Input
-              key={r.id}
+              key={`${r.id}-${r.name}`}
               defaultValue={r.name}
               onBlur={async (e) => {
                 const v = e.target.value.trim();
@@ -304,6 +327,9 @@ function LostReasons() {
               }}
               label="Active"
             />
+            <button type="button" onClick={() => remove(r)} className="rounded p-1 text-fg-4 hover:text-red-600" aria-label={`Delete ${r.name}`}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
           </li>
         ))}
       </ul>
@@ -319,15 +345,17 @@ function LostReasons() {
 
 function OppFields() {
   const { fields } = useSales();
-  const [e, setE] = useState<(Partial<OppField> & { optionsText?: string }) | null>(null);
+  const [e, setE] = useState<Partial<OppField> | null>(null);
+  const list = [...fields.rows].sort(bySort);
+  const sort = useSortable(
+    list.map((f) => f.id),
+    (ids) => saveOrder("tms_opportunity_fields", ids.map((id) => list.find((f) => f.id === id)!), fields.put),
+  );
   const save = async () => {
     if (!e?.label?.trim()) return toast.error("Name the field");
-    const options = (e.optionsText || "")
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean);
+    const options = e.options || [];
     if (e.type === "select" && !options.length) return toast.error("Add the dropdown choices");
-    const row = { label: e.label.trim(), type: e.type || "text", options, required: !!e.required, active: e.active ?? true, sort: e.sort ?? fields.rows.length };
+    const row = { label: e.label.trim(), type: e.type || "text", options, required: !!e.required, active: e.active ?? true, sort: e.sort ?? list.length };
     const res = e.id ? await sb().from("tms_opportunity_fields").update(row).eq("id", e.id).select().single() : await sb().from("tms_opportunity_fields").insert(row).select().single();
     if (res.error) return toast.error(errMsg(res.error));
     fields.put(res.data as OppField);
@@ -342,14 +370,15 @@ function OppFields() {
   };
   return (
     <Card>
-      <CardHeader title="Opportunity custom fields" subtitle="Extra fields on every opportunity" actions={<Button size="sm" variant="outline" onClick={() => setE({ type: "text", active: true, optionsText: "" })}><Plus className="h-4 w-4" /> Add field</Button>} />
+      <CardHeader title="Opportunity custom fields" subtitle="Extra fields on every opportunity" actions={<Button size="sm" variant="outline" onClick={() => setE({ type: "text", active: true, options: [] })}><Plus className="h-4 w-4" /> Add field</Button>} />
       {fields.rows.length === 0 ? (
         <div className="px-5 py-6 text-sm text-fg-4">None yet (e.g. Number of trucks, Decision maker, Current dispatcher).</div>
       ) : (
         <ul className="divide-y divide-line">
-          {fields.rows.map((f) => (
-            <li key={f.id}>
-              <button type="button" onClick={() => setE({ ...f, optionsText: f.options.join(", ") })} className={cn("flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-surface-2/50 sm:px-5", !f.active && "opacity-50")}>
+          {list.map((f) => (
+            <li key={f.id} {...sort.rowProps(f.id)} className={cn("flex items-center gap-1 pl-2", sortRow)}>
+              <SortHandle {...sort.handle(f.id)} />
+              <button type="button" onClick={() => setE(f)} className={cn("flex min-w-0 flex-1 items-center justify-between py-2.5 pl-2 pr-4 text-left hover:bg-surface-2/50 sm:pr-5", !f.active && "opacity-50")}>
                 <span className="text-[13px] text-fg">{f.label}</span>
                 <span className="text-xs text-fg-3">
                   {f.type}
@@ -396,9 +425,10 @@ function OppFields() {
               </Select>
             </Field>
             {e.type === "select" && (
-              <Field label="Choices" hint="Comma separated" className="col-span-2">
-                <Input value={e.optionsText || ""} onChange={(x) => setE({ ...e, optionsText: x.target.value })} />
-              </Field>
+              <div className="col-span-2">
+                <div className="mb-1.5 text-xs font-semibold text-fg-2">Choices</div>
+                <ChoicesEditor value={e.options || []} onChange={(options) => setE({ ...e, options })} />
+              </div>
             )}
             <Checkbox className="col-span-2" checked={!!e.required} onChange={(v) => setE({ ...e, required: v })} label="Required" />
             <Checkbox className="col-span-2" checked={e.active ?? true} onChange={(v) => setE({ ...e, active: v })} label="Active" />

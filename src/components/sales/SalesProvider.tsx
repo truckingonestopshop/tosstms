@@ -16,7 +16,7 @@ function useSalesData() {
     tasks: useLiveTable<OppTask>("tms_opportunity_tasks", { order: "created_at", ascending: true }),
     reasons: useLiveTable<LostReason>("tms_lost_reasons", { order: "sort", ascending: true }),
     fields: useLiveTable<OppField>("tms_opportunity_fields", { order: "sort", ascending: true }),
-    products: useLiveTable<Product>("tms_products", { order: "name", ascending: true }),
+    products: useLiveTable<Product>("tms_products", { order: "sort", ascending: true }),
     templates: useLiveTable<Template>("tms_templates", { order: "name", ascending: true }),
     agreements: useLiveTable<Agreement>("tms_agreements"),
   };

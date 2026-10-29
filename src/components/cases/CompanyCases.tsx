@@ -8,7 +8,7 @@ import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
 import { cn, fmtDay } from "@/lib/format";
 import { priorityOf, statusOf, type Case, type CaseKind } from "@/lib/cases";
-import { categoryLabel } from "./Cases";
+import { useCategoryLabel } from "./Cases";
 
 /** The carrier's Cases tab: its work cases and customer service cases, open first. Each opens on
  *  the Cases / Customer Service screen. */
@@ -25,6 +25,7 @@ export function CompanyCases({ companyId }: { companyId: string }) {
 
 function List({ kind, companyId, rows, loaded }: { kind: CaseKind; companyId: string; rows: Case[]; loaded: boolean }) {
   const { memberName } = useStore();
+  const catLabel = useCategoryLabel(kind);
   const base = kind === "work" ? "/cases" : "/customer-service";
   const sorted = [...rows].sort((a, b) => Number(a.status === "closed") - Number(b.status === "closed") || b.updated_at.localeCompare(a.updated_at));
   const open = rows.filter((c) => c.status !== "closed").length;
@@ -55,7 +56,7 @@ function List({ kind, companyId, rows, loaded }: { kind: CaseKind; companyId: st
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-medium text-fg">{c.title}</div>
                     <div className="truncate text-[11px] text-fg-4">
-                      {[categoryLabel(kind, c.category), c.owner_id ? memberName(c.owner_id) : "Unassigned", c.due_date ? `due ${fmtDay(c.due_date)}` : ""].filter(Boolean).join(" · ")}
+                      {[catLabel(c.category), c.owner_id ? memberName(c.owner_id) : "Unassigned", c.due_date ? `due ${fmtDay(c.due_date)}` : ""].filter(Boolean).join(" · ")}
                     </div>
                   </div>
                   {c.priority !== "normal" && c.status !== "closed" && <Pill className={pr.pill}>{pr.label}</Pill>}

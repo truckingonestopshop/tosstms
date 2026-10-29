@@ -8,6 +8,8 @@ import { Card, Empty, Page, PageHeader, Pill, Tabs, neutralPill } from "@/compon
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { confirmDialog } from "@/components/ui/Confirm";
+import { ChoicesEditor } from "@/components/ui/ChoicesEditor";
+import { SortHandle, bySort, saveOrder, sortRow, useSortable } from "@/components/ui/Sortable";
 import { useAcc } from "@/components/accounting/AccountingProvider";
 import { errMsg, sb } from "@/lib/db";
 import { toast } from "@/lib/toast";
@@ -16,7 +18,8 @@ import { ACCOUNT_KINDS, FIELD_TYPES, METHOD_KINDS, balances, type AccAccount, ty
 
 // Setup: everything the forms use, all editable. Accounts (with balances), categories (sub-categories,
 // colors, monthly budgets), merchants (default category), payment methods (tied to an account),
-// custom fields, and whether a receipt / proof is required.
+// custom fields, and whether a receipt / proof is required. Lists are in the order the forms offer
+// them; drag the handle or use the arrows to change it.
 
 type Tab = "accounts" | "categories" | "merchants" | "methods" | "fields" | "settings";
 const TABS: Tab[] = ["accounts", "categories", "merchants", "methods", "fields", "settings"];
@@ -102,10 +105,13 @@ function Shell({ onAdd, addLabel, children, empty, count }: { onAdd: () => void;
   );
 }
 
-function Row({ onClick, left, right, muted }: { onClick: () => void; left: React.ReactNode; right?: React.ReactNode; muted?: boolean }) {
+type Sorter = ReturnType<typeof useSortable>;
+
+function Row({ onClick, left, right, muted, sort, id }: { onClick: () => void; left: React.ReactNode; right?: React.ReactNode; muted?: boolean; sort?: Sorter; id?: string }) {
   return (
-    <li>
-      <button type="button" onClick={onClick} className={cn("flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-2/50 sm:px-5", muted && "opacity-50")}>
+    <li {...(sort && id ? sort.rowProps(id) : {})} className={cn(sort && "flex items-center pl-2", sort && sortRow)}>
+      {sort && id && <SortHandle {...sort.handle(id)} />}
+      <button type="button" onClick={onClick} className={cn("flex w-full min-w-0 items-center gap-3 py-3 text-left hover:bg-surface-2/50", sort ? "pl-2 pr-4 sm:pr-5" : "px-4 sm:px-5", muted && "opacity-50")}>
         <div className="min-w-0 flex-1">{left}</div>
         {right && <div className="shrink-0 text-right">{right}</div>}
       </button>
@@ -157,12 +163,19 @@ function Accounts() {
   const { save, remove } = useSave<AccAccount>("acc_accounts", accounts.put, accounts.drop);
   const [e, setE] = useState<Partial<AccAccount> | null>(null);
   const bal = balances(accounts.rows, txs.rows, methods.rows);
+  const list = [...accounts.rows].sort(bySort);
+  const sort = useSortable(
+    list.map((a) => a.id),
+    (ids) => saveOrder("acc_accounts", ids.map((id) => list.find((a) => a.id === id)!), accounts.put),
+  );
   return (
     <>
-      <Shell onAdd={() => setE({ kind: "bank", opening_balance: 0, active: true })} addLabel="Add account" empty="Add TOSS's bank accounts, cards, cash and online accounts (PayPal, Stripe…)." count={accounts.rows.length}>
-        {accounts.rows.map((a) => (
+      <Shell onAdd={() => setE({ kind: "bank", opening_balance: 0, active: true, sort: list.length })} addLabel="Add account" empty="Add TOSS's bank accounts, cards, cash and online accounts (PayPal, Stripe…)." count={accounts.rows.length}>
+        {list.map((a) => (
           <Row
             key={a.id}
+            id={a.id}
+            sort={sort}
             muted={!a.active}
             onClick={() => setE(a)}
             left={
@@ -239,13 +252,26 @@ function Categories() {
   const { save, remove } = useSave<AccCategory>("acc_categories", categories.put, categories.drop);
   const [e, setE] = useState<Partial<AccCategory> | null>(null);
   const used = (id: string) => txs.rows.filter((t) => t.category_id === id).length;
+  const all = [...categories.rows].sort(bySort);
   const group = (kind: "expense" | "income") => {
-    const top = categories.rows.filter((c) => c.kind === kind && !c.parent_id);
-    return top.flatMap((c) => [c, ...categories.rows.filter((x) => x.parent_id === c.id)]);
+    const top = all.filter((c) => c.kind === kind && !c.parent_id);
+    return top.flatMap((c) => [c, ...all.filter((x) => x.parent_id === c.id)]);
   };
+  // Moving a category moves it among its siblings; sub-categories follow their parent.
+  const flat = [...group("expense"), ...group("income")];
+  const sort = useSortable(
+    flat.map((c) => c.id),
+    (ids) => {
+      const moved = ids.find((id, i) => id !== flat[i]?.id);
+      const c = moved && flat.find((x) => x.id === moved);
+      if (!c) return;
+      const siblings = (l: string[]) => l.map((id) => flat.find((x) => x.id === id)!).filter((x) => x.kind === c.kind && x.parent_id === c.parent_id);
+      saveOrder("acc_categories", siblings(ids), categories.put);
+    },
+  );
   return (
     <>
-      <Shell onAdd={() => setE({ kind: "expense", active: true, color: COLORS[6], sort: 999 })} addLabel="Add category" empty="Add categories for expenses and incoming money." count={categories.rows.length}>
+      <Shell onAdd={() => setE({ kind: "expense", active: true, color: COLORS[6], sort: all.length })} addLabel="Add category" empty="Add categories for expenses and incoming money." count={categories.rows.length}>
         {(["expense", "income"] as const).map((k) => [
           <li key={k} className="bg-surface-2/50 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-4 sm:px-5">
             {k === "expense" ? "Expenses" : "Incoming"}
@@ -253,6 +279,8 @@ function Categories() {
           ...group(k).map((c) => (
             <Row
               key={c.id}
+              id={c.id}
+              sort={sort}
               muted={!c.active}
               onClick={() => setE(c)}
               left={
@@ -277,7 +305,7 @@ function Categories() {
         onClose={() => setE(null)}
         onSave={async () => {
           if (!e?.name?.trim()) return toast.error("Name the category");
-          const row = { name: e.name.trim(), kind: e.kind, parent_id: e.parent_id || null, color: e.color || null, budget_monthly: e.budget_monthly ? Number(e.budget_monthly) : null, active: e.active ?? true, sort: e.sort ?? 999 };
+          const row = { name: e.name.trim(), kind: e.kind, parent_id: e.parent_id || null, color: e.color || null, budget_monthly: e.budget_monthly ? Number(e.budget_monthly) : null, active: e.active ?? true, sort: e.sort ?? all.length };
           if (await save(e.id || null, row as Partial<AccCategory>)) setE(null);
         }}
         onDelete={e?.id ? async () => (await remove(e.id!, e.name || "category", "Transactions in it become uncategorized. To keep history tidy, untick Active instead.")) && setE(null) : undefined}
@@ -395,12 +423,19 @@ function Methods() {
   const { methods, accounts } = useAcc();
   const { save, remove } = useSave<AccMethod>("acc_payment_methods", methods.put, methods.drop);
   const [e, setE] = useState<Partial<AccMethod> | null>(null);
+  const list = [...methods.rows].sort(bySort);
+  const sort = useSortable(
+    list.map((m) => m.id),
+    (ids) => saveOrder("acc_payment_methods", ids.map((id) => list.find((m) => m.id === id)!), methods.put),
+  );
   return (
     <>
-      <Shell onAdd={() => setE({ kind: "card", active: true })} addLabel="Add payment method" empty="Add the cards, ACH, Zelle, checks… TOSS pays with, and the account each one comes out of." count={methods.rows.length}>
-        {methods.rows.map((m) => (
+      <Shell onAdd={() => setE({ kind: "card", active: true, sort: list.length })} addLabel="Add payment method" empty="Add the cards, ACH, Zelle, checks… TOSS pays with, and the account each one comes out of." count={methods.rows.length}>
+        {list.map((m) => (
           <Row
             key={m.id}
+            id={m.id}
+            sort={sort}
             muted={!m.active}
             onClick={() => setE(m)}
             left={
@@ -423,7 +458,7 @@ function Methods() {
         onClose={() => setE(null)}
         onSave={async () => {
           if (!e?.name?.trim()) return toast.error("Name the payment method");
-          const row = { name: e.name.trim(), kind: e.kind, account_id: e.account_id || null, last4: e.last4 || null, active: e.active ?? true };
+          const row = { name: e.name.trim(), kind: e.kind, account_id: e.account_id || null, last4: e.last4 || null, active: e.active ?? true, sort: e.sort ?? list.length };
           if (await save(e.id || null, row as Partial<AccMethod>)) setE(null);
         }}
         onDelete={e?.id ? async () => (await remove(e.id!, e.name || "payment method", "Expenses keep their amounts but lose the method.")) && setE(null) : undefined}
@@ -467,15 +502,22 @@ function Methods() {
 function Fields() {
   const { fields } = useAcc();
   const { save, remove } = useSave<AccField>("acc_custom_fields", fields.put, fields.drop);
-  const [e, setE] = useState<(Partial<AccField> & { optionsText?: string }) | null>(null);
+  const [e, setE] = useState<Partial<AccField> | null>(null);
+  const list = [...fields.rows].sort(bySort);
+  const sort = useSortable(
+    list.map((f) => f.id),
+    (ids) => saveOrder("acc_custom_fields", ids.map((id) => list.find((f) => f.id === id)!), fields.put),
+  );
   return (
     <>
-      <Shell onAdd={() => setE({ type: "text", applies_to: "all", required: false, active: true, options: [], optionsText: "", sort: fields.rows.length })} addLabel="Add field" empty="Add your own fields to the expense and incoming forms (e.g. Project, Reimbursable, Invoice #)." count={fields.rows.length}>
-        {fields.rows.map((f) => (
+      <Shell onAdd={() => setE({ type: "text", applies_to: "all", required: false, active: true, options: [], sort: list.length })} addLabel="Add field" empty="Add your own fields to the expense and incoming forms (e.g. Project, Reimbursable, Invoice #)." count={fields.rows.length}>
+        {list.map((f) => (
           <Row
             key={f.id}
+            id={f.id}
+            sort={sort}
             muted={!f.active}
-            onClick={() => setE({ ...f, optionsText: f.options.join(", ") })}
+            onClick={() => setE(f)}
             left={
               <>
                 <div className="text-[13px] font-semibold text-fg">{f.label}</div>
@@ -495,10 +537,7 @@ function Fields() {
         onClose={() => setE(null)}
         onSave={async () => {
           if (!e?.label?.trim()) return toast.error("Name the field");
-          const options = (e.optionsText || "")
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean);
+          const options = e.options || [];
           if (e.type === "select" && !options.length) return toast.error("Add the dropdown choices");
           const row = { label: e.label.trim(), type: e.type, options, applies_to: e.applies_to, required: !!e.required, active: e.active ?? true, sort: e.sort ?? 0 };
           if (await save(e.id || null, row as Partial<AccField>)) setE(null);
@@ -527,9 +566,10 @@ function Fields() {
               </Select>
             </Field>
             {e.type === "select" && (
-              <Field label="Choices" className="col-span-2" hint="Comma separated">
-                <Input value={e.optionsText || ""} onChange={(x) => setE({ ...e, optionsText: x.target.value })} placeholder="e.g. Office, Field, Remote" />
-              </Field>
+              <div className="col-span-2">
+                <div className="mb-1.5 text-xs font-semibold text-fg-2">Choices</div>
+                <ChoicesEditor value={e.options || []} onChange={(options) => setE({ ...e, options })} />
+              </div>
             )}
             <Checkbox className="col-span-2" checked={!!e.required} onChange={(v) => setE({ ...e, required: v })} label="Required" />
             <Checkbox className="col-span-2" checked={e.active ?? true} onChange={(v) => setE({ ...e, active: v })} label="Active (shown on the forms)" />

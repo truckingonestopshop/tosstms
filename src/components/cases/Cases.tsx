@@ -9,15 +9,14 @@ import { Card, Empty, Pill, Stat, neutralPill } from "@/components/ui/Bits";
 import { Field, Input, Segmented, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { confirmDialog } from "@/components/ui/Confirm";
+import { EditListButton, useOptions, type OptionListKey } from "@/components/ui/OptionList";
 import { errMsg, sb } from "@/lib/db";
 import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { cn, fmtDay, money, num, relTime, today } from "@/lib/format";
-import { SERVICES, serviceLabel } from "@/lib/services";
-import { CASE_STATUSES, CS_CATEGORIES, PRIORITIES, hoursLabel, priorityOf, statusOf, type Case, type CaseEntry, type CaseKind, type CasePriority, type CaseStatus, type EntryKind } from "@/lib/cases";
+import { CASE_STATUSES, PRIORITIES, hoursLabel, priorityOf, statusOf, type Case, type CaseEntry, type CaseKind, type CasePriority, type CaseStatus, type EntryKind } from "@/lib/cases";
 import type { Opportunity } from "@/lib/sales";
-import type { ServiceKey } from "@/lib/types";
 
 // Cases (kind "work") and Customer Service (kind "customer_service"): the same screen. A case
 // belongs to a company, can be connected to an invoice and an opportunity, and keeps a log of
@@ -34,8 +33,9 @@ const COPY: Record<CaseKind, { one: string; many: string; categoryLabel: string;
   },
 };
 
-export const categoryLabel = (kind: CaseKind, v: string | null) =>
-  !v ? "" : kind === "customer_service" ? (CS_CATEGORIES.find((c) => c.v === v)?.label ?? v) : v === "other" ? "Other" : serviceLabel(v as ServiceKey);
+const CATEGORY_LIST: Record<CaseKind, OptionListKey> = { work: "case_work", customer_service: "case_cs" };
+/** Case category names come from an editable list (Edit list next to the field). */
+export const useCategoryLabel = (kind: CaseKind) => useOptions(CATEGORY_LIST[kind]).label;
 
 type Show = "open" | "mine" | "closed" | "all";
 
@@ -52,11 +52,12 @@ export function CasesView({ kind }: { kind: CaseKind }) {
   const [openId, setOpenId] = useState<string | null>(() => params.get("case"));
   const t = today();
   const copy = COPY[kind];
+  const catLabel = useCategoryLabel(kind);
 
   const scoped = cases.rows.filter((c) => !c.company_id || inScope(c.company_id));
   const list = scoped
     .filter((c) => (show === "open" ? c.status !== "closed" : show === "closed" ? c.status === "closed" : show === "mine" ? c.owner_id === me.id && c.status !== "closed" : true))
-    .filter((c) => !q || `#${c.number} ${c.title} ${companyById(c.company_id)?.name || ""} ${memberName(c.owner_id)} ${categoryLabel(kind, c.category)}`.toLowerCase().includes(q.toLowerCase()))
+    .filter((c) => !q || `#${c.number} ${c.title} ${companyById(c.company_id)?.name || ""} ${memberName(c.owner_id)} ${catLabel(c.category)}`.toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0) || PRIORITIES.findIndex((p) => p.v === b.priority) - PRIORITIES.findIndex((p) => p.v === a.priority) || b.created_at.localeCompare(a.created_at));
 
   const ids = new Set(scoped.map((c) => c.id));
@@ -123,7 +124,7 @@ export function CasesView({ kind }: { kind: CaseKind }) {
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] font-semibold text-fg">{c.title}</div>
                       <div className="truncate text-xs text-fg-3">
-                        {[companyById(c.company_id)?.name, categoryLabel(kind, c.category), c.owner_id ? memberName(c.owner_id) : "Unassigned"].filter(Boolean).join(" · ")}
+                        {[companyById(c.company_id)?.name, catLabel(c.category), c.owner_id ? memberName(c.owner_id) : "Unassigned"].filter(Boolean).join(" · ")}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -177,20 +178,15 @@ function useOpportunities(companyId: string) {
 }
 
 function CategorySelect({ kind, value, onChange }: { kind: CaseKind; value: string; onChange: (v: string) => void }) {
+  const opts = useOptions(CATEGORY_LIST[kind]);
   return (
     <Select value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">—</option>
-      {kind === "customer_service"
-        ? CS_CATEGORIES.map((c) => (
-            <option key={c.v} value={c.v}>
-              {c.label}
-            </option>
-          ))
-        : [...SERVICES.map((s) => ({ v: s.key as string, label: s.label })), { v: "other", label: "Other" }].map((c) => (
-            <option key={c.v} value={c.v}>
-              {c.label}
-            </option>
-          ))}
+      {opts.choices(value).map((c) => (
+        <option key={c.value} value={c.value}>
+          {c.label}
+        </option>
+      ))}
     </Select>
   );
 }
@@ -273,7 +269,7 @@ function NewCaseModal({ kind, open, onClose, preset, onCreated }: { kind: CaseKi
         <Field label="Title" required className="sm:col-span-2">
           <Input value={d.title} onChange={(e) => set({ title: e.target.value })} placeholder={kind === "customer_service" ? "e.g. Charged twice for October" : "e.g. Renew IFTA and file Q3"} autoFocus />
         </Field>
-        <Field label={COPY[kind].categoryLabel}>
+        <Field label={COPY[kind].categoryLabel} action={<EditListButton list={CATEGORY_LIST[kind]} />}>
           <CategorySelect kind={kind} value={d.category} onChange={(v) => set({ category: v })} />
         </Field>
         <Field label="Priority">
@@ -346,6 +342,7 @@ function CaseModal({
 }) {
   const { companyById, members, invoices, me, isOwner, setScope } = useStore();
   const opps = useOpportunities(c?.company_id || "");
+  const catLabel = useCategoryLabel(c?.kind ?? "work");
   const [entryKind, setEntryKind] = useState<EntryKind>("note");
   const [body, setBody] = useState("");
   const [minutes, setMinutes] = useState("");
@@ -420,7 +417,7 @@ function CaseModal({
       onClose={onClose}
       size="lg"
       title={`#${c.number} · ${c.title}`}
-      subtitle={[company?.name, categoryLabel(c.kind, c.category)].filter(Boolean).join(" · ")}
+      subtitle={[company?.name, catLabel(c.category)].filter(Boolean).join(" · ")}
       footer={
         <>
           {isOwner && (

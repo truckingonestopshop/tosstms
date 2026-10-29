@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef } from "react";
-import { Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, Plus, X } from "lucide-react";
 import { LogoMark } from "@/components/brand/Logo";
 import { CHARGE_PRESETS, CREDIT_PRESETS, adjustmentLine, blankLine, mondayOf, totals, type InvoiceDraft } from "@/lib/invoice";
 import { addDays, cn, fmtDay, money } from "@/lib/format";
@@ -59,6 +59,33 @@ function D({ value, onChange, editing, className }: { value: string | null; onCh
 const pctOf = (amount: number, gross: number) => `${+((Number(amount) / Number(gross)) * 100).toFixed(2)}%`;
 
 /** Secondary text on the printed page (slate blue-grey, like the letterhead). */
+/** Edit-mode buttons on a line: move up / down, copy, remove. */
+function LineTools({ first, last, onMove, onCopy, onRemove, label = "line" }: { first: boolean; last: boolean; onMove: (dir: -1 | 1) => void; onCopy?: () => void; onRemove: () => void; label?: string }) {
+  const btn = "rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-25";
+  return (
+    <div className="flex items-center">
+      <div className="flex flex-col">
+        <button onClick={() => onMove(-1)} disabled={first} className={btn} aria-label={`Move ${label} up`}>
+          <ArrowUp className="h-3 w-3" />
+        </button>
+        <button onClick={() => onMove(1)} disabled={last} className={btn} aria-label={`Move ${label} down`}>
+          <ArrowDown className="h-3 w-3" />
+        </button>
+      </div>
+      <div className="flex flex-col">
+        {onCopy && (
+          <button onClick={onCopy} className={btn} aria-label={`Copy ${label}`}>
+            <Copy className="h-3 w-3" />
+          </button>
+        )}
+        <button onClick={onRemove} className="rounded p-0.5 text-zinc-400 hover:text-red-600" aria-label={`Remove ${label}`}>
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const SUB = "text-[#5b6b86]";
 const LABEL = "text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]";
 
@@ -107,6 +134,22 @@ export const InvoiceDoc = forwardRef<
       }),
     });
   const removeLine = (i: number) => set({ lines: d.lines.filter((_, j) => j !== i) });
+  /** Swap a line with the next / previous line of the same section (lines or adjustments). */
+  const moveLine = (i: number, dir: -1 | 1) => {
+    const same = (k?: string | null) => ((k || "item") === "item" ? "item" : "adj");
+    const kind = same(d.lines[i].kind);
+    let j = i + dir;
+    while (j >= 0 && j < d.lines.length && same(d.lines[j].kind) !== kind) j += dir;
+    if (j < 0 || j >= d.lines.length) return;
+    const lines = [...d.lines];
+    [lines[i], lines[j]] = [lines[j], lines[i]];
+    set({ lines });
+  };
+  const copyLine = (i: number) => {
+    const { id: _id, ...rest } = d.lines[i];
+    void _id;
+    set({ lines: [...d.lines.slice(0, i + 1), { ...rest, load_id: null }, ...d.lines.slice(i + 1)] });
+  };
   const t = totals(d);
   const isLoad = d.invoice_type === "load";
   const cur = d.currency;
@@ -245,7 +288,7 @@ export const InvoiceDoc = forwardRef<
                 </>
               )}
               <th className="w-[120px] py-3 text-right font-semibold">{isLoad ? "Fee" : "Amount"}</th>
-              {editing && <th className="w-6" />}
+              {editing && <th className="w-[52px]" />}
             </tr>
           </thead>
           <tbody>
@@ -289,9 +332,7 @@ export const InvoiceDoc = forwardRef<
                   </td>
                   {editing && (
                     <td className="py-3.5 pl-1">
-                      <button onClick={() => removeLine(i)} className="rounded p-0.5 text-zinc-400 hover:text-red-600" aria-label="Remove line">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                      <LineTools first={items[0]?.i === i} last={items[items.length - 1]?.i === i} onMove={(dir) => moveLine(i, dir)} onCopy={() => copyLine(i)} onRemove={() => removeLine(i)} />
                     </td>
                   )}
                 </tr>
@@ -352,10 +393,8 @@ export const InvoiceDoc = forwardRef<
                         )}
                       </td>
                       {editing && (
-                        <td className="w-6 py-2.5 pl-1">
-                          <button onClick={() => removeLine(i)} className="rounded p-0.5 text-zinc-400 hover:text-red-600" aria-label="Remove adjustment">
-                            <X className="h-3.5 w-3.5" />
-                          </button>
+                        <td className="w-[52px] py-2.5 pl-1">
+                          <LineTools label="adjustment" first={adjustments[0]?.i === i} last={adjustments[adjustments.length - 1]?.i === i} onMove={(dir) => moveLine(i, dir)} onRemove={() => removeLine(i)} />
                         </td>
                       )}
                     </tr>

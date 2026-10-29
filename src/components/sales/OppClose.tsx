@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { EditLink } from "@/components/ui/OptionList";
 import { errMsg, sb } from "@/lib/db";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
@@ -124,10 +125,11 @@ function CloseModal({ value, onClose }: { value: Pending | null; onClose: () => 
     >
       <div className="space-y-3">
         {!won && (
-          <Field label="Why was it lost?" required>
+          <Field label="Why was it lost?" required action={<EditLink href="/sales?tab=pipelines" />}>
             <Select value={reason} onChange={(e) => setReason(e.target.value)} autoFocus>
               <option value="">Select…</option>
-              {reasons.rows
+              {[...reasons.rows]
+                .sort((a, b) => a.sort - b.sort)
                 .filter((r) => r.active)
                 .map((r) => (
                   <option key={r.id} value={r.id}>

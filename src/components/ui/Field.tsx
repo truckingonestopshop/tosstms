@@ -48,6 +48,7 @@ export function Field({
   className,
   children,
   required,
+  action,
 }: {
   label?: React.ReactNode;
   hint?: React.ReactNode;
@@ -55,7 +56,24 @@ export function Field({
   className?: string;
   children: React.ReactNode;
   required?: boolean;
+  /** A link on the label's right (e.g. "Edit list"), kept outside the <label> so it doesn't steal clicks. */
+  action?: React.ReactNode;
 }) {
+  if (action) {
+    return (
+      <div className={cn("block min-w-0", className)}>
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1 text-xs font-semibold text-fg-2">
+            {label}
+            {required && <span className="text-brand">*</span>}
+          </span>
+          {action}
+        </div>
+        <label className="block">{children}</label>
+        {error ? <span className="mt-1 block text-xs text-red-600 dark:text-red-400">{error}</span> : hint ? <span className="mt-1 block text-xs text-fg-3">{hint}</span> : null}
+      </div>
+    );
+  }
   return (
     <label className={cn("block min-w-0", className)}>
       {label && (

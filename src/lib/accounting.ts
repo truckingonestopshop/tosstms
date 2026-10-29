@@ -18,6 +18,7 @@ export interface AccAccount {
   color: string | null;
   notes: string | null;
   active: boolean;
+  sort: number;
   created_at: string;
 }
 export const ACCOUNT_KINDS: { v: AccountKind; label: string }[] = [
@@ -57,6 +58,7 @@ export interface AccMethod {
   account_id: string | null;
   last4: string | null;
   active: boolean;
+  sort: number;
 }
 export const METHOD_KINDS: { v: MethodKind; label: string }[] = [
   { v: "card", label: "Card" },
