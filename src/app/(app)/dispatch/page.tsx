@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { DispatchFrame, DispatchGate } from "@/components/fleet/CompanyNav";
 import { useMemo } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, Building2, CalendarClock, FileWarning, Plus, Truck as TruckIcon } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, Building2, CalendarClock, FileWarning, Plus, Truck as TruckIcon, XCircle } from "lucide-react";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader, Empty, Page, Pill, Stat } from "@/components/ui/Bits";
 import { StatusPill } from "@/components/loads/StatusMenu";
@@ -40,7 +40,10 @@ function Dashboard() {
   const T = useMemo(() => trucks.filter((x) => inScope(x.company_id)), [trucks, inScope]);
 
   const k = useMemo(() => {
-    const m = L.filter((l) => !isCanceled(l.status) && (l.delivery_date || l.pickup_date || "").startsWith(month));
+    const inMonth = L.filter((l) => (l.delivery_date || l.pickup_date || "").startsWith(month));
+    const m = inMonth.filter((l) => !isCanceled(l.status));
+    // Canceled loads never count in gross or fees; they are shown apart.
+    const canceled = inMonth.filter((l) => isCanceled(l.status));
     const gross = m.reduce((s, l) => s + l.gross_amount, 0);
     const fee = m.reduce((s, l) => s + l.dispatcher_cut, 0);
     const paidFee = m.filter((l) => l.status === "paid").reduce((s, l) => s + l.dispatcher_cut, 0);
@@ -60,6 +63,8 @@ function Dashboard() {
       fee,
       paidFee,
       count: m.length,
+      canceled: canceled.length,
+      canceledGross: canceled.reduce((s, l) => s + l.gross_amount, 0),
       change: lastSame ? ((gross - lastSame) / lastSame) * 100 : null,
       transit,
       booked,
@@ -218,7 +223,20 @@ function Dashboard() {
               </span>
             )
           }
-        />
+        >
+          {k.canceled > 0 && (
+            <Link
+              href="/loads?status=canceled"
+              title="Canceled loads aren't counted in gross or fees"
+              className="mt-2.5 inline-flex max-w-full items-center gap-1.5 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-600 transition-colors hover:bg-red-500/15 dark:text-red-400"
+            >
+              <XCircle className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {k.canceled} canceled · {money(k.canceledGross, { cents: false })} not counted
+              </span>
+            </Link>
+          )}
+        </Stat>
         <Stat label="TOSS fee this month" value={money(k.fee, { cents: false })} sub={`${money(k.paidFee, { cents: false })} paid · ${paidPct}%`}>
           <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
             <div className="h-full rounded-full bg-emerald-500" style={{ width: `${paidPct}%` }} />
