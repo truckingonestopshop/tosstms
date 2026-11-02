@@ -394,6 +394,8 @@ function CaseModal({
   const changes = (Object.keys(draft) as (keyof CaseDraft)[]).filter((k) => (draft[k] || null) !== (c[k] || null));
   const pendingEntry = !!(body.trim() || files.length || (entryKind === "work" && minutes) || (entryKind === "expense" && amount));
   const dirty = changes.length > 0 || pendingEntry;
+  // Only the person the case is assigned to moves its status (TOSS Cloud owners can too).
+  const canStatus = draft.owner_id === me.id || isOwner;
 
   const upload = async (list: File[]): Promise<Attachment[] | null> => {
     const out: Attachment[] = [];
@@ -508,8 +510,12 @@ function CaseModal({
       }
     >
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Field label="Status" className="col-span-2">
-          <Select value={draft.status} onChange={(e) => set({ status: e.target.value as CaseStatus })}>
+        <Field
+          label="Status"
+          className="col-span-2"
+          hint={canStatus ? undefined : draft.owner_id ? `Only ${members.find((m) => m.user_id === draft.owner_id)?.full_name || "the owner"} can change it` : "Assign an owner to move it along"}
+        >
+          <Select value={draft.status} onChange={(e) => set({ status: e.target.value as CaseStatus })} disabled={!canStatus}>
             {CASE_STATUSES.map((s) => (
               <option key={s.v} value={s.v}>
                 {s.label}
