@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
-import { Copy, FileSignature, Link2, PenSquare, Plus, Trash2, Upload } from "lucide-react";
+import { BookOpen, Copy, FileSignature, Link2, PenSquare, Plus, Search, Send, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, Empty, Pill, neutralPill } from "@/components/ui/Bits";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
@@ -14,7 +14,9 @@ import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { cn, relTime } from "@/lib/format";
-import { STARTER } from "./written";
+import { STARTER, fieldsFromBody } from "./written";
+import { STARTERS, type Starter } from "./library";
+import { SendDialog } from "./SendDialog";
 import { PublicLinks } from "./PublicLinks";
 import { CATEGORIES, type SignTemplate, type TemplateCategory } from "@/lib/signing";
 import { pdfPageSizes } from "./PdfPages";
@@ -42,11 +44,15 @@ export function useFileAs(category: TemplateCategory) {
 
 export function TemplatesList() {
   const router = useRouter();
+  const params = useSearchParams();
   const templates = useLiveTable<SignTemplate>("tms_sign_templates", { order: "updated_at" });
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<"written" | "pdf" | null>(() => (params.get("new") === "pdf" ? "pdf" : params.get("new") === "written" ? "written" : null));
+  const [library, setLibrary] = useState(() => params.get("library") === "1");
   const [linking, setLinking] = useState<SignTemplate | null>(null);
+  const [sending, setSending] = useState<SignTemplate | null>(null);
   const [cat, setCat] = useState<TemplateCategory | "all">("all");
-  const list = templates.rows.filter((t) => cat === "all" || t.category === cat);
+  const [q, setQ] = useState("");
+  const list = templates.rows.filter((t) => (cat === "all" || t.category === cat) && (!q || `${t.name} ${t.description || ""}`.toLowerCase().includes(q.toLowerCase())));
 
   const duplicate = async (t: SignTemplate) => {
     const { id: _id, created_at: _c, updated_at: _u, ...rest } = t;
@@ -67,54 +73,100 @@ export function TemplatesList() {
 
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Select value={cat} onChange={(e) => setCat(e.target.value as TemplateCategory | "all")} className="w-auto" aria-label="Category">
-          <option value="all">All templates</option>
-          {CATEGORIES.map((c) => (
-            <option key={c.v} value={c.v}>
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="-mx-1 flex gap-1 overflow-x-auto">
+          {[{ v: "all" as const, label: "All" }, ...CATEGORIES].map((c) => (
+            <button key={c.v} onClick={() => setCat(c.v)} className={cn("flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] font-medium", cat === c.v ? "border-transparent bg-inverse text-inverse-fg" : "border-line text-fg-3 hover:text-fg")}>
               {c.label}
-            </option>
+              <span className="tnum text-[11px] opacity-70">{templates.rows.filter((t) => c.v === "all" || t.category === c.v).length}</span>
+            </button>
           ))}
-        </Select>
-        <div className="flex-1" />
-        <Button variant="primary" onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" /> New template
-        </Button>
+        </div>
+        <div className="flex flex-1 flex-wrap items-center gap-2 lg:justify-end">
+          <div className="relative min-w-[180px] flex-1 lg:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-4" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a template" className="h-9 pl-9" />
+          </div>
+          <Button variant="outline" className="h-9" onClick={() => setLibrary(true)}>
+            <BookOpen className="h-4 w-4" /> Library
+          </Button>
+          <Button variant="primary" className="h-9" onClick={() => setCreating("written")}>
+            <Plus className="h-4 w-4" /> New template
+          </Button>
+        </div>
       </div>
-      <Card>
-        {!templates.loaded ? (
-          <div className="px-4 py-8 text-center text-xs text-fg-4">Loading…</div>
-        ) : list.length === 0 ? (
-          <Empty icon={FileSignature} title="No templates yet" body="Upload a PDF (W-9, agreement, employment application, policy…), place the fields and who fills each one. Then send it from any company, DER or driver." />
-        ) : (
-          <ul className="divide-y divide-line">
-            {list.map((t) => (
-              <li key={t.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-                <Link href={`/signing/templates/${t.id}`} className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-semibold text-fg">{t.name}</div>
-                  <div className="truncate text-xs text-fg-3">
-                    {t.kind === "written" ? "Written" : `PDF, ${t.pages.length} page${t.pages.length === 1 ? "" : "s"}`} · {t.fields.length} field{t.fields.length === 1 ? "" : "s"} · {t.roles.map((r) => r.label).join(", ")} · edited {relTime(t.updated_at)}
+
+      {!templates.loaded ? (
+        <div className="py-10 text-center text-xs text-fg-4">Loading…</div>
+      ) : list.length === 0 ? (
+        <Card>
+          <Empty icon={FileSignature} title={templates.rows.length ? "No template matches" : "No templates yet"} body={templates.rows.length ? undefined : "Write one, upload a PDF, or start from the library (dispatch agreement, driver application, policies, Clearinghouse consent, DER)."} />
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {list.map((t) => {
+            const ready = t.fields.some((f) => f.role !== "toss");
+            return (
+              <div key={t.id} className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-surface transition-colors hover:border-line-strong">
+                <Link href={`/signing/templates/${t.id}`} className="relative block h-28 overflow-hidden bg-gradient-to-br from-surface-2 to-surface">
+                  {/* A small paper preview: lines and the fields' colours */}
+                  <div className="absolute left-1/2 top-4 h-32 w-24 -translate-x-1/2 rounded-sm bg-white shadow-md ring-1 ring-black/5 transition-transform group-hover:-translate-y-1">
+                    <div className="space-y-1.5 p-2.5">
+                      <div className="h-1.5 w-12 rounded bg-zinc-300" />
+                      {[16, 14, 18, 12, 15].map((w, i) => (
+                        <div key={i} className="h-1 rounded bg-zinc-200" style={{ width: `${w * 4}px` }} />
+                      ))}
+                      <div className="mt-2 h-3 w-14 rounded-sm border border-dashed border-sky-500 bg-sky-500/10" />
+                    </div>
                   </div>
+                  <span className="absolute left-3 top-3">
+                    <Pill className={neutralPill}>{t.kind === "written" ? "Written" : "PDF"}</Pill>
+                  </span>
                 </Link>
-                <Pill className={neutralPill}>{CATEGORIES.find((c) => c.v === t.category)?.label}</Pill>
-                <button onClick={() => (t.fields.length ? setLinking(t) : toast.error("Place the fields first"))} className="text-fg-4 hover:text-fg" aria-label={`Public links of ${t.name}`} title="Public link (anyone fills and signs)">
-                  <Link2 className="h-4 w-4" />
-                </button>
-                <button onClick={() => duplicate(t)} className="text-fg-4 hover:text-fg" aria-label={`Copy ${t.name}`}>
-                  <Copy className="h-4 w-4" />
-                </button>
-                <button onClick={() => remove(t)} className="text-fg-4 hover:text-red-600" aria-label={`Delete ${t.name}`}>
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+                <div className="flex flex-1 flex-col p-3.5">
+                  <Link href={`/signing/templates/${t.id}`} className="truncate text-[14px] font-semibold text-fg hover:underline">
+                    {t.name}
+                  </Link>
+                  <div className="mt-0.5 line-clamp-2 min-h-[2rem] text-xs text-fg-3">{t.description || `${t.roles.map((r) => r.label).join(", ")} · ${t.fields.length} field${t.fields.length === 1 ? "" : "s"}`}</div>
+                  <div className="mt-2 flex items-center gap-1.5 text-[11px] text-fg-4">
+                    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-fg-3">{CATEGORIES.find((c) => c.v === t.category)?.label}</span>
+                    <span>edited {relTime(t.updated_at)}</span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-1 border-t border-line pt-2.5">
+                    <Button size="xs" variant="secondary" onClick={() => (ready ? setSending(t) : toast.error("Add a field for a signer first"))}>
+                      <Send className="h-3.5 w-3.5" /> Send
+                    </Button>
+                    <button onClick={() => (ready ? setLinking(t) : toast.error("Add a field for a signer first"))} className="rounded p-1.5 text-fg-4 hover:bg-surface-2 hover:text-fg" title="Public link (anyone fills and signs)" aria-label={`Public links of ${t.name}`}>
+                      <Link2 className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => duplicate(t)} className="rounded p-1.5 text-fg-4 hover:bg-surface-2 hover:text-fg" title="Duplicate" aria-label={`Copy ${t.name}`}>
+                      <Copy className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => remove(t)} className="ml-auto rounded p-1.5 text-fg-4 hover:bg-surface-2 hover:text-red-600" title="Delete" aria-label={`Delete ${t.name}`}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <PublicLinks template={linking} onClose={() => setLinking(null)} />
+      <SendTemplate template={sending} onClose={() => setSending(null)} />
+      <Library
+        open={library}
+        onClose={() => setLibrary(false)}
+        have={templates.rows.map((t) => t.name)}
+        onAdded={(t) => {
+          templates.put(t);
+          router.push(`/signing/templates/${t.id}`);
+        }}
+      />
       <NewTemplateModal
-        open={creating}
-        onClose={() => setCreating(false)}
+        open={!!creating}
+        initialKind={creating || "written"}
+        onClose={() => setCreating(null)}
         onCreated={(t) => {
           templates.put(t);
           router.push(`/signing/templates/${t.id}`);
@@ -124,13 +176,89 @@ export function TemplatesList() {
   );
 }
 
-function NewTemplateModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (t: SignTemplate) => void }) {
+/** Send a template from the gallery: pick the company, then the usual send screen with it chosen. */
+function SendTemplate({ template, onClose }: { template: SignTemplate | null; onClose: () => void }) {
+  const { companies } = useStore();
+  const [company, setCompany] = useState("");
+  const [q, setQ] = useState("");
+  const [was, setWas] = useState<string | null>(null);
+  if ((template?.id || null) !== was) {
+    setWas(template?.id || null);
+    setCompany("");
+    setQ("");
+  }
+  if (!template) return null;
+  if (company) return <SendDialog open onClose={onClose} companyId={company} category={template.category} startWith={template} />;
+  const list = [...companies].sort((a, b) => a.name.localeCompare(b.name)).filter((c) => !q || `${c.name} ${c.dot_number || ""}`.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <Modal open onClose={onClose} title={`Send ${template.name}`} subtitle="For which company?" size="sm">
+      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name or DOT" autoFocus />
+      <ul className="mt-2 max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line">
+        {list.map((c) => (
+          <li key={c.id}>
+            <button onClick={() => setCompany(c.id)} className="flex w-full items-center justify-between px-3 py-2 text-left text-[13px] hover:bg-surface-2">
+              <span className="truncate font-medium text-fg">{c.name}</span>
+              <span className="text-xs text-fg-4">{c.dot_number ? `DOT ${c.dot_number}` : ""}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Modal>
+  );
+}
+
+/** TossSign's starter templates, added in one click (then edited like any other). */
+function Library({ open, onClose, have, onAdded }: { open: boolean; onClose: () => void; have: string[]; onAdded: (t: SignTemplate) => void }) {
+  const [busy, setBusy] = useState("");
+  const add = async (s: Starter) => {
+    setBusy(s.key);
+    const body = s.body();
+    const { data, error } = await sb()
+      .from("tms_sign_templates")
+      .insert({ name: s.name, description: s.description, category: s.category, doc_type: s.doc_type, kind: "written", body, roles: s.roles, fields: fieldsFromBody(body), pages: [] })
+      .select()
+      .single();
+    setBusy("");
+    if (error) return toast.error(errMsg(error));
+    toast.success(`${s.name} added: review the wording, then send it`);
+    onAdded(data as SignTemplate);
+  };
+  return (
+    <Modal open={open} onClose={onClose} size="lg" title="Template library" subtitle="Starting points written for TOSS. Add one, review the wording for your needs, and send.">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {STARTERS.map((s) => (
+          <div key={s.key} className="flex flex-col rounded-xl border border-line p-3.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-[13px] font-semibold text-fg">{s.name}</div>
+              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-fg-3">{CATEGORIES.find((c) => c.v === s.category)?.label}</span>
+            </div>
+            <p className="mt-1 flex-1 text-xs text-fg-3">{s.description}</p>
+            <div className="mt-3 flex items-center justify-between">
+              <span className="text-[11px] text-fg-4">Signed by: {s.roles.map((r) => r.label).join(", ")}</span>
+              <Button size="xs" variant={have.includes(s.name) ? "ghost" : "primary"} onClick={() => add(s)} disabled={!!busy}>
+                <Plus className="h-3.5 w-3.5" /> {have.includes(s.name) ? "Add again" : "Add"}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-fg-4">These are plain-language starting points, not legal advice. Have them checked before you rely on them.</p>
+    </Modal>
+  );
+}
+
+function NewTemplateModal({ open, initialKind = "written", onClose, onCreated }: { open: boolean; initialKind?: "written" | "pdf"; onClose: () => void; onCreated: (t: SignTemplate) => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<TemplateCategory>("company");
   const [docType, setDocType] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [kind, setKind] = useState<"written" | "pdf">("written");
+  const [kind, setKind] = useState<"written" | "pdf">(initialKind);
+  const [was, setWas] = useState(false);
+  if (open !== was) {
+    setWas(open);
+    if (open) setKind(initialKind);
+  }
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const fileAs = useFileAs(category);

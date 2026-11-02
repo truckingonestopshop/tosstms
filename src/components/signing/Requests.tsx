@@ -103,7 +103,7 @@ export function SigningRequests({ companyId, driverId, personId, category, title
   );
 }
 
-function RequestModal({ r, recipients, onClose, onSaved }: { r: SignRequest | null; recipients: SignRecipient[]; onClose: () => void; onSaved: (r: SignRequest) => void }) {
+export function RequestModal({ r, recipients, onClose, onSaved }: { r: SignRequest | null; recipients: SignRecipient[]; onClose: () => void; onSaved: (r: SignRequest) => void }) {
   const { companyById } = useStore();
   const [events, setEvents] = useState<SignEvent[]>([]);
   const [busy, setBusy] = useState(false);

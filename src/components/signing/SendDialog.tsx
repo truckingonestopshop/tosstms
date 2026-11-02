@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Check, Copy, FileSignature, MessageSquare, PenLine, Plus, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/Field";
@@ -48,6 +48,7 @@ export function SendDialog({
   caseId,
   category,
   onSent,
+  startWith,
 }: {
   open: boolean;
   onClose: () => void;
@@ -57,6 +58,8 @@ export function SendDialog({
   caseId?: string;
   category?: TemplateCategory;
   onSent?: (r: SignRequest) => void;
+  /** open straight on this template (Send from the template gallery) */
+  startWith?: SignTemplate;
 }) {
   const { companyById, drivers } = useStore();
   const templates = useLiveTable<SignTemplate>("tms_sign_templates", { order: "name", ascending: true });
@@ -148,6 +151,19 @@ export function SendDialog({
     if (s.template) toDetails(s, people);
     else setStep("place");
   };
+  // Sent from the gallery: skip picking, once the company's people are known (to suggest signers).
+  const started = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      started.current = null;
+      return;
+    }
+    if (!startWith || !people.loaded || started.current === startWith.id) return;
+    started.current = startWith.id;
+    const t = startWith;
+    void Promise.resolve().then(() => begin({ template: t, title: t.name, path: t.file_path || "", name: t.file_name || "", pages: t.pages, roles: t.roles, fields: t.fields, docType: t.doc_type || "" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, startWith, people.loaded]);
 
   const upload = async (file: File) => {
     setBusy(true);

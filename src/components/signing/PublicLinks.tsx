@@ -159,3 +159,56 @@ export function PublicLinks({ template, onClose }: { template: SignTemplate | nu
     </Modal>
   );
 }
+
+/** Every public link (TossSign → Public links): copy, turn on / off, see how often it's used. */
+export function AllLinks() {
+  const { companyById } = useStore();
+  const links = useLiveTable<SignLink>("tms_sign_links");
+  const templates = useLiveTable<SignTemplate>("tms_sign_templates");
+  const [copied, setCopied] = useState("");
+  const toggle = async (l: SignLink) => {
+    const { data, error } = await sb().from("tms_sign_links").update({ active: !l.active }).eq("id", l.id).select().single();
+    if (error) return toast.error(errMsg(error));
+    links.put(data as SignLink);
+  };
+  return (
+    <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+      <div className="border-b border-line px-4 py-3 sm:px-5">
+        <div className="text-[14px] font-semibold text-fg">Public links</div>
+        <div className="text-xs text-fg-3">Anyone with a link fills and signs their own copy. Make links from a template (the link icon on its card).</div>
+      </div>
+      {links.rows.length === 0 ? (
+        <div className="px-4 py-10 text-center text-sm text-fg-4">No public links yet.</div>
+      ) : (
+        <ul className="divide-y divide-line">
+          {links.rows.map((l) => (
+            <li key={l.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2 text-fg-3">
+                <Link2 className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold text-fg">{l.title}</div>
+                <div className="truncate text-xs text-fg-3">
+                  {templates.rows.find((t) => t.id === l.template_id)?.name || "Template removed"} · filed on {companyById(l.company_id)?.name || "TOSS"} · used {l.uses} time{l.uses === 1 ? "" : "s"}
+                  {l.verify_email ? " · email code" : ""}
+                </div>
+              </div>
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={!l.active}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(urlOf(l.token));
+                  setCopied(l.id);
+                }}
+              >
+                {copied === l.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {copied === l.id ? "Copied" : "Copy link"}
+              </Button>
+              <Checkbox checked={l.active} onChange={() => toggle(l)} label={l.active ? "On" : "Off"} className="text-xs" />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
