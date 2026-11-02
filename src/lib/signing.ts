@@ -2,7 +2,22 @@
 // (one send to recipients, each with a private /sign/<token> link) and what fills the fields.
 // Shared by the app, the public signing page and the server routes.
 
-export type FieldType = "signature" | "initials" | "date" | "text" | "checkbox";
+export type FieldType =
+  | "signature"
+  | "initials"
+  | "date"
+  | "text"
+  | "name"
+  | "email"
+  | "company"
+  | "title"
+  | "number"
+  | "dropdown"
+  | "radio"
+  | "checkbox"
+  | "attachment";
+/** Format checks on typed fields. */
+export type Validation = "email" | "phone" | "ein" | "ssn" | "zip" | "number";
 export type TemplateCategory = "company" | "der" | "driver" | "other";
 /** "toss": filled by TOSS before sending. Any other value is a signer role key. */
 export const TOSS = "toss";
@@ -21,6 +36,15 @@ export interface SignField {
   required: boolean;
   /** fills itself from the carrier / person / today (see AUTO) */
   auto?: AutoKey | null;
+  /** dropdown / radio choices */
+  options?: string[];
+  validation?: Validation | null;
+  /** shown filled in, can't be changed by the signer */
+  readOnly?: boolean;
+  /** only shown (and required) when another field has this value ("checked" for a checkbox) */
+  showIf?: { field: string; equals: string } | null;
+  /** number fields: worked out from others, e.g. "{Qty} * {Price}" (field labels in braces) */
+  formula?: string | null;
 }
 export interface SignRole {
   key: string;
@@ -84,11 +108,25 @@ export interface SignRequest {
 }
 
 export type RecipientStatus = "waiting" | "sent" | "viewed" | "signed" | "declined";
+/** signer: fills and signs; viewer: must open it; approver: approves or declines; cc: gets the copy */
+export type RecipientKind = "signer" | "viewer" | "approver" | "cc";
+export const RECIPIENT_KINDS: { v: RecipientKind; label: string; hint: string }[] = [
+  { v: "signer", label: "Signs", hint: "Fills in their fields and signs" },
+  { v: "approver", label: "Approves", hint: "Reviews and approves (or declines)" },
+  { v: "viewer", label: "Needs to view", hint: "Must open and review it" },
+  { v: "cc", label: "Gets a copy", hint: "Receives the signed copy" },
+];
+export type Verify = "none" | "code" | "email";
 export interface SignRecipient {
   id: string;
   request_id: string;
   role: string | null;
-  kind: "signer" | "cc";
+  kind: RecipientKind;
+  verify?: Verify;
+  access_code?: string | null;
+  verified_at?: string | null;
+  in_person?: boolean;
+  files?: { fieldId: string; name: string; path: string; mime: string | null }[];
   name: string;
   email: string | null;
   phone: string | null;
@@ -117,13 +155,67 @@ export interface SignEvent {
   created_at: string;
 }
 
-export const FIELD_TYPES: { v: FieldType; label: string; w: number; h: number }[] = [
+export const FIELD_TYPES: { v: FieldType; label: string; w: number; h: number; auto?: AutoKey; validation?: Validation }[] = [
   { v: "signature", label: "Signature", w: 0.26, h: 0.055 },
   { v: "initials", label: "Initials", w: 0.09, h: 0.045 },
-  { v: "date", label: "Date", w: 0.17, h: 0.03 },
+  { v: "date", label: "Date signed", w: 0.17, h: 0.03, auto: "today" },
+  { v: "name", label: "Full name", w: 0.26, h: 0.03, auto: "recipient.name" },
+  { v: "email", label: "Email", w: 0.26, h: 0.03, auto: "recipient.email", validation: "email" },
+  { v: "company", label: "Company", w: 0.3, h: 0.03, auto: "company.name" },
+  { v: "title", label: "Title", w: 0.2, h: 0.03 },
   { v: "text", label: "Text", w: 0.26, h: 0.03 },
+  { v: "number", label: "Number", w: 0.14, h: 0.03, validation: "number" },
+  { v: "dropdown", label: "Dropdown", w: 0.22, h: 0.032 },
+  { v: "radio", label: "Choice", w: 0.22, h: 0.06 },
   { v: "checkbox", label: "Checkbox", w: 0.028, h: 0.022 },
+  { v: "attachment", label: "Attachment", w: 0.22, h: 0.035 },
 ];
+/** Typed fields (a value written on the PDF). */
+export const TEXTLIKE: FieldType[] = ["text", "name", "email", "company", "title", "number", "date", "dropdown", "radio"];
+export const VALIDATIONS: { v: Validation; label: string; hint: string; re: RegExp }[] = [
+  { v: "email", label: "Email", hint: "name@company.com", re: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ },
+  { v: "phone", label: "Phone", hint: "(305) 555-0100", re: /^\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$/ },
+  { v: "ein", label: "EIN", hint: "12-3456789", re: /^\d{2}-?\d{7}$/ },
+  { v: "ssn", label: "SSN", hint: "123-45-6789", re: /^\d{3}-?\d{2}-?\d{4}$/ },
+  { v: "zip", label: "ZIP", hint: "33101", re: /^\d{5}(-\d{4})?$/ },
+  { v: "number", label: "Number", hint: "1234.50", re: /^-?\d+(\.\d+)?$/ },
+];
+
+/** Shown (and required) only when its condition is met. */
+export function isShown(f: SignField, fields: SignField[], values: Record<string, string>) {
+  if (!f.showIf?.field) return true;
+  const src = fields.find((x) => x.id === f.showIf!.field);
+  const v = values[f.showIf.field] || "";
+  if (src?.type === "checkbox") return (v === "true") === (f.showIf.equals !== "unchecked");
+  return v.trim().toLowerCase() === (f.showIf.equals || "").trim().toLowerCase();
+}
+
+/** A formula's value, e.g. "{Qty} * {Price}" → "37.50" ("" when it can't be worked out). */
+export function evalFormula(formula: string, fields: SignField[], values: Record<string, string>): string {
+  const expr = formula.replace(/\{([^}]+)\}/g, (_, label: string) => {
+    const f = fields.find((x) => x.label.trim().toLowerCase() === label.trim().toLowerCase());
+    const n = Number(String((f && values[f.id]) || "0").replace(/[$,\s]/g, ""));
+    return Number.isFinite(n) ? `(${n})` : "(0)";
+  });
+  if (!/^[\d+\-*/().\s]+$/.test(expr)) return "";
+  try {
+    const n = Function(`"use strict"; return (${expr});`)() as number;
+    return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : "";
+  } catch {
+    return "";
+  }
+}
+
+/** What's wrong with a value ("" when fine). */
+export function fieldProblem(f: SignField, v: string | undefined): string {
+  const val = (v || "").trim();
+  if (f.required && isEmpty(f, val)) return `Fill in "${f.label}"`;
+  if (!val || f.type === "checkbox" || f.type === "signature" || f.type === "initials" || f.type === "attachment") return "";
+  const rule = VALIDATIONS.find((x) => x.v === (f.validation || (f.type === "email" ? "email" : f.type === "number" ? "number" : null)));
+  if (rule && !rule.re.test(rule.v === "number" ? val.replace(/[$,]/g, "") : val)) return `"${f.label}" should look like ${rule.hint}`;
+  if ((f.type === "dropdown" || f.type === "radio") && f.options?.length && !f.options.includes(val)) return `Pick one of the choices for "${f.label}"`;
+  return "";
+}
 export const fieldTypeLabel = (t: FieldType) => FIELD_TYPES.find((x) => x.v === t)?.label ?? t;
 
 export const CATEGORIES: { v: TemplateCategory; label: string; hint: string }[] = [
@@ -278,7 +370,7 @@ export function autoValue(key: AutoKey, s: AutoSource): string {
 /** A field's value is empty (checkboxes: "" or "false"). */
 export const isEmpty = (f: SignField, v: string | undefined) => (f.type === "checkbox" ? v !== "true" : !(v || "").trim());
 
-/** Signers of a request (no CC), in signing order. */
-export const signersOf = (list: SignRecipient[]) => list.filter((r) => r.kind === "signer").sort((a, b) => a.position - b.position);
+/** Everyone who has to act (sign, approve or view; not copies), in order. */
+export const signersOf = (list: SignRecipient[]) => list.filter((r) => r.kind !== "cc").sort((a, b) => a.position - b.position);
 
 export const newFieldId = () => Math.random().toString(36).slice(2, 10);

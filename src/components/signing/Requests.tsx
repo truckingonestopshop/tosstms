@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Ban, Bell, Check, Copy, Download, FileSignature, MessageSquare, Send } from "lucide-react";
+import { Ban, Bell, Check, Copy, Download, FileSignature, MessageSquare, PenLine, Send, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, Empty, Pill } from "@/components/ui/Bits";
 import { Input, Segmented } from "@/components/ui/Field";
@@ -12,7 +12,7 @@ import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { cn, relTime } from "@/lib/format";
-import { RECIPIENT_STATUS, REQUEST_STATUS, signersOf, type SignEvent, type SignRecipient, type SignRequest, type TemplateCategory } from "@/lib/signing";
+import { RECIPIENT_KINDS, RECIPIENT_STATUS, REQUEST_STATUS, signersOf, type SignEvent, type SignRecipient, type SignRequest, type TemplateCategory } from "@/lib/signing";
 import { SendDialog } from "./SendDialog";
 
 type Show = "open" | "completed" | "all";
@@ -176,6 +176,12 @@ function RequestModal({ r, recipients, onClose, onSaved }: { r: SignRequest | nu
       <div className="mb-4 flex items-center gap-2">
         <Pill className={st.pill}>{st.label}</Pill>
         {r.in_order && <span className="text-xs text-fg-3">Signed in order</span>}
+        {(r as SignRequest & { sealed?: boolean }).sealed && (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+            <ShieldCheck className="h-3.5 w-3.5" /> Digitally sealed
+          </span>
+        )}
+        {(r as SignRequest & { remind_every_days?: number | null }).remind_every_days ? <span className="text-xs text-fg-3">Reminds every {(r as SignRequest & { remind_every_days?: number | null }).remind_every_days} day(s)</span> : null}
         {r.expires_at && <span className="text-xs text-fg-3">Expires {new Date(r.expires_at).toLocaleDateString("en-US")}</span>}
       </div>
       <ul className="space-y-2">
@@ -183,15 +189,29 @@ function RequestModal({ r, recipients, onClose, onSaved }: { r: SignRequest | nu
           <li key={x.id} className="rounded-lg border border-line p-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[13px] font-semibold text-fg">{x.name}</span>
-              <span className="text-xs text-fg-3">{x.kind === "cc" ? "Copy" : r.roles.find((y) => y.key === x.role)?.label}</span>
+              <span className="text-xs text-fg-3">
+                {RECIPIENT_KINDS.find((k) => k.v === x.kind)?.label}
+                {x.role && r.roles.find((y) => y.key === x.role) ? ` · ${r.roles.find((y) => y.key === x.role)!.label}` : ""}
+                {x.in_person ? " · in person" : x.verify === "code" ? " · access code" : x.verify === "email" ? " · emailed code" : ""}
+              </span>
               <span className={cn("ml-auto text-xs font-medium", x.status === "signed" ? "text-emerald-600" : x.status === "declined" ? "text-red-600" : "text-fg-3")}>
-                {x.kind === "cc" ? "Gets the signed copy" : RECIPIENT_STATUS[x.status]}
+                {x.kind === "cc" ? "Gets the signed copy" : x.status === "signed" ? (x.kind === "approver" ? "Approved" : x.kind === "viewer" ? "Reviewed" : "Signed") : RECIPIENT_STATUS[x.status]}
                 {x.signed_at ? ` · ${relTime(x.signed_at)}` : x.viewed_at ? ` · opened ${relTime(x.viewed_at)}` : ""}
               </span>
             </div>
             <div className="text-xs text-fg-3">{[x.email, x.phone].filter(Boolean).join(" · ")}</div>
             {x.declined_reason && <div className="mt-1 text-xs text-red-600">“{x.declined_reason}”</div>}
-            {r.status === "sent" && x.kind === "signer" && x.status !== "signed" && (
+            {x.verify === "code" && x.access_code && r.status === "sent" && x.status !== "signed" && (
+              <div className="mt-1 text-xs text-fg-3">
+                Access code: <span className="font-mono font-semibold tracking-widest text-fg">{x.access_code}</span> (tell them by phone or text)
+              </div>
+            )}
+            {r.status === "sent" && x.kind !== "cc" && x.status !== "signed" && x.in_person && (
+              <a href={link(x.token)} target="_blank" rel="noreferrer" className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-lg bg-brand px-2.5 text-xs font-semibold text-black">
+                <PenLine className="h-3.5 w-3.5" /> Sign now on this device
+              </a>
+            )}
+            {r.status === "sent" && x.kind !== "cc" && x.status !== "signed" && !x.in_person && (
               <div className="mt-2 flex flex-wrap gap-2">
                 <Button
                   size="xs"

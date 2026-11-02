@@ -7,8 +7,6 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
-  Calendar,
-  CheckSquare,
   Eraser,
   Eye,
   ImagePlus,
@@ -19,31 +17,30 @@ import {
   ListOrdered,
   Minus,
   Outdent,
-  PenLine,
   Plus,
   Redo2,
   Search,
-  Signature,
   SeparatorHorizontal,
   Strikethrough,
   Table,
   Trash2,
-  Type,
   Underline,
   Undo2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Checkbox, Field, Input, Segmented, Select } from "@/components/ui/Field";
+import { Field, Input, Segmented, Select } from "@/components/ui/Field";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
-import { AUTO, FIELD_TYPES, TOSS, autoValue, type AutoKey, type FieldType, type SignRole } from "@/lib/signing";
+import { AUTO, FIELD_TYPES, TOSS, autoValue, type AutoKey, type FieldType, type SignField, type SignRole } from "@/lib/signing";
 import { Modal } from "@/components/ui/Modal";
 import { roleColor } from "./FieldBuilder";
+import { FieldSettings } from "./FieldSettings";
+import { FIELD_ICON as ICON } from "./icons";
 import { PdfPages } from "./PdfPages";
-import { PAGE, WDOC_CSS, autoLabel, fieldToken, fieldTokenLabel, fieldsFromBody, mergeToken, newWrittenField, renderWritten } from "./written";
+import { PAGE, WDOC_CSS, autoLabel, extraOf, fieldToken, fieldTokenLabel, fieldsFromBody, mergeToken, newWrittenField, renderWritten } from "./written";
 
-const ICON: Record<FieldType, typeof Type> = { signature: Signature, initials: PenLine, date: Calendar, text: Type, checkbox: CheckSquare };
+
 const GROUPS: { label: string; prefix: string }[] = [
   { label: "Company", prefix: "company." },
   { label: "Signer", prefix: "recipient." },
@@ -83,8 +80,10 @@ export function WrittenEditor({ body, roles, onBody, onRoles }: { body: string; 
   const selRef = useRef<HTMLElement | null>(null);
   /** what the side panel shows of it (a copy of its data-* attributes) */
   const [sel, setSelInfo] = useState<{ merge?: string; field?: string; type?: string; role?: string; label?: string; required?: string; auto?: string } | null>(null);
+  const [selEl, setSelEl] = useState<HTMLElement | null>(null);
   const setSel = (el: HTMLElement | null) => {
     selRef.current = el;
+    setSelEl(el);
     setSelInfo(el ? { ...el.dataset } : null);
   };
   const [height, setHeight] = useState(PAGE.h);
@@ -209,11 +208,33 @@ export function WrittenEditor({ body, roles, onBody, onRoles }: { body: string; 
     if (t) t.classList.add("tk-sel");
     setSel(t);
   };
-  const setAttr = (k: string, v: string) => {
+  /** The selected field chip as a field. */
+  const chipField = (el: HTMLElement): SignField => ({
+    id: el.dataset.field || "",
+    type: (el.dataset.type || "text") as FieldType,
+    role: el.dataset.role || TOSS,
+    label: el.dataset.label || "",
+    required: el.dataset.required === "1",
+    auto: (el.dataset.auto || null) as AutoKey | null,
+    ...extraOf(el),
+    page: 0,
+    x: 0,
+    y: 0,
+    w: 0,
+    h: 0,
+  });
+  /** Changes the selected field chip (its data attributes and its label). */
+  const patchField = (p: Partial<SignField>) => {
     const el = selRef.current;
     if (!el) return;
-    el.dataset[k] = v;
-    if (el.dataset.field) el.textContent = fieldTokenLabel({ label: el.dataset.label || "", type: el.dataset.type as FieldType }, roleLabel(el.dataset.role || TOSS));
+    if (p.label !== undefined) el.dataset.label = p.label;
+    if (p.role !== undefined) el.dataset.role = p.role;
+    if (p.required !== undefined) el.dataset.required = p.required ? "1" : "";
+    if (p.auto !== undefined) el.dataset.auto = p.auto || "";
+    const extra = { ...extraOf(el) };
+    for (const k of ["options", "validation", "readOnly", "showIf", "formula"] as const) if (k in p) (extra as Record<string, unknown>)[k] = p[k];
+    el.dataset.extra = JSON.stringify(extra);
+    el.textContent = fieldTokenLabel({ label: el.dataset.label || "", type: el.dataset.type as FieldType }, roleLabel(el.dataset.role || TOSS));
     changed();
     setSel(el);
   };
@@ -440,33 +461,7 @@ export function WrittenEditor({ body, roles, onBody, onRoles }: { body: string; 
                 </Select>
               </Field>
             ) : (
-              <div className="space-y-2">
-                <Field label="Label">
-                  <Input value={sel.label || ""} onChange={(e) => setAttr("label", e.target.value)} />
-                </Field>
-                <Field label="Filled by">
-                  <Select value={sel.role} onChange={(e) => setAttr("role", e.target.value)}>
-                    {who.map((r) => (
-                      <option key={r.key} value={r.key}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                {(sel.type === "text" || sel.type === "date") && (
-                  <Field label="Fills itself with">
-                    <Select value={sel.auto || ""} onChange={(e) => setAttr("auto", e.target.value as AutoKey | "")}>
-                      <option value="">Nothing (typed)</option>
-                      {AUTO.filter((a) => (sel.type === "date" ? a.v === "today" || a.v === "driver.dob" : true)).map((a) => (
-                        <option key={a.v} value={a.v}>
-                          {a.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                )}
-                <Checkbox checked={sel.required === "1"} onChange={(v) => setAttr("required", v ? "1" : "")} label="Required" />
-              </div>
+              selEl && <FieldSettings field={chipField(selEl)} fields={fields} who={who} onChange={patchField} />
             )}
           </div>
         )}

@@ -1,14 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Calendar, CheckSquare, PenLine, Plus, Signature, Trash2, Type, X } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Checkbox, Field, Input, Select } from "@/components/ui/Field";
+import { Input, Select } from "@/components/ui/Field";
 import { cn } from "@/lib/format";
-import { AUTO, FIELD_TYPES, TOSS, newFieldId, type AutoKey, type FieldType, type PageSize, type SignField, type SignRole } from "@/lib/signing";
+import { FIELD_TYPES, TOSS, newFieldId, type FieldType, type PageSize, type SignField, type SignRole } from "@/lib/signing";
 import { PdfPages } from "./PdfPages";
-
-const ICON: Record<FieldType, typeof Type> = { signature: Signature, initials: PenLine, date: Calendar, text: Type, checkbox: CheckSquare };
+import { FieldSettings } from "./FieldSettings";
+import { FIELD_ICON as ICON } from "./icons";
 const COLORS = ["#2563eb", "#9333ea", "#0d9488", "#db2777", "#ca8a04"];
 /** The colour of whoever fills a field (TOSS: grey). */
 export const roleColor = (roles: SignRole[], role: string) => (role === TOSS ? "#71717a" : COLORS[Math.max(0, roles.findIndex((r) => r.key === role)) % COLORS.length]);
@@ -54,7 +54,9 @@ export function FieldBuilder({
       role,
       label: t.label,
       required: tool !== "checkbox",
-      auto: tool === "date" ? "today" : null,
+      auto: t.auto ?? null,
+      validation: t.validation ?? null,
+      options: tool === "dropdown" || tool === "radio" ? ["Option 1", "Option 2"] : undefined,
     };
     onFields([...fields, f]);
     setSel(f.id);
@@ -123,7 +125,7 @@ export function FieldBuilder({
               </option>
             ))}
           </Select>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid max-h-[340px] grid-cols-2 gap-1.5 overflow-y-auto pr-1">
             {FIELD_TYPES.map((t) => {
               const I = ICON[t.v];
               return (
@@ -155,33 +157,7 @@ export function FieldBuilder({
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
-            <div className="space-y-2">
-              <Field label="Label">
-                <Input value={selected.label} onChange={(e) => update(selected.id, { label: e.target.value })} />
-              </Field>
-              <Field label="Filled by">
-                <Select value={selected.role} onChange={(e) => update(selected.id, { role: e.target.value })}>
-                  {who.map((r) => (
-                    <option key={r.key} value={r.key}>
-                      {r.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              {(selected.type === "text" || selected.type === "date") && (
-                <Field label="Fills itself with" hint={selected.role === TOSS ? "Filled in when sending; can still be changed." : "Shown filled in; the signer can change it."}>
-                  <Select value={selected.auto || ""} onChange={(e) => update(selected.id, { auto: (e.target.value || null) as AutoKey | null })}>
-                    <option value="">Nothing (typed)</option>
-                    {AUTO.filter((a) => (selected.type === "date" ? a.v === "today" || a.v === "driver.dob" : true)).map((a) => (
-                      <option key={a.v} value={a.v}>
-                        {a.label}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              )}
-              <Checkbox checked={selected.required} onChange={(v) => update(selected.id, { required: v })} label="Required" />
-            </div>
+            <FieldSettings field={selected} fields={fields} who={who} onChange={(p) => update(selected.id, p)} />
           </div>
         )}
         <p className="text-xs text-fg-4">{fields.length} field{fields.length === 1 ? "" : "s"}</p>

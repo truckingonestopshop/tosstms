@@ -19,7 +19,15 @@ export const FIELD_BOX: Record<FieldType, { w: number; h: number }> = {
   initials: { w: 70, h: 36 },
   date: { w: 120, h: 22 },
   text: { w: 220, h: 22 },
+  name: { w: 220, h: 22 },
+  email: { w: 220, h: 22 },
+  company: { w: 240, h: 22 },
+  title: { w: 160, h: 22 },
+  number: { w: 110, h: 22 },
+  dropdown: { w: 180, h: 24 },
+  radio: { w: 180, h: 44 },
   checkbox: { w: 16, h: 16 },
+  attachment: { w: 180, h: 26 },
 };
 
 export const WDOC_CSS = `
@@ -56,18 +64,33 @@ export function mergeToken(key: AutoKey) {
 export function fieldTokenLabel(f: Pick<SignField, "label" | "type">, roleLabel: string) {
   return `${f.label || FIELD_TYPES.find((t) => t.v === f.type)?.label} · ${roleLabel}`;
 }
+/** A field's other settings (choices, format check, read-only, condition, formula) on its chip. */
+export type FieldExtra = Pick<SignField, "options" | "validation" | "readOnly" | "showIf" | "formula">;
+export const extraOf = (el: HTMLElement): FieldExtra => {
+  try {
+    return JSON.parse(el.dataset.extra || "{}") as FieldExtra;
+  } catch {
+    return {};
+  }
+};
 export function fieldToken(f: Omit<SignField, "x" | "y" | "w" | "h" | "page">, roleLabel: string) {
   const box = FIELD_BOX[f.type];
-  return `<span class="tk tk-field" data-field="${f.id}" data-type="${f.type}" data-role="${esc(f.role)}" data-label="${esc(f.label)}" data-required="${f.required ? "1" : ""}" data-auto="${f.auto || ""}" contenteditable="false" style="min-width:${Math.min(box.w, 160)}px">${esc(fieldTokenLabel(f, roleLabel))}</span>&nbsp;`;
+  const extra: FieldExtra = { options: f.options, validation: f.validation, readOnly: f.readOnly, showIf: f.showIf, formula: f.formula };
+  return `<span class="tk tk-field" data-field="${f.id}" data-type="${f.type}" data-role="${esc(f.role)}" data-label="${esc(f.label)}" data-required="${f.required ? "1" : ""}" data-auto="${f.auto || ""}" data-extra="${esc(JSON.stringify(extra))}" contenteditable="false" style="min-width:${Math.min(box.w, 160)}px">${esc(fieldTokenLabel(f, roleLabel))}</span>&nbsp;`;
 }
-export const newWrittenField = (type: FieldType, role: string): Omit<SignField, "x" | "y" | "w" | "h" | "page"> => ({
-  id: newFieldId(),
-  type,
-  role,
-  label: FIELD_TYPES.find((t) => t.v === type)!.label,
-  required: type !== "checkbox",
-  auto: type === "date" ? "today" : null,
-});
+export const newWrittenField = (type: FieldType, role: string): Omit<SignField, "x" | "y" | "w" | "h" | "page"> => {
+  const t = FIELD_TYPES.find((x) => x.v === type)!;
+  return {
+    id: newFieldId(),
+    type,
+    role,
+    label: t.label,
+    required: type !== "checkbox",
+    auto: t.auto ?? null,
+    validation: t.validation ?? null,
+    options: type === "dropdown" || type === "radio" ? ["Option 1", "Option 2"] : undefined,
+  };
+};
 
 const fieldOf = (el: HTMLElement): SignField => ({
   id: el.dataset.field!,
@@ -76,6 +99,7 @@ const fieldOf = (el: HTMLElement): SignField => ({
   label: el.dataset.label || "",
   required: el.dataset.required === "1",
   auto: (el.dataset.auto || null) as AutoKey | null,
+  ...extraOf(el),
   page: 0,
   x: 0,
   y: 0,

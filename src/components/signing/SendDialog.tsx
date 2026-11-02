@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, Copy, FileSignature, MessageSquare, Plus, Upload, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, FileSignature, MessageSquare, PenLine, Plus, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -11,13 +11,16 @@ import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
-import { CATEGORIES, TOSS, autoValue, fieldTypeLabel, isEmpty, type AutoSource, type PageSize, type SignField, type SignRequest, type SignRole, type SignTemplate, type TemplateCategory } from "@/lib/signing";
+import { CATEGORIES, RECIPIENT_KINDS, TOSS, autoValue, fieldTypeLabel, isEmpty, type RecipientKind, type Verify, type AutoSource, type PageSize, type SignField, type SignRequest, type SignRole, type SignTemplate, type TemplateCategory } from "@/lib/signing";
 import type { CompanyPerson } from "@/components/fleet/CompanyPeople";
 import { FieldBuilder } from "./FieldBuilder";
 import { signingPath, uploadSigningPdf, useFileAs } from "./Templates";
 
-type Who = { name: string; email: string; phone: string };
+type Who = { name: string; email: string; phone: string; verify?: Verify; code?: string; inPerson?: boolean };
 const noOne: Who = { name: "", email: "", phone: "" };
+type Other = Who & { kind: Exclude<RecipientKind, "signer"> };
+/** A short access code that is easy to read out (no 0/O, 1/I). */
+const newCode = () => Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
 type Source = { template: SignTemplate | null; title: string; path: string; name: string; pages: PageSize[]; roles: SignRole[]; fields: SignField[]; docType: string };
 interface Sent {
   name: string;
@@ -26,6 +29,8 @@ interface Sent {
   link: string;
   emailed: boolean;
   error: string | null;
+  /** signs on this device: no link was emailed */
+  inPerson?: boolean;
 }
 
 /**
@@ -65,7 +70,8 @@ export function SendDialog({
   const [src, setSrc] = useState<Source | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [who, setWho] = useState<Record<string, Who>>({});
-  const [cc, setCc] = useState<Who[]>([]);
+  const [cc, setCc] = useState<Other[]>([]);
+  const [remind, setRemind] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const [inOrder, setInOrder] = useState(false);
   const [message, setMessage] = useState("");
@@ -85,6 +91,7 @@ export function SendDialog({
       setUrl(null);
       setWho({});
       setCc([]);
+      setRemind("");
       setValues({});
       setInOrder(false);
       setMessage("");
@@ -161,7 +168,9 @@ export function SendDialog({
     for (const r of usedRoles) {
       const w = who[r.key];
       if (!w?.name.trim()) return toast.error(`Who is "${r.label}"?`);
-      if (!w.email.trim() && !w.phone.trim()) return toast.error(`${w.name}: add an email or a phone`);
+      if (!w.inPerson && !w.email.trim() && !w.phone.trim()) return toast.error(`${w.name}: add an email or a phone (or tick "Signs in person")`);
+      if (!w.inPerson && w.verify === "code" && (w.code || "").trim().length < 4) return toast.error(`${w.name}: the access code needs at least 4 characters`);
+      if (!w.inPerson && w.verify === "email" && !w.email.trim()) return toast.error(`${w.name}: an emailed code needs their email`);
     }
     const tossMissing = src.fields.find((f) => f.role === TOSS && f.required && isEmpty(f, values[f.id]));
     if (tossMissing) return toast.error(`Fill in "${tossMissing.label}"`);
@@ -201,6 +210,7 @@ export function SendDialog({
         fields: file.fields,
         values: all,
         in_order: inOrder,
+        remind_every_days: remind ? Number(remind) : null,
         message: message.trim() || null,
         expires_at: expires ? new Date(`${expires}T23:59:59`).toISOString() : null,
       })
@@ -211,8 +221,22 @@ export function SendDialog({
       return toast.error(errMsg(error));
     }
     const rows = [
-      ...usedRoles.map((r, i) => ({ request_id: req.id, role: r.key, kind: "signer", name: who[r.key].name.trim(), email: who[r.key].email.trim() || null, phone: who[r.key].phone.trim() || null, position: i + 1 })),
-      ...cc.filter((c) => c.name.trim() && (c.email.trim() || c.phone.trim())).map((c, i) => ({ request_id: req.id, role: null, kind: "cc", name: c.name.trim(), email: c.email.trim() || null, phone: c.phone.trim() || null, position: 100 + i })),
+      ...usedRoles.map((r, i) => ({
+        request_id: req.id,
+        role: r.key,
+        kind: "signer",
+        name: who[r.key].name.trim(),
+        email: who[r.key].email.trim() || null,
+        phone: who[r.key].phone.trim() || null,
+        position: i + 1,
+        verify: who[r.key].inPerson ? "none" : who[r.key].verify || "none",
+        access_code: who[r.key].verify === "code" ? (who[r.key].code || "").trim() || null : null,
+        in_person: !!who[r.key].inPerson,
+      })),
+      // Approvers and reviewers act after the signers; copies only get the signed PDF.
+      ...cc
+        .filter((c) => c.name.trim() && (c.email.trim() || c.phone.trim()))
+        .map((c, i) => ({ request_id: req.id, role: null, kind: c.kind, name: c.name.trim(), email: c.email.trim() || null, phone: c.phone.trim() || null, position: c.kind === "cc" ? 100 + i : usedRoles.length + 1 + i })),
     ];
     const ins = await sb().from("tms_sign_recipients").insert(rows);
     if (ins.error) {
@@ -372,6 +396,38 @@ export function SendDialog({
                     <Input type="email" value={who[r.key]?.email || ""} onChange={(e) => setWho({ ...who, [r.key]: { ...(who[r.key] || noOne), email: e.target.value } })} placeholder="Email" aria-label={`${r.label} email`} />
                     <Input type="tel" value={who[r.key]?.phone || ""} onChange={(e) => setWho({ ...who, [r.key]: { ...(who[r.key] || noOne), phone: e.target.value } })} placeholder="Phone (for text)" aria-label={`${r.label} phone`} />
                   </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <Checkbox
+                      checked={!!who[r.key]?.inPerson}
+                      onChange={(v) => setWho({ ...who, [r.key]: { ...(who[r.key] || noOne), inPerson: v } })}
+                      label="Signs in person on this device"
+                      className="text-xs"
+                    />
+                    {!who[r.key]?.inPerson && (
+                      <Select
+                        value={who[r.key]?.verify || "none"}
+                        onChange={(e) => {
+                          const v = e.target.value as Verify;
+                          setWho({ ...who, [r.key]: { ...(who[r.key] || noOne), verify: v, code: v === "code" ? who[r.key]?.code || newCode() : who[r.key]?.code } });
+                        }}
+                        className="h-8 w-auto text-xs"
+                        aria-label={`${r.label} verification`}
+                      >
+                        <option value="none">No code to open</option>
+                        <option value="email">Email them a one-time code</option>
+                        <option value="code">Access code I give them</option>
+                      </Select>
+                    )}
+                    {!who[r.key]?.inPerson && who[r.key]?.verify === "code" && (
+                      <Input
+                        value={who[r.key]?.code || ""}
+                        onChange={(e) => setWho({ ...who, [r.key]: { ...(who[r.key] || noOne), code: e.target.value.toUpperCase() } })}
+                        className="h-8 w-28 font-mono text-xs tracking-widest"
+                        aria-label={`${r.label} access code`}
+                        title="Tell them this code by phone or text; it isn't in the email"
+                      />
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -380,14 +436,21 @@ export function SendDialog({
 
           <section>
             <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-[13px] font-semibold text-fg">Copies to</h3>
-              <Button size="xs" variant="ghost" onClick={() => setCc([...cc, { ...noOne }])}>
+              <h3 className="text-[13px] font-semibold text-fg">Also involved</h3>
+              <Button size="xs" variant="ghost" onClick={() => setCc([...cc, { ...noOne, kind: "cc" }])}>
                 <Plus className="h-3.5 w-3.5" /> Add
               </Button>
             </div>
-            {cc.length === 0 && <p className="text-xs text-fg-4">Nobody else. People added here get the signed copy, nothing to sign.</p>}
+            {cc.length === 0 && <p className="text-xs text-fg-4">Nobody else. Add someone who approves, needs to view it, or gets the signed copy.</p>}
             {cc.map((c, i) => (
-              <div key={i} className="mb-2 flex gap-2">
+              <div key={i} className="mb-2 flex flex-wrap gap-2 sm:flex-nowrap">
+                <Select value={c.kind} onChange={(e) => setCc(cc.map((x, j) => (j === i ? { ...x, kind: e.target.value as Other["kind"] } : x)))} className="sm:w-40" aria-label="What they do">
+                  {RECIPIENT_KINDS.filter((k) => k.v !== "signer").map((k) => (
+                    <option key={k.v} value={k.v}>
+                      {k.label}
+                    </option>
+                  ))}
+                </Select>
                 <Input value={c.name} onChange={(e) => setCc(cc.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder="Name" />
                 <Input type="email" value={c.email} onChange={(e) => setCc(cc.map((x, j) => (j === i ? { ...x, email: e.target.value } : x)))} placeholder="Email" />
                 <button onClick={() => setCc(cc.filter((_, j) => j !== i))} className="text-fg-4 hover:text-fg" aria-label="Remove">
@@ -420,9 +483,20 @@ export function SendDialog({
             <Field label="Message" hint="Goes in the email with the link">
               <Textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Hi, please review and sign. Thank you!" />
             </Field>
-            <Field label="Expires" hint="Optional: no signing after this day">
-              <Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
-            </Field>
+            <div className="space-y-3">
+              <Field label="Expires" hint="Optional: no signing after this day">
+                <Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
+              </Field>
+              <Field label="Remind them">
+                <Select value={remind} onChange={(e) => setRemind(e.target.value)}>
+                  <option value="">Never (remind by hand)</option>
+                  <option value="1">Every day</option>
+                  <option value="2">Every 2 days</option>
+                  <option value="3">Every 3 days</option>
+                  <option value="7">Every week</option>
+                </Select>
+              </Field>
+            </div>
           </section>
         </div>
       )}
@@ -450,7 +524,12 @@ export function SendDialog({
                   >
                     {copied === s.link ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {copied === s.link ? "Copied" : "Copy link"}
                   </Button>
-                  {s.phone && (
+                  {s.inPerson && (
+                    <a href={s.link} target="_blank" rel="noreferrer" className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-brand px-2.5 text-xs font-semibold text-black">
+                      <PenLine className="h-3.5 w-3.5" /> Sign now on this device
+                    </a>
+                  )}
+                  {s.phone && !s.inPerson && (
                     <a href={`sms:${s.phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(`Hi ${s.name.split(" ")[0]}, please review and sign: ${s.link}`)}`} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-line px-2.5 text-xs font-medium text-fg hover:bg-surface-2">
                       <MessageSquare className="h-3.5 w-3.5" /> Text it
                     </a>

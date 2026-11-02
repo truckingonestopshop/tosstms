@@ -7,7 +7,7 @@ import { Segmented } from "@/components/ui/Field";
 import { SigningRequests } from "@/components/signing/Requests";
 import { TemplatesList } from "@/components/signing/Templates";
 
-// Signing: everything sent for signing (all companies) and the templates. Documents are sent from
+// TossSign: everything sent for signing (all companies) and the templates. Documents are sent from
 // a company's Documents tab, a DER / owner / contact on its Profile, or a driver.
 
 type Tab = "sent" | "templates";
@@ -26,7 +26,7 @@ function Signing() {
   const tab: Tab = params.get("tab") === "templates" ? "templates" : "sent";
   return (
     <Page>
-      <PageHeader title="Signing" />
+      <PageHeader eyebrow="Documents & e-signatures" title="TossSign" />
       <Segmented<Tab>
         value={tab}
         onChange={(t) => router.replace(`/signing?tab=${t}`, { scroll: false })}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { Copy, FileSignature, PenSquare, Plus, Trash2, Upload } from "lucide-react";
+import { Copy, FileSignature, Link2, PenSquare, Plus, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, Empty, Pill, neutralPill } from "@/components/ui/Bits";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
@@ -15,6 +15,7 @@ import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { cn, relTime } from "@/lib/format";
 import { STARTER } from "./written";
+import { PublicLinks } from "./PublicLinks";
 import { CATEGORIES, type SignTemplate, type TemplateCategory } from "@/lib/signing";
 import { pdfPageSizes } from "./PdfPages";
 
@@ -43,6 +44,7 @@ export function TemplatesList() {
   const router = useRouter();
   const templates = useLiveTable<SignTemplate>("tms_sign_templates", { order: "updated_at" });
   const [creating, setCreating] = useState(false);
+  const [linking, setLinking] = useState<SignTemplate | null>(null);
   const [cat, setCat] = useState<TemplateCategory | "all">("all");
   const list = templates.rows.filter((t) => cat === "all" || t.category === cat);
 
@@ -95,6 +97,9 @@ export function TemplatesList() {
                   </div>
                 </Link>
                 <Pill className={neutralPill}>{CATEGORIES.find((c) => c.v === t.category)?.label}</Pill>
+                <button onClick={() => (t.fields.length ? setLinking(t) : toast.error("Place the fields first"))} className="text-fg-4 hover:text-fg" aria-label={`Public links of ${t.name}`} title="Public link (anyone fills and signs)">
+                  <Link2 className="h-4 w-4" />
+                </button>
                 <button onClick={() => duplicate(t)} className="text-fg-4 hover:text-fg" aria-label={`Copy ${t.name}`}>
                   <Copy className="h-4 w-4" />
                 </button>
@@ -106,6 +111,7 @@ export function TemplatesList() {
           </ul>
         )}
       </Card>
+      <PublicLinks template={linking} onClose={() => setLinking(null)} />
       <NewTemplateModal
         open={creating}
         onClose={() => setCreating(false)}

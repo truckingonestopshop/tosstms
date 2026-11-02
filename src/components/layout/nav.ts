@@ -52,7 +52,7 @@ export const SIDEBAR: NavItem[][] = [
   [
     { key: "credentials", href: "/credentials", label: "Credentials", icon: KeyRound, match: (p) => p.startsWith("/credentials") },
     { key: "documents", href: "/documents", label: "Documents", icon: FolderOpen, match: (p) => p.startsWith("/documents") },
-    { key: "signing", href: "/signing", label: "Signing", icon: PenLine, match: (p) => p.startsWith("/signing") },
+    { key: "signing", href: "/signing", label: "TossSign", icon: PenLine, match: (p) => p.startsWith("/signing") },
     { key: "customer_service", href: "/customer-service", label: "Customer Service", icon: Headset, match: (p) => p.startsWith("/customer-service") },
     { key: "users", href: "/users", label: "Users", icon: UserCog, match: (p) => p.startsWith("/users") || p.startsWith("/admin") },
     { key: "settings", href: "/settings", label: "Settings", icon: Settings, match: (p) => p.startsWith("/settings") || p.startsWith("/profile") },
