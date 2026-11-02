@@ -258,9 +258,15 @@ export type AutoKey =
   | "recipient.email"
   | "recipient.phone"
   | "driver.name"
+  | "driver.phone"
+  | "driver.email"
   | "driver.license"
   | "driver.license_state"
+  | "driver.license_type"
+  | "driver.license_expiry"
+  | "driver.medical_expiry"
   | "driver.dob"
+  | "driver.hire_date"
   | "today"
   | "today.day"
   | "today.month"
@@ -280,9 +286,15 @@ export const AUTO: { v: AutoKey; label: string }[] = [
   { v: "recipient.email", label: "Signer: email" },
   { v: "recipient.phone", label: "Signer: phone" },
   { v: "driver.name", label: "Driver: name" },
+  { v: "driver.phone", label: "Driver: phone" },
+  { v: "driver.email", label: "Driver: email" },
   { v: "driver.license", label: "Driver: license number" },
   { v: "driver.license_state", label: "Driver: license state" },
+  { v: "driver.license_type", label: "Driver: license type (CDL / DL)" },
+  { v: "driver.license_expiry", label: "Driver: license expires" },
+  { v: "driver.medical_expiry", label: "Driver: medical card expires" },
   { v: "driver.dob", label: "Driver: date of birth" },
+  { v: "driver.hire_date", label: "Driver: hire date" },
   { v: "today", label: "Today's date" },
   { v: "today.day", label: "Today: day (e.g. 2nd)" },
   { v: "today.month", label: "Today: month (e.g. November)" },
@@ -302,7 +314,18 @@ export interface AutoSource {
     contact_first_name?: string | null;
     contact_last_name?: string | null;
   } | null;
-  driver?: { name?: string | null; cdl_number?: string | null; cdl_state?: string | null; dob?: string | null } | null;
+  driver?: {
+    name?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    cdl_number?: string | null;
+    cdl_state?: string | null;
+    license_type?: string | null;
+    cdl_expiry?: string | null;
+    medical_card_expiry?: string | null;
+    dob?: string | null;
+    hire_date?: string | null;
+  } | null;
   recipient?: { name?: string | null; email?: string | null; phone?: string | null } | null;
   /** YYYY-MM-DD; defaults to today */
   date?: string;
@@ -350,12 +373,24 @@ export function autoValue(key: AutoKey, s: AutoSource): string {
       return s.recipient?.phone || "";
     case "driver.name":
       return s.driver?.name || "";
+    case "driver.phone":
+      return s.driver?.phone || "";
+    case "driver.email":
+      return s.driver?.email || "";
     case "driver.license":
       return s.driver?.cdl_number || "";
     case "driver.license_state":
       return s.driver?.cdl_state || "";
+    case "driver.license_type":
+      return s.driver?.license_type || "";
+    case "driver.license_expiry":
+      return s.driver?.cdl_expiry ? usDate(s.driver.cdl_expiry) : "";
+    case "driver.medical_expiry":
+      return s.driver?.medical_card_expiry ? usDate(s.driver.medical_card_expiry) : "";
     case "driver.dob":
       return s.driver?.dob ? usDate(s.driver.dob) : "";
+    case "driver.hire_date":
+      return s.driver?.hire_date ? usDate(s.driver.hire_date) : "";
     case "today":
       return usDate(date);
     case "today.day":

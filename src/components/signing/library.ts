@@ -55,17 +55,17 @@ ${sigBlock("signer", "Carrier")}`,
 <h2>Applicant</h2>
 <table><tbody>
 <tr><td>Full name</td><td>${f("name", "Full name", "driver", "Driver")}</td></tr>
-<tr><td>Date of birth</td><td>${f("text", "Date of birth", "driver", "Driver")}</td></tr>
-<tr><td>Phone</td><td>${f("text", "Phone", "driver", "Driver", { validation: "phone" })}</td></tr>
+<tr><td>Date of birth</td><td>${f("text", "Date of birth", "driver", "Driver", { auto: "driver.dob" })}</td></tr>
+<tr><td>Phone</td><td>${f("text", "Phone", "driver", "Driver", { validation: "phone", auto: "driver.phone" })}</td></tr>
 <tr><td>Email</td><td>${f("email", "Email", "driver", "Driver")}</td></tr>
 <tr><td>Address</td><td>${f("text", "Address", "driver", "Driver")}</td></tr>
 </tbody></table>
 <h2>License</h2>
 <table><tbody>
-<tr><td>License number</td><td>${f("text", "License number", "driver", "Driver")}</td></tr>
-<tr><td>State</td><td>${f("text", "License state", "driver", "Driver")}</td></tr>
+<tr><td>License number</td><td>${f("text", "License number", "driver", "Driver", { auto: "driver.license" })}</td></tr>
+<tr><td>State</td><td>${f("text", "License state", "driver", "Driver", { auto: "driver.license_state" })}</td></tr>
 <tr><td>Class</td><td>${f("dropdown", "License class", "driver", "Driver", { options: ["CDL A", "CDL B", "CDL C", "Non-CDL"] })}</td></tr>
-<tr><td>Expires</td><td>${f("text", "License expires", "driver", "Driver")}</td></tr>
+<tr><td>Expires</td><td>${f("text", "License expires", "driver", "Driver", { auto: "driver.license_expiry" })}</td></tr>
 <tr><td>Photo of the license</td><td>${f("attachment", "License photo", "driver", "Driver")}</td></tr>
 </tbody></table>
 <h2>Experience</h2>
@@ -102,7 +102,7 @@ ${sigBlock("driver", "Driver")}`,
     roles: [{ key: "driver", label: "Driver" }],
     body: () =>
       `<h1>Clearinghouse Limited Query Consent</h1>
-<p>I, ${f("name", "Full name", "driver", "Driver")}, with CDL number ${f("text", "CDL number", "driver", "Driver")} issued by ${f("text", "CDL state", "driver", "Driver")}, give ${m("company.name")} (USDOT ${m("company.dot")}) permission to run limited queries of the FMCSA Commercial Driver's License Drug and Alcohol Clearinghouse about me, for as long as I work for the company.</p>
+<p>I, ${f("name", "Full name", "driver", "Driver")}, with CDL number ${f("text", "CDL number", "driver", "Driver", { auto: "driver.license" })} issued by ${f("text", "CDL state", "driver", "Driver", { auto: "driver.license_state" })}, give ${m("company.name")} (USDOT ${m("company.dot")}) permission to run limited queries of the FMCSA Commercial Driver's License Drug and Alcohol Clearinghouse about me, for as long as I work for the company.</p>
 <p>I understand that a limited query only shows whether information about me exists there, and that if it does, the company must get my separate consent in the Clearinghouse to see it.</p>
 ${sigBlock("driver", "Driver")}`,
   },

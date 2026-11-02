@@ -65,7 +65,11 @@ export function SendDialog({
   const templates = useLiveTable<SignTemplate>("tms_sign_templates", { order: "name", ascending: true });
   const people = useLiveTable<CompanyPerson>("tms_company_people", { filter: { company_id: companyId } });
   const company = companyById(companyId);
-  const driver = drivers.find((d) => d.id === driverId);
+  // The driver the document is about: their details fill the driver fields, they are suggested as
+  // the driver signer, and the signed copy is filed on them. Starts as the driver it is sent from.
+  const [drvId, setDrvId] = useState(driverId || "");
+  const driver = drivers.find((d) => d.id === drvId);
+  const companyDrivers = drivers.filter((d) => d.company_id === companyId && (d.status === "active" || d.id === drvId)).sort((a, b) => a.name.localeCompare(b.name));
   const person = people.rows.find((p) => p.id === personId);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -101,6 +105,7 @@ export function SendDialog({
       setExpires("");
       setSent(null);
       setShow(category || "all");
+      setDrvId(driverId || "");
     }
   }
 
@@ -123,15 +128,38 @@ export function SendDialog({
     const key = `${role.key} ${role.label}`.toLowerCase();
     const pick = (id: string | undefined) => contacts.find((c) => c.id === id);
     const c =
-      (key.includes("driver") && (pick(driverId && `d:${driverId}`) || contacts.find((x) => x.tags.includes("driver")))) ||
+      (key.includes("driver") && (pick(drvId && `d:${drvId}`) || contacts.find((x) => x.tags.includes("driver")))) ||
       (key.includes("der") && (pick(personId && `p:${personId}`) || contacts.find((x) => x.tags.includes("der")))) ||
       pick(personId && `p:${personId}`) ||
-      pick(driverId && `d:${driverId}`) ||
+      pick(drvId && `d:${drvId}`) ||
       contacts.find((x) => x.tags.includes("owner")) ||
       contacts[0];
     return c ? { name: c.name, email: c.email, phone: c.phone } : noOne;
   };
   const autoSrc = (role?: string): AutoSource => ({ company, driver: driver || null, recipient: role ? who[role] || null : Object.values(who)[0] || null });
+  /** Picks the driver: driver signers become them, and TOSS's driver fields refill with their details. */
+  const pickDriver = (id: string) => {
+    setDrvId(id);
+    const d = drivers.find((x) => x.id === id);
+    if (!src) return;
+    setWho((w) => {
+      const next = { ...w };
+      for (const r of src.roles) if (`${r.key} ${r.label}`.toLowerCase().includes("driver")) next[r.key] = d ? { ...(w[r.key] || noOne), name: d.name, email: d.email || "", phone: d.phone || "" } : { ...noOne };
+      return next;
+    });
+    setValues((v) => {
+      const next = { ...v };
+      for (const f of src.fields) if (f.role === TOSS && f.auto?.startsWith("driver.")) next[f.id] = autoValue(f.auto, { company, driver: d || null });
+      return next;
+    });
+  };
+  // The driver picker shows when the document has anything about a driver.
+  const usesDriver =
+    !!src &&
+    (src.roles.some((r) => `${r.key} ${r.label}`.toLowerCase().includes("driver")) ||
+      src.fields.some((f) => f.auto?.startsWith("driver.")) ||
+      (src.template?.kind === "written" && /data-merge="driver\./.test(src.template.body || "")) ||
+      src.template?.category === "driver");
 
   /** Opens the details step: TOSS's auto fields fill themselves (they can still be typed over). */
   const toDetails = (s: Source, people: Record<string, Who>) => {
@@ -215,7 +243,7 @@ export function SendDialog({
         title: src.title.trim(),
         template_id: src.template?.id || null,
         company_id: companyId,
-        driver_id: driverId || null,
+        driver_id: drvId || null,
         person_id: personId || null,
         case_id: caseId || null,
         doc_type: src.docType || null,
@@ -379,6 +407,22 @@ export function SendDialog({
             <Field label="Title">
               <Input value={src.title} onChange={(e) => setSrc({ ...src, title: e.target.value })} />
             </Field>
+          )}
+          {usesDriver && (
+            <section className="rounded-xl border border-line bg-surface-2/40 p-3">
+              <Field label="Driver" hint={companyDrivers.length ? "Their name, contact, license and dates fill in; the signed copy is filed on them" : "This company has no drivers yet: add them in Equipment & Drivers"}>
+                <Select value={drvId} onChange={(e) => pickDriver(e.target.value)} disabled={!companyDrivers.length}>
+                  <option value="">Pick a driver of {company?.name || "this company"}…</option>
+                  {companyDrivers.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                      {d.cdl_number ? ` · ${d.license_type || "CDL"} ${d.cdl_number}` : ""}
+                      {d.status !== "active" ? " (inactive)" : ""}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </section>
           )}
           <section>
             <h3 className="mb-2 text-[13px] font-semibold text-fg">Who signs</h3>
