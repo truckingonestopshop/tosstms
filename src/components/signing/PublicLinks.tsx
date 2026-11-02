@@ -62,7 +62,7 @@ export function PublicLinks({ template, onClose }: { template: SignTemplate | nu
       const values: Record<string, string> = {};
       if (template.kind === "written") {
         // The written document becomes its PDF now, with the carrier's values in it.
-        const out = await renderWritten(template.body || "", { merge: (k) => (k.startsWith("recipient.") ? "" : autoValue(k, src)), toss: {} });
+        const out = await renderWritten(template.body || "", { merge: (k) => (k.startsWith("recipient.") ? "" : autoValue(k, src)), toss: {}, letterhead: template.letterhead ? { title: title.trim() || template.name } : null });
         const name = `${template.name.replace(/[\\/:*?"<>|]+/g, "_")}.pdf`;
         const path = signingPath("links", name);
         const up = await sb().storage.from(BUCKET).upload(path, new Blob([out.bytes.slice().buffer], { type: "application/pdf" }), { contentType: "application/pdf" });

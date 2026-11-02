@@ -215,7 +215,7 @@ function Library({ open, onClose, have, onAdded }: { open: boolean; onClose: () 
     const body = s.body();
     const { data, error } = await sb()
       .from("tms_sign_templates")
-      .insert({ name: s.name, description: s.description, category: s.category, doc_type: s.doc_type, kind: "written", body, roles: s.roles, fields: fieldsFromBody(body), pages: [] })
+      .insert({ name: s.name, description: s.description, category: s.category, doc_type: s.doc_type, kind: "written", letterhead: true, body, roles: s.roles, fields: fieldsFromBody(body), pages: [] })
       .select()
       .single();
     setBusy("");
@@ -271,7 +271,7 @@ function NewTemplateModal({ open, initialKind = "written", onClose, onCreated }:
       const roles = [{ key: category === "driver" ? "driver" : category === "der" ? "der" : "signer", label: category === "driver" ? "Driver" : category === "der" ? "DER" : "Signer" }];
       const base = { name: name.trim(), description: description.trim() || null, category, doc_type: docType || null, roles, fields: [] };
       const up = kind === "pdf" && file ? await uploadSigningPdf(file, "templates") : null;
-      const row: Record<string, unknown> = up ? { ...base, kind: "pdf", file_path: up.path, file_name: up.name, pages: up.pages } : { ...base, kind: "written", body: STARTER.replace("Document title", name.trim().replace(/[<>&]/g, "")), pages: [] };
+      const row: Record<string, unknown> = up ? { ...base, kind: "pdf", file_path: up.path, file_name: up.name, pages: up.pages } : { ...base, kind: "written", letterhead: true, body: STARTER.replace("Document title", name.trim().replace(/[<>&]/g, "")), pages: [] };
       const { data, error } = await sb().from("tms_sign_templates").insert(row).select().single();
       if (error) {
         if (up) await sb().storage.from(BUCKET).remove([up.path]);

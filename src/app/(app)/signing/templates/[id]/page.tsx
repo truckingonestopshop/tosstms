@@ -5,7 +5,7 @@ import { use, useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, Page, PageHeader } from "@/components/ui/Bits";
-import { Field, Input, Select } from "@/components/ui/Field";
+import { Checkbox, Field, Input, Select } from "@/components/ui/Field";
 import { errMsg, sb, signedUrl } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { CATEGORIES, type SignTemplate, type TemplateCategory } from "@/lib/signing";
@@ -50,7 +50,7 @@ export default function TemplatePage({ params }: { params: Promise<{ id: string 
     setBusy(true);
     const { data, error } = await sb()
       .from("tms_sign_templates")
-      .update({ name: t.name.trim(), category: t.category, doc_type: t.doc_type, roles: t.roles, fields, body: t.body })
+      .update({ name: t.name.trim(), category: t.category, doc_type: t.doc_type, roles: t.roles, fields, body: t.body, letterhead: !!t.letterhead })
       .eq("id", t.id)
       .select()
       .single();
@@ -101,9 +101,12 @@ export default function TemplatePage({ params }: { params: Promise<{ id: string 
             </Select>
           </Field>
         </div>
+        {t.kind === "written" && (
+          <Checkbox className="mt-3" checked={!!t.letterhead} onChange={(v) => set({ letterhead: v })} label="TOSS letterhead on every page (logo, orange corners, title, page numbers)" />
+        )}
       </Card>
       {t.kind === "written" ? (
-        <WrittenEditor key={t.id} body={t.body || ""} roles={t.roles} onBody={(body) => set({ body })} onRoles={(roles) => set({ roles })} />
+        <WrittenEditor key={t.id} body={t.body || ""} roles={t.roles} onBody={(body) => set({ body })} onRoles={(roles) => set({ roles })} letterhead={t.letterhead ? { title: t.name } : null} />
       ) : (
         <FieldBuilder src={url} pages={t.pages} roles={t.roles} fields={t.fields} onRoles={(roles) => set({ roles })} onFields={(fields) => set({ fields })} />
       )}

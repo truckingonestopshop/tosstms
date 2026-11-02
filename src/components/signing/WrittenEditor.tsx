@@ -38,7 +38,7 @@ import { roleColor } from "./FieldBuilder";
 import { FieldSettings } from "./FieldSettings";
 import { FIELD_ICON as ICON } from "./icons";
 import { PdfPages } from "./PdfPages";
-import { PAGE, WDOC_CSS, autoLabel, extraOf, fieldToken, fieldTokenLabel, fieldsFromBody, mergeToken, newWrittenField, renderWritten } from "./written";
+import { LETTERHEAD, ORANGE, PAGE, WDOC_CSS, autoLabel, extraOf, fieldToken, fieldTokenLabel, fieldsFromBody, mergeToken, newWrittenField, renderWritten } from "./written";
 
 
 const GROUPS: { label: string; prefix: string }[] = [
@@ -52,6 +52,30 @@ const SAMPLE = {
   driver: { name: "John Driver", cdl_number: "D1234567", cdl_state: "FL", dob: "1985-04-12" },
   recipient: { name: "Maria Lopez", email: "owner@sample.com", phone: "(305) 555-0100" },
 };
+
+/** The TOSS letterhead at the top of the page while writing (the PDF draws it on every page). */
+function LetterheadStrip({ title }: { title: string }) {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-0 select-none" style={{ height: LETTERHEAD.top }} aria-hidden>
+      <div className="absolute left-0 top-0 h-[62px] w-[62px]" style={{ background: ORANGE, clipPath: "polygon(0 0, 100% 0, 0 100%)" }} />
+      <div className="absolute right-0 top-0 h-[62px] w-[62px]" style={{ background: ORANGE, clipPath: "polygon(0 0, 100% 0, 100% 100%)" }} />
+      <div className="absolute flex items-center gap-3" style={{ left: PAGE.m, top: 42 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/toss-logo.svg" alt="" style={{ height: 40 }} />
+        <div className="text-[15px] font-bold leading-[19px] text-[#111]" style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>
+          TRUCKING ONE
+          <br />
+          STOP SHOP
+        </div>
+      </div>
+      <div className="absolute text-right text-[12.5px] font-bold leading-[18px] text-[#111]" style={{ right: PAGE.m, top: 45, fontFamily: "Arial, Helvetica, sans-serif", maxWidth: 330 }}>
+        TRUCKING ONE STOP SHOP CORP
+        <div className="truncate uppercase">{title}</div>
+      </div>
+      <div className="absolute" style={{ left: PAGE.m, right: PAGE.m, top: 100, height: 2.5, background: ORANGE }} />
+    </div>
+  );
+}
 
 /** A toolbar button (keeps the cursor in the text). */
 function T({ icon: I, label, on }: { icon: typeof Bold; label: string; on: () => void }) {
@@ -68,7 +92,20 @@ const Sep = () => <span className="mx-1 h-5 w-px bg-line" />;
  * lists, tables, images, page breaks, values that fill themselves (company, signer, driver, date)
  * and fields for TOSS or each signer. Click a value or field in the text to change or remove it.
  */
-export function WrittenEditor({ body, roles, onBody, onRoles }: { body: string; roles: SignRole[]; onBody: (html: string) => void; onRoles: (r: SignRole[]) => void }) {
+export function WrittenEditor({
+  body,
+  roles,
+  onBody,
+  onRoles,
+  letterhead,
+}: {
+  body: string;
+  roles: SignRole[];
+  onBody: (html: string) => void;
+  onRoles: (r: SignRole[]) => void;
+  /** the TOSS letterhead on every page, with this title */
+  letterhead?: { title: string } | null;
+}) {
   const ed = useRef<HTMLDivElement>(null);
   const range = useRef<Range | null>(null);
   const img = useRef<HTMLInputElement>(null);
@@ -265,7 +302,7 @@ export function WrittenEditor({ body, roles, onBody, onRoles }: { body: string; 
     if (!ed.current) return;
     setPreviewing(true);
     try {
-      setShown(await renderWritten(ed.current.innerHTML, { merge: (k) => autoValue(k, SAMPLE), toss: {} }));
+      setShown(await renderWritten(ed.current.innerHTML, { merge: (k) => autoValue(k, SAMPLE), toss: {}, letterhead: letterhead ? { title: letterhead.title } : null }));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Preview failed");
     }
@@ -336,10 +373,11 @@ export function WrittenEditor({ body, roles, onBody, onRoles }: { body: string; 
               backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${PAGE.h - 1}px, #f28c3866 ${PAGE.h - 1}px, #f28c3866 ${PAGE.h}px)`,
             }}
           >
+            {letterhead && <LetterheadStrip title={letterhead.title} />}
             <div
               ref={ed}
               className="wdoc min-h-full outline-none"
-              style={{ padding: PAGE.m, minHeight: height }}
+              style={{ padding: PAGE.m, paddingTop: letterhead ? LETTERHEAD.top : PAGE.m, paddingBottom: letterhead ? LETTERHEAD.bottom : PAGE.m, minHeight: height }}
               contentEditable
               suppressContentEditableWarning
               spellCheck

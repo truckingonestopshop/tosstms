@@ -223,7 +223,7 @@ export function SendDialog({
     let file = { path: src.path, name: src.name, pages: src.pages, fields: src.fields };
     if (src.template?.kind === "written") {
       try {
-        const out = await renderWritten(src.template.body || "", { merge: (k) => autoValue(k, autoSrc(usedRoles[0]?.key)), toss: values });
+        const out = await renderWritten(src.template.body || "", { merge: (k) => autoValue(k, autoSrc(usedRoles[0]?.key)), toss: values, letterhead: src.template.letterhead ? { title: src.title.trim() } : null });
         const name = `${src.title.trim().replace(/[\\/:*?"<>|]+/g, "_")}.pdf`;
         const path = signingPath(`requests/${companyId}`, name);
         const up = await sb().storage.from(BUCKET).upload(path, new Blob([out.bytes.slice().buffer], { type: "application/pdf" }), { contentType: "application/pdf" });

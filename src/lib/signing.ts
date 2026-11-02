@@ -65,6 +65,8 @@ export interface SignTemplate {
   kind: "pdf" | "written";
   /** written templates: the document (HTML with merge values and field tokens) */
   body: string | null;
+  /** written templates: the TOSS letterhead on every page (migration 0054) */
+  letterhead?: boolean;
   /** pdf templates only */
   file_path: string | null;
   file_name: string | null;

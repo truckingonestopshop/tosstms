@@ -11,7 +11,72 @@ import { AUTO, FIELD_TYPES, TOSS, newFieldId, type AutoKey, type FieldType, type
 /** Letter page in CSS px (96 per inch): 8.5 × 11 in, 0.75 in margins. */
 export const PAGE = { w: 816, h: 1056, m: 72 };
 export const CONTENT_W = PAGE.w - PAGE.m * 2;
-const CONTENT_H = PAGE.h - PAGE.m * 2;
+/** Room the TOSS letterhead takes at the top and bottom of each page (px). */
+export const LETTERHEAD = { top: 138, bottom: 70 };
+export const ORANGE = "#F28C38";
+
+let logoP: Promise<HTMLImageElement | null> | null = null;
+/** The TOSS logo (same site, so it can be drawn on a canvas). */
+function loadLogo() {
+  logoP ??= new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = "/brand/toss-logo.svg";
+  });
+  return logoP;
+}
+
+/** The TOSS letterhead on one page: orange corners, logo, company and title, rule, footer. */
+function drawLetterhead(g: CanvasRenderingContext2D, s: number, page: number, pages: number, title: string, logo: HTMLImageElement | null) {
+  const W = PAGE.w * s;
+  const H = PAGE.h * s;
+  const m = PAGE.m * s;
+  g.save();
+  g.fillStyle = ORANGE;
+  const c = 62 * s;
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.lineTo(c, 0);
+  g.lineTo(0, c);
+  g.closePath();
+  g.fill();
+  g.beginPath();
+  g.moveTo(W, 0);
+  g.lineTo(W - c, 0);
+  g.lineTo(W, c);
+  g.closePath();
+  g.fill();
+  // Logo and "TRUCKING ONE / STOP SHOP"
+  const lh = 40 * s;
+  const lw = logo ? (logo.naturalWidth / logo.naturalHeight) * lh || 90 * s : 0;
+  if (logo) g.drawImage(logo, m, 42 * s, lw, lh);
+  g.fillStyle = "#111111";
+  g.textBaseline = "alphabetic";
+  g.font = `700 ${15 * s}px Arial, Helvetica, sans-serif`;
+  g.fillText("TRUCKING ONE", m + lw + 12 * s, 60 * s);
+  g.fillText("STOP SHOP", m + lw + 12 * s, 79 * s);
+  // Company and document title, right
+  g.textAlign = "right";
+  g.font = `700 ${12.5 * s}px Arial, Helvetica, sans-serif`;
+  g.fillText("TRUCKING ONE STOP SHOP CORP", W - m, 58 * s);
+  let t = title.toUpperCase();
+  const max = 330 * s;
+  while (t.length > 4 && g.measureText(t).width > max) t = `${t.slice(0, -2).trimEnd()}…`;
+  g.fillText(t, W - m, 76 * s);
+  // Rule under the header
+  g.fillStyle = ORANGE;
+  g.fillRect(m, 100 * s, W - 2 * m, 2.5 * s);
+  // Footer
+  g.fillRect(m, H - 46 * s, W - 2 * m, 1 * s);
+  g.fillStyle = "#6b7280";
+  g.font = `400 ${9.5 * s}px Arial, Helvetica, sans-serif`;
+  g.textAlign = "left";
+  g.fillText("Trucking One Stop Shop Corp · TossSign", m, H - 28 * s);
+  g.textAlign = "right";
+  g.fillText(`Page ${page} of ${pages}`, W - m, H - 28 * s);
+  g.restore();
+}
 
 /** Size of a field box in the text (px). */
 export const FIELD_BOX: Record<FieldType, { w: number; h: number }> = {
@@ -124,7 +189,13 @@ export function mergesIn(html: string): AutoKey[] {
  * are filled in as text; signer fields become empty boxes and come back with their place on the
  * page (shares of the page, like fields placed on an uploaded PDF).
  */
-export async function renderWritten(body: string, opts: { merge: (key: AutoKey) => string; toss: Record<string, string> }): Promise<{ bytes: Uint8Array; pages: PageSize[]; fields: SignField[] }> {
+export async function renderWritten(
+  body: string,
+  opts: { merge: (key: AutoKey) => string; toss: Record<string, string>; letterhead?: { title: string } | null },
+): Promise<{ bytes: Uint8Array; pages: PageSize[]; fields: SignField[] }> {
+  // With the letterhead, the text sits between its header and footer.
+  const TOP = opts.letterhead ? LETTERHEAD.top : PAGE.m;
+  const CH = PAGE.h - TOP - (opts.letterhead ? LETTERHEAD.bottom : PAGE.m);
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas-pro"), import("jspdf")]);
   const host = document.createElement("div");
   host.style.cssText = `position:fixed;left:-20000px;top:0;width:${CONTENT_W}px;background:#fff;`;
@@ -162,14 +233,14 @@ export async function renderWritten(body: string, opts: { merge: (key: AutoKey) 
     const blocks = (parent: Element): Element[] =>
       Array.from(parent.children).flatMap((el) => {
         const tag = el.tagName;
-        if ((tag === "UL" || tag === "OL") && el.getBoundingClientRect().height > CONTENT_H / 2) return Array.from(el.children);
-        if (tag === "TABLE" && el.getBoundingClientRect().height > CONTENT_H / 2) return Array.from(el.querySelectorAll("tr"));
+        if ((tag === "UL" || tag === "OL") && el.getBoundingClientRect().height > CH / 2) return Array.from(el.children);
+        if (tag === "TABLE" && el.getBoundingClientRect().height > CH / 2) return Array.from(el.querySelectorAll("tr"));
         return [el];
       });
     for (const el of blocks(root)) {
       const top = topOf(el);
       const h = el.getBoundingClientRect().height;
-      const next = (Math.floor(top / CONTENT_H) + 1) * CONTENT_H;
+      const next = (Math.floor(top / CH) + 1) * CH;
       const push = (by: number) => {
         if (el.tagName === "TR") (el as HTMLElement).querySelectorAll<HTMLElement>("td,th").forEach((c) => (c.style.paddingTop = `${by + 6}px`));
         else (el as HTMLElement).style.marginTop = `${parseFloat(getComputedStyle(el).marginTop) + by}px`;
@@ -178,22 +249,23 @@ export async function renderWritten(body: string, opts: { merge: (key: AutoKey) 
         (el as HTMLElement).style.cssText = `border:0;margin:0;height:${Math.max(0, next - top)}px;`;
         continue;
       }
-      if (top < next && top + h > next && h <= CONTENT_H) push(next - top);
+      if (top < next && top + h > next && h <= CH) push(next - top);
     }
 
-    const total = Math.max(CONTENT_H, root.scrollHeight);
-    const count = Math.ceil(total / CONTENT_H);
+    const total = Math.max(CH, root.scrollHeight);
+    const count = Math.ceil(total / CH);
     const base = root.getBoundingClientRect();
     const fields: SignField[] = signerFields.map((el) => {
       const r = el.getBoundingClientRect();
       const top = r.top - base.top;
-      const page = Math.min(count - 1, Math.floor(top / CONTENT_H));
-      return { ...fieldOf(el), page, x: (PAGE.m + r.left - base.left) / PAGE.w, y: (PAGE.m + top - page * CONTENT_H) / PAGE.h, w: r.width / PAGE.w, h: r.height / PAGE.h };
+      const page = Math.min(count - 1, Math.floor(top / CH));
+      return { ...fieldOf(el), page, x: (PAGE.m + r.left - base.left) / PAGE.w, y: (TOP + top - page * CH) / PAGE.h, w: r.width / PAGE.w, h: r.height / PAGE.h };
     });
 
     const scale = 2;
-    root.style.height = `${count * CONTENT_H}px`;
-    const shot = await html2canvas(root, { scale, backgroundColor: "#ffffff", useCORS: true, width: CONTENT_W, height: count * CONTENT_H, windowWidth: CONTENT_W });
+    root.style.height = `${count * CH}px`;
+    const shot = await html2canvas(root, { scale, backgroundColor: "#ffffff", useCORS: true, width: CONTENT_W, height: count * CH, windowWidth: CONTENT_W });
+    const logo = opts.letterhead ? await loadLogo() : null;
     const pdf = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait" });
     for (let p = 0; p < count; p++) {
       const c = document.createElement("canvas");
@@ -202,7 +274,8 @@ export async function renderWritten(body: string, opts: { merge: (key: AutoKey) 
       const g = c.getContext("2d")!;
       g.fillStyle = "#fff";
       g.fillRect(0, 0, c.width, c.height);
-      g.drawImage(shot, 0, p * CONTENT_H * scale, CONTENT_W * scale, CONTENT_H * scale, PAGE.m * scale, PAGE.m * scale, CONTENT_W * scale, CONTENT_H * scale);
+      g.drawImage(shot, 0, p * CH * scale, CONTENT_W * scale, CH * scale, PAGE.m * scale, TOP * scale, CONTENT_W * scale, CH * scale);
+      if (opts.letterhead) drawLetterhead(g, scale, p + 1, count, opts.letterhead.title, logo);
       if (p > 0) pdf.addPage("letter", "portrait");
       pdf.addImage(c.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 612, 792);
     }
