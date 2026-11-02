@@ -26,7 +26,7 @@ import { addDays, cn, isCanceled, money, moneyShort, num, today } from "@/lib/fo
 import { SERVICES, serviceLabel } from "@/lib/services";
 import { billingTotals, invoiceOpen, monthly, runningSub, type Charge, type ChargeService } from "@/lib/billing";
 import { isOpen, type Agreement, type OppTask, type Opportunity, type Pipeline, type Stage } from "@/lib/sales";
-import { PRIORITIES, type Case } from "@/lib/cases";
+import { PRIORITIES, isClosed, type Case } from "@/lib/cases";
 import { useOptions } from "@/components/ui/OptionList";
 import { muteActive, ownDocItems, pendingItems, useMutes } from "@/lib/pending";
 import { payState } from "@/lib/invoice";
@@ -123,7 +123,7 @@ export default function DashboardPage() {
   const work = cs.filter((c) => c.kind === "work");
   const service = cs.filter((c) => c.kind === "customer_service");
   const csCats = useOptions("case_cs");
-  const open = (l: Case[]) => l.filter((c) => c.status !== "closed");
+  const open = (l: Case[]) => l.filter((c) => !isClosed(c.status));
   const closedCases = cs.filter((c) => inRange(c.closed_at, cur));
   const avgClose = closedCases.length ? closedCases.reduce((s, c) => s + (new Date(c.closed_at!).getTime() - new Date(c.created_at).getTime()) / 86400000, 0) / closedCases.length : null;
   const overdueCases = open(cs).filter((c) => c.due_date && c.due_date < t);
@@ -176,7 +176,8 @@ export default function DashboardPage() {
       <PageHeader
         eyebrow={
           <>
-            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · <CompanyFilter />
+            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            <CompanyFilter before=" · " />
           </>
         }
         title={`${greeting()}${firstName ? `, ${firstName}` : ""}`}

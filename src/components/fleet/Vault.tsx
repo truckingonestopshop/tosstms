@@ -192,6 +192,8 @@ export function Vault({ companyId }: { companyId: string | null }) {
                     {v.username}
                   </Row>
                 )}
+                {/* The sign-in name (user or email) always comes before the password */}
+                {v.contact_email && v.password && emailRow(v.contact_email)}
                 {v.password && (
                   <Row label="Password" copy={v.password}>
                     <span className="flex items-center gap-1">
@@ -215,13 +217,7 @@ export function Vault({ companyId }: { companyId: string | null }) {
                     </a>
                   </Row>
                 )}
-                {v.contact_email && (
-                  <Row label="Email" copy={v.contact_email}>
-                    <a href={`mailto:${v.contact_email}`} className="hover:underline">
-                      {v.contact_email}
-                    </a>
-                  </Row>
-                )}
+                {v.contact_email && !v.password && emailRow(v.contact_email)}
                 {v.custom_fields.map((f, i) => (
                   <Row key={i} label={f.label || "—"} copy={f.value}>
                     {f.value}
@@ -258,6 +254,16 @@ function Row({ label, children, copy }: { label: string; children: React.ReactNo
       <span className="min-w-0 flex-1 truncate text-fg-2">{children}</span>
       {copy && <CopyButton text={copy} />}
     </div>
+  );
+}
+
+function emailRow(email: string) {
+  return (
+    <Row label="Email" copy={email}>
+      <a href={`mailto:${email}`} className="hover:underline">
+        {email}
+      </a>
+    </Row>
   );
 }
 

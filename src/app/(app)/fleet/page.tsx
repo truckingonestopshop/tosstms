@@ -17,6 +17,7 @@ import { CompanyCases } from "@/components/cases/CompanyCases";
 import { CompaniesCrm } from "@/components/fleet/CompaniesCrm";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { FleetPaperwork } from "@/components/docs/FleetPaperwork";
+import { SigningRequests } from "@/components/signing/Requests";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import type { Company } from "@/lib/types";
@@ -125,7 +126,8 @@ function DocsTab({ company }: { company: Company }) {
   const target = useMemo(() => ({ scope: "company" as const, companyId: company.id }), [company.id]);
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <div className="min-w-0">
+      <div className="min-w-0 space-y-4">
+        <SigningRequests companyId={company.id} category="company" />
         <DocumentsPanel target={target} includeAll emptyText="No documents for this carrier yet." />
       </div>
       <div className="min-w-0 xl:order-none">

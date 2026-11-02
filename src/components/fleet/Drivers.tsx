@@ -10,6 +10,7 @@ import { Drawer, Modal } from "@/components/ui/Modal";
 import { CopyButton, Eyebrow, KV, Pill, neutralPill } from "@/components/ui/Bits";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
+import { SigningRequests } from "@/components/signing/Requests";
 import { DriverRig } from "./Units";
 import { DriverPhotos, type PendingPhoto } from "./TrailerPhotos";
 import { StatusPill } from "@/components/loads/StatusMenu";
@@ -280,7 +281,10 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
         <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Other documents</div>
           {driver ? (
-            <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId, licenseExpiry: driver.cdl_expiry, waived: driver.waived_docs }} compact emptyText="No driver files yet." />
+            <div className="space-y-3">
+              <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId, licenseExpiry: driver.cdl_expiry, waived: driver.waived_docs }} compact emptyText="No driver files yet." />
+              <SigningRequests companyId={companyId} driverId={driver.id} category="driver" title="Sent to sign" />
+            </div>
           ) : (
             <PendingFiles files={files} onChange={setFiles} medicalExpiry={d.medical_card_expiry || ""} />
           )}
@@ -514,6 +518,10 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
             <section>
               <Eyebrow className="mb-2">Driver documents</Eyebrow>
               <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId: driver.company_id, licenseExpiry: driver.cdl_expiry, waived: driver.waived_docs }} compact emptyText="No driver files yet." />
+            </section>
+
+            <section>
+              <SigningRequests companyId={driver.company_id} driverId={driver.id} category="driver" title="Sent to sign" />
             </section>
           </>
         ) : (

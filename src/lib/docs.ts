@@ -312,7 +312,7 @@ export interface Holder {
 export function fleetPaperwork(
   data: {
     companies: { id: string; name: string; status: string }[];
-    drivers: { id: string; company_id: string; name: string; status: string; termination_date?: string | null; waived_docs?: string[] }[];
+    drivers: { id: string; company_id: string; name: string; status: string; termination_date?: string | null; cdl_expiry?: string | null; waived_docs?: string[] }[];
     trucks: { id: string; company_id: string; unit_number: string; status: string }[];
     trailers?: { id: string; company_id: string; unit_number: string; status: string }[];
     documents: DocumentItem[];
@@ -329,7 +329,7 @@ export function fleetPaperwork(
   for (const c of data.companies.filter((c) => c.status !== "inactive" && inScope(c.id)))
     add("company", { scope: "company", companyId: c.id }, c.id, c.id, c.name, `/fleet?company=${c.id}&tab=docs`);
   for (const d of data.drivers.filter((d) => d.status === "active" && !d.termination_date && inScope(d.company_id)))
-    add("driver", { scope: "driver", id: d.id, companyId: d.company_id, waived: d.waived_docs }, d.id, d.company_id, d.name, `/fleet?company=${d.company_id}&tab=drivers&driver=${d.id}`);
+    add("driver", { scope: "driver", id: d.id, companyId: d.company_id, licenseExpiry: d.cdl_expiry, waived: d.waived_docs }, d.id, d.company_id, d.name, `/fleet?company=${d.company_id}&tab=drivers&driver=${d.id}`);
   for (const t of data.trucks.filter((t) => t.status !== "inactive" && inScope(t.company_id)))
     add("truck", { scope: "truck", id: t.id, companyId: t.company_id }, t.id, t.company_id, `Unit ${t.unit_number}`, `/fleet?company=${t.company_id}&tab=trucks&truck=${t.id}`);
   for (const t of (data.trailers || []).filter((t) => t.status !== "inactive" && inScope(t.company_id)))

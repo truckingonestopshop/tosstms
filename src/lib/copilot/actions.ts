@@ -256,7 +256,7 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
       const i = input as z.infer<typeof ACTIONS.create_case>;
       const { data, error } = await sb
         .from("tms_cases")
-        .insert({ kind: i.kind, company_id: i.company_id, title: i.title, description: i.description ?? null, priority: i.priority, due_date: i.due_date ?? null, status: "open", owner_id: me.id, created_by: me.id })
+        .insert({ kind: i.kind, company_id: i.company_id, title: i.title, description: i.description ?? null, priority: i.priority, due_date: i.due_date ?? null, status: "received", owner_id: me.id, created_by: me.id })
         .select("id,number")
         .single();
       if (error) return fail(error, "Couldn't open the case");

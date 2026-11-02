@@ -121,7 +121,7 @@ export function copilotTools(ctx: ToolContext) {
           rows(sb.from("tms_drivers").select("status,termination_date").eq("company_id", company_id)),
           rows(sb.from("tms_loads").select("status").eq("company_id", company_id).in("status", ["new", "booked", "in_transit", "delivered"])),
           rows(sb.from("tms_invoices").select("status,total_due,amount_paid,due_date").eq("company_id", company_id).in("status", ["sent", "draft"])),
-          rows(sb.from("tms_cases").select("status").eq("company_id", company_id).neq("status", "closed")),
+          rows(sb.from("tms_cases").select("status").eq("company_id", company_id).not("status", "in", "(completed,cancelled)")),
           rows(sb.from("tms_opportunities").select("status,value").eq("company_id", company_id).eq("status", "open")),
           rows(sb.from("tms_company_events").select("kind,message,actor_name,created_at").eq("company_id", company_id).order("created_at", { ascending: false }).limit(8)),
         ]);
@@ -330,7 +330,7 @@ export function copilotTools(ctx: ToolContext) {
         let q = sb.from("tms_cases").select("id,number,kind,title,category,status,priority,company_id,due_date,owner_id,updated_at").order("updated_at", { ascending: false }).limit(500);
         if (kind) q = q.eq("kind", kind);
         if (company_id) q = q.eq("company_id", company_id);
-        if (open_only) q = q.neq("status", "closed");
+        if (open_only) q = q.not("status", "in", "(completed,cancelled)");
         const list = await rows(q);
         const co = await names("tms_companies", list.map((c) => c.company_id));
         return { total: list.length, cases: list.slice(0, limit).map((c) => compact({ ...c, company: co.get(c.company_id as string), company_id: undefined, owner_id: undefined, page: `${c.kind === "work" ? "/cases" : "/customer-service"}?case=${c.id}` })) };

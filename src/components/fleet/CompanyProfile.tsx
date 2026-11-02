@@ -6,6 +6,7 @@ import { StagePill } from "./CompaniesCrm";
 import { Card, Empty, KV } from "@/components/ui/Bits";
 import { useStore } from "@/lib/store";
 import { CompanyTimeline } from "./CompanyTimeline";
+import { CompanyPeople } from "./CompanyPeople";
 import { openDocument, errMsg } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn, fmtDay } from "@/lib/format";
@@ -248,6 +249,10 @@ export function CompanyOverview({ company, onServices }: { company: Company; onS
           </div>
         )}
       </Section>
+
+      <div className="lg:col-span-3">
+        <CompanyPeople companyId={company.id} />
+      </div>
 
       <div className="lg:col-span-2">
         <Section title="Notes">

@@ -1,26 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Briefcase, Clock, DollarSign, Headset, MessageSquare, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Briefcase, Clock, DollarSign, Headset, MessageSquare, Paperclip, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, Empty, Pill, Stat, neutralPill } from "@/components/ui/Bits";
 import { Field, Input, Segmented, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { EditListButton, useOptions, type OptionListKey } from "@/components/ui/OptionList";
-import { errMsg, sb } from "@/lib/db";
+import { BUCKET, docPath, errMsg, openDocument, sb } from "@/lib/db";
 import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { cn, fmtDay, money, num, relTime, today } from "@/lib/format";
-import { CASE_STATUSES, PRIORITIES, hoursLabel, priorityOf, statusOf, type Case, type CaseEntry, type CaseKind, type CasePriority, type CaseStatus, type EntryKind } from "@/lib/cases";
+import { CASE_STATUSES, PRIORITIES, hoursLabel, isClosed, priorityOf, statusOf, type Case, type CaseEntry, type CaseKind, type CasePriority, type CaseStatus, type EntryKind } from "@/lib/cases";
 import type { Opportunity } from "@/lib/sales";
 
 // Cases (kind "work") and Customer Service (kind "customer_service"): the same screen. A case
 // belongs to a company, can be connected to an invoice and an opportunity, and keeps a log of
-// notes, work (time spent) and expenses. Opening / closing it shows on the company's Timeline.
+// notes (with files), work (time spent) and expenses. Opening it and each status change show on
+// the company's Timeline. Cases are opened on the customer (its Cases tab) or from an invoice /
+// opportunity, so the company is never picked by hand. Completed or Cancelled closes a case.
 
 const COPY: Record<CaseKind, { one: string; many: string; categoryLabel: string; empty: string; icon: typeof Briefcase }> = {
   work: { one: "case", many: "Cases", categoryLabel: "Service", empty: "Track work you do for a client: connect it to an invoice or opportunity, log the time and expenses.", icon: Briefcase },
@@ -39,30 +41,37 @@ export const useCategoryLabel = (kind: CaseKind) => useOptions(CATEGORY_LIST[kin
 
 type Show = "open" | "mine" | "closed" | "all";
 
-export function CasesView({ kind }: { kind: CaseKind }) {
+/**
+ * The list of cases with Open / Mine / Closed / All. On the Cases and Customer Service pages it
+ * shows every company in view; with `companyId` (a customer's Cases tab) only that customer's.
+ */
+export function CasesView({ kind, companyId }: { kind: CaseKind; companyId?: string }) {
   const params = useSearchParams();
   const router = useRouter();
-  const { me, inScope, companyById, memberName } = useStore();
-  const cases = useLiveTable<Case>("tms_cases", { filter: { kind } });
+  const pathname = usePathname();
+  const { me, inScope, companyById, memberName, scopedCompany } = useStore();
+  const cases = useLiveTable<Case>("tms_cases", { filter: companyId ? { kind, company_id: companyId } : { kind } });
   const entries = useLiveTable<CaseEntry>("tms_case_entries", { order: "created_at", ascending: true });
   const [show, setShow] = useState<Show>("open");
   const [q, setQ] = useState("");
-  // Links: ?new=1&company=…&opportunity=… (from an opportunity) and ?case=<id>.
+  // Links: ?new=1&company=…&opportunity=… (from an opportunity / invoice) and ?case=<id>.
   const [creating, setCreating] = useState(() => !!params.get("new"));
   const [openId, setOpenId] = useState<string | null>(() => params.get("case"));
   const t = today();
   const copy = COPY[kind];
   const catLabel = useCategoryLabel(kind);
+  // The customer a new case goes to: never picked by hand.
+  const newFor = companyId || params.get("company") || scopedCompany?.id || "";
 
-  const scoped = cases.rows.filter((c) => !c.company_id || inScope(c.company_id));
+  const scoped = cases.rows.filter((c) => (companyId ? c.company_id === companyId && c.kind === kind : !c.company_id || inScope(c.company_id)));
   const list = scoped
-    .filter((c) => (show === "open" ? c.status !== "closed" : show === "closed" ? c.status === "closed" : show === "mine" ? c.owner_id === me.id && c.status !== "closed" : true))
-    .filter((c) => !q || `#${c.number} ${c.title} ${companyById(c.company_id)?.name || ""} ${memberName(c.owner_id)} ${catLabel(c.category)}`.toLowerCase().includes(q.toLowerCase()))
-    .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0) || PRIORITIES.findIndex((p) => p.v === b.priority) - PRIORITIES.findIndex((p) => p.v === a.priority) || b.created_at.localeCompare(a.created_at));
+    .filter((c) => (show === "open" ? !isClosed(c.status) : show === "closed" ? isClosed(c.status) : show === "mine" ? c.owner_id === me.id && !isClosed(c.status) : true))
+    .filter((c) => !q || `#${c.number} ${c.title} ${companyById(c.company_id)?.name || ""} ${memberName(c.owner_id)} ${catLabel(c.category)} ${statusOf(c.status).label}`.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => Number(isClosed(a.status)) - Number(isClosed(b.status)) || PRIORITIES.findIndex((p) => p.v === b.priority) - PRIORITIES.findIndex((p) => p.v === a.priority) || b.created_at.localeCompare(a.created_at));
 
   const ids = new Set(scoped.map((c) => c.id));
   const month = t.slice(0, 7);
-  const open = scoped.filter((c) => c.status !== "closed");
+  const open = scoped.filter((c) => !isClosed(c.status));
   const overdue = open.filter((c) => c.due_date && c.due_date < t);
   const closedMonth = scoped.filter((c) => (c.closed_at || "").startsWith(month));
   const expMonth = entries.rows.filter((e) => ids.has(e.case_id) && e.kind === "expense" && (e.spent_on || e.created_at).startsWith(month)).reduce((s, e) => s + Number(e.amount || 0), 0);
@@ -71,12 +80,17 @@ export function CasesView({ kind }: { kind: CaseKind }) {
   const close = () => {
     setOpenId(null);
     setCreating(false);
-    if (params.get("case") || params.get("new")) router.replace(kind === "work" ? "/cases" : "/customer-service", { scroll: false });
+    if (params.get("case") || params.get("new")) {
+      if (!companyId) return router.replace(kind === "work" ? "/cases" : "/customer-service", { scroll: false });
+      const keep = new URLSearchParams(params.toString());
+      ["case", "new", "opportunity", "invoice"].forEach((k) => keep.delete(k));
+      router.replace(`${pathname}?${keep}`, { scroll: false });
+    }
   };
 
   return (
     <>
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className={cn("mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4", companyId && "hidden")}>
         <Stat label="Open" value={num(open.length)} sub={`${num(open.filter((c) => c.owner_id === me.id).length)} mine`} />
         <Stat label="Overdue" value={<span className={overdue.length ? "text-red-600 dark:text-red-400" : ""}>{num(overdue.length)}</span>} sub="Past their due date" />
         <Stat label="Closed this month" value={num(closedMonth.length)} sub={`${num(scoped.length)} in total`} />
@@ -98,14 +112,20 @@ export function CasesView({ kind }: { kind: CaseKind }) {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-4" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Case #, title, company, owner" className="pl-9" />
         </div>
-        <Button variant="primary" onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" /> New {copy.one}
-        </Button>
+        {newFor && (
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" /> New {copy.one}
+          </Button>
+        )}
       </div>
 
       {list.length === 0 ? (
         <Card>
-          <Empty icon={copy.icon} title={scoped.length ? "No cases match" : kind === "work" ? "No cases yet" : "No customer service cases yet"} body={scoped.length ? undefined : copy.empty} />
+          <Empty
+            icon={copy.icon}
+            title={scoped.length ? "No cases match" : kind === "work" ? "No cases yet" : "No customer service cases yet"}
+            body={scoped.length ? undefined : newFor ? copy.empty : `${copy.empty} Open one from the customer's Cases tab or from an invoice.`}
+          />
         </Card>
       ) : (
         <Card>
@@ -116,7 +136,7 @@ export function CasesView({ kind }: { kind: CaseKind }) {
               const log = entries.rows.filter((e) => e.case_id === c.id);
               const mins = log.reduce((s, e) => s + (e.kind === "work" ? e.minutes || 0 : 0), 0);
               const spent = log.reduce((s, e) => s + (e.kind === "expense" ? Number(e.amount || 0) : 0), 0);
-              const late = c.status !== "closed" && c.due_date && c.due_date < t;
+              const late = !isClosed(c.status) && c.due_date && c.due_date < t;
               return (
                 <li key={c.id}>
                   <button onClick={() => setOpenId(c.id)} className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-surface-2/50 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
@@ -124,7 +144,7 @@ export function CasesView({ kind }: { kind: CaseKind }) {
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] font-semibold text-fg">{c.title}</div>
                       <div className="truncate text-xs text-fg-3">
-                        {[companyById(c.company_id)?.name, catLabel(c.category), c.owner_id ? memberName(c.owner_id) : "Unassigned"].filter(Boolean).join(" · ")}
+                        {[companyId ? "" : companyById(c.company_id)?.name, catLabel(c.category), c.owner_id ? memberName(c.owner_id) : "Unassigned"].filter(Boolean).join(" · ")}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -147,7 +167,7 @@ export function CasesView({ kind }: { kind: CaseKind }) {
         kind={kind}
         open={creating}
         onClose={close}
-        preset={{ company: params.get("company") || "", opportunity: params.get("opportunity") || "", invoice: params.get("invoice") || "" }}
+        preset={{ company: newFor, opportunity: params.get("opportunity") || "", invoice: params.get("invoice") || "" }}
         onCreated={(c) => {
           cases.put(c);
           setCreating(false);
@@ -192,9 +212,9 @@ function CategorySelect({ kind, value, onChange }: { kind: CaseKind; value: stri
 }
 
 function NewCaseModal({ kind, open, onClose, preset, onCreated }: { kind: CaseKind; open: boolean; onClose: () => void; preset: { company: string; opportunity: string; invoice: string }; onCreated: (c: Case) => void }) {
-  const { companies, members, me, scopedCompany, invoices } = useStore();
+  const { companyById, members, me, invoices } = useStore();
   const blank = () => ({
-    company_id: preset.company || scopedCompany?.id || "",
+    company_id: preset.company,
     title: "",
     category: "",
     priority: "normal" as CasePriority,
@@ -216,7 +236,8 @@ function NewCaseModal({ kind, open, onClose, preset, onCreated }: { kind: CaseKi
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    if (!d.company_id || !d.title.trim()) return toast.error("Pick the company and give the case a title");
+    if (!d.company_id) return toast.error("Open the case from the customer's Cases tab or from an invoice");
+    if (!d.title.trim()) return toast.error("Give the case a title");
     setSaving(true);
     const row = {
       kind,
@@ -254,17 +275,8 @@ function NewCaseModal({ kind, open, onClose, preset, onCreated }: { kind: CaseKi
       }
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Company" required className="sm:col-span-2">
-          <Select value={d.company_id} onChange={(e) => set({ company_id: e.target.value, opportunity_id: "", invoice_id: "" })}>
-            <option value="">Select…</option>
-            {[...companies]
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-          </Select>
+        <Field label="Company" className="sm:col-span-2">
+          <div className="flex h-9 items-center rounded-lg border border-line bg-surface-2/60 px-3 text-[13px] font-medium text-fg">{companyById(d.company_id)?.name || "—"}</div>
         </Field>
         <Field label="Title" required className="sm:col-span-2">
           <Input value={d.title} onChange={(e) => set({ title: e.target.value })} placeholder={kind === "customer_service" ? "e.g. Charged twice for October" : "e.g. Renew IFTA and file Q3"} autoFocus />
@@ -322,7 +334,15 @@ function NewCaseModal({ kind, open, onClose, preset, onCreated }: { kind: CaseKi
   );
 }
 
-/** One case: its details (changed in place), the log, and adding notes / work / expenses. */
+type Attachment = CaseEntry["attachments"][number];
+type CaseDraft = Pick<Case, "status" | "priority" | "owner_id" | "due_date" | "invoice_id" | "opportunity_id">;
+const draftOf = (c: Case): CaseDraft => ({ status: c.status, priority: c.priority, owner_id: c.owner_id, due_date: c.due_date, invoice_id: c.invoice_id, opportunity_id: c.opportunity_id });
+
+/**
+ * One case: its details, the log, and adding notes (with files) / work / expenses. Changes to the
+ * details are kept until Save; Save also adds a note still being typed. Picking Completed or
+ * Cancelled closes the case on Save.
+ */
 function CaseModal({
   c,
   entries,
@@ -348,8 +368,17 @@ function CaseModal({
   const [minutes, setMinutes] = useState("");
   const [amount, setAmount] = useState("");
   const [spentOn, setSpentOn] = useState(today());
-  const [resolution, setResolution] = useState("");
-  const [closing, setClosing] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState<CaseDraft | null>(c ? draftOf(c) : null);
+  const [draftFor, setDraftFor] = useState(c?.id);
+  if (c?.id !== draftFor) {
+    setDraftFor(c?.id);
+    setDraft(c ? draftOf(c) : null);
+    setBody("");
+    setFiles([]);
+  }
   const totals = useMemo(
     () => ({
       mins: entries.reduce((s, e) => s + (e.kind === "work" ? e.minutes || 0 : 0), 0),
@@ -357,64 +386,108 @@ function CaseModal({
     }),
     [entries],
   );
-  if (!c) return null;
+  if (!c || !draft) return null;
   const company = companyById(c.company_id);
-  const invoice = invoices.find((i) => i.id === c.invoice_id);
-  const opp = opps.find((o) => o.id === c.opportunity_id);
+  const invoice = invoices.find((i) => i.id === draft.invoice_id);
+  const opp = opps.find((o) => o.id === draft.opportunity_id);
+  const set = (p: Partial<CaseDraft>) => setDraft((d) => (d ? { ...d, ...p } : d));
+  const changes = (Object.keys(draft) as (keyof CaseDraft)[]).filter((k) => (draft[k] || null) !== (c[k] || null));
+  const pendingEntry = !!(body.trim() || files.length || (entryKind === "work" && minutes) || (entryKind === "expense" && amount));
+  const dirty = changes.length > 0 || pendingEntry;
 
-  const patch = async (p: Partial<Case>) => {
-    const { data, error } = await sb().from("tms_cases").update(p).eq("id", c.id).select().single();
-    if (error) return toast.error(errMsg(error)), false;
-    onSaved(data as Case);
-    return true;
+  const upload = async (list: File[]): Promise<Attachment[] | null> => {
+    const out: Attachment[] = [];
+    for (const f of list) {
+      const path = docPath(c.company_id || "no-company", `cases/${c.id}`, f.name);
+      const up = await sb().storage.from(BUCKET).upload(path, f, { contentType: f.type || undefined });
+      if (up.error) {
+        if (out.length) await sb().storage.from(BUCKET).remove(out.map((a) => a.path));
+        toast.error(errMsg(up.error));
+        return null;
+      }
+      out.push({ id: crypto.randomUUID(), name: f.name, path, mime: f.type || null });
+    }
+    return out;
   };
-  const add = async () => {
+  /** Adds the entry being typed. Returns false when it couldn't (and says why). */
+  const addEntry = async (): Promise<boolean> => {
     const row: Partial<CaseEntry> = { case_id: c.id, kind: entryKind, body: body.trim() || null };
     if (entryKind === "work") {
       const m = Math.round(Number(minutes) || 0);
-      if (m <= 0) return toast.error("How long did it take (minutes)?");
+      if (m <= 0) return toast.error("How long did it take (minutes)?"), false;
       row.minutes = m;
     }
     if (entryKind === "expense") {
       const a = Number(amount) || 0;
-      if (a <= 0) return toast.error("Enter the expense amount");
+      if (a <= 0) return toast.error("Enter the expense amount"), false;
       row.amount = a;
       row.spent_on = spentOn || today();
     }
-    if (entryKind === "note" && !row.body) return;
+    if (entryKind === "note" && !row.body && !files.length) return true;
+    const attachments = await upload(files);
+    if (!attachments) return false;
+    row.attachments = attachments;
     const { data, error } = await sb().from("tms_case_entries").insert(row).select().single();
-    if (error) return toast.error(errMsg(error));
+    if (error) {
+      if (attachments.length) await sb().storage.from(BUCKET).remove(attachments.map((a) => a.path));
+      return toast.error(errMsg(error)), false;
+    }
     onEntry(data as CaseEntry);
     setBody("");
     setMinutes("");
     setAmount("");
-    // Starting work moves an open case along.
-    if (c.status === "open" && entryKind !== "note") patch({ status: "in_progress" });
+    setFiles([]);
+    return true;
+  };
+  const add = async () => {
+    setBusy(true);
+    await addEntry();
+    setBusy(false);
+  };
+  const save = async () => {
+    setBusy(true);
+    const note = entryKind === "note" ? body.trim() : "";
+    if (pendingEntry && !(await addEntry())) return setBusy(false);
+    if (changes.length) {
+      const p: Partial<Case> = Object.fromEntries(changes.map((k) => [k, draft[k] || null]));
+      // Closing: the note typed with it is the resolution on the Timeline.
+      if (isClosed(draft.status) && !isClosed(c.status)) p.resolution = note || null;
+      const { data, error } = await sb().from("tms_cases").update(p).eq("id", c.id).select().single();
+      if (error) {
+        setBusy(false);
+        return toast.error(errMsg(error));
+      }
+      onSaved(data as Case);
+      if (isClosed(draft.status) && !isClosed(c.status)) toast.success(`Case #${c.number} ${draft.status === "completed" ? "completed" : "cancelled"} and closed`);
+      else toast.success("Saved");
+    } else if (pendingEntry) toast.success("Saved");
+    setBusy(false);
+  };
+  const leave = async () => {
+    if (dirty && !(await confirmDialog({ title: "Discard your changes?", body: "They haven't been saved.", confirmLabel: "Discard", danger: true }))) return;
+    onClose();
   };
   const removeEntry = async (e: CaseEntry) => {
     const { error } = await sb().from("tms_case_entries").delete().eq("id", e.id);
     if (error) return toast.error(errMsg(error));
+    if (e.attachments?.length) await sb().storage.from(BUCKET).remove(e.attachments.map((a) => a.path));
     onEntryDeleted(e.id);
   };
-  const closeCase = async () => {
-    if (await patch({ status: "closed", resolution: resolution.trim() || null })) {
-      toast.success(`Case #${c.number} closed`);
-      setClosing(false);
-      setResolution("");
-    }
-  };
   const remove = async () => {
-    if (!(await confirmDialog({ title: `Delete case #${c.number}?`, body: "Its log and expenses are deleted too. The company's Timeline keeps the history.", confirmLabel: "Delete", danger: true }))) return;
+    if (!(await confirmDialog({ title: `Delete case #${c.number}?`, body: "Its log, files and expenses are deleted too. The company's Timeline keeps the history.", confirmLabel: "Delete", danger: true }))) return;
+    const paths = entries.flatMap((e) => (e.attachments || []).map((a) => a.path));
     const { error } = await sb().from("tms_cases").delete().eq("id", c.id);
     if (error) return toast.error(errMsg(error));
+    if (paths.length) await sb().storage.from(BUCKET).remove(paths);
     onDeleted(c.id);
     onClose();
   };
+  const open = (a: Attachment) => openDocument(a.path, a.name).catch((e) => toast.error(errMsg(e)));
 
   return (
     <Modal
       open
-      onClose={onClose}
+      onClose={leave}
       size="lg"
       title={`#${c.number} · ${c.title}`}
       subtitle={[company?.name, catLabel(c.category)].filter(Boolean).join(" · ")}
@@ -425,21 +498,18 @@ function CaseModal({
               <Trash2 className="h-4 w-4" /> Delete
             </Button>
           )}
-          {c.status === "closed" ? (
-            <Button variant="outline" onClick={() => patch({ status: "open" })}>
-              <RotateCcw className="h-4 w-4" /> Reopen
-            </Button>
-          ) : (
-            <Button variant="primary" onClick={() => setClosing(true)}>
-              Close case
-            </Button>
-          )}
+          <Button variant="ghost" onClick={leave}>
+            {dirty ? "Cancel" : "Close"}
+          </Button>
+          <Button variant="primary" onClick={save} disabled={busy || !dirty}>
+            Save
+          </Button>
         </>
       }
     >
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Field label="Status">
-          <Select value={c.status} onChange={(e) => (e.target.value === "closed" ? setClosing(true) : patch({ status: e.target.value as CaseStatus }))}>
+        <Field label="Status" className="col-span-2">
+          <Select value={draft.status} onChange={(e) => set({ status: e.target.value as CaseStatus })}>
             {CASE_STATUSES.map((s) => (
               <option key={s.v} value={s.v}>
                 {s.label}
@@ -448,7 +518,7 @@ function CaseModal({
           </Select>
         </Field>
         <Field label="Priority">
-          <Select value={c.priority} onChange={(e) => patch({ priority: e.target.value as CasePriority })}>
+          <Select value={draft.priority} onChange={(e) => set({ priority: e.target.value as CasePriority })}>
             {PRIORITIES.map((p) => (
               <option key={p.v} value={p.v}>
                 {p.label}
@@ -456,8 +526,11 @@ function CaseModal({
             ))}
           </Select>
         </Field>
-        <Field label="Owner">
-          <Select value={c.owner_id || ""} onChange={(e) => patch({ owner_id: e.target.value || null })}>
+        <Field label="Due date">
+          <Input type="date" value={draft.due_date || ""} onChange={(e) => set({ due_date: e.target.value || null })} />
+        </Field>
+        <Field label="Owner" className="col-span-2">
+          <Select value={draft.owner_id || ""} onChange={(e) => set({ owner_id: e.target.value || null })}>
             <option value="">Nobody</option>
             {members.map((m) => (
               <option key={m.user_id} value={m.user_id}>
@@ -466,12 +539,9 @@ function CaseModal({
             ))}
           </Select>
         </Field>
-        <Field label="Due date">
-          <Input type="date" value={c.due_date || ""} onChange={(e) => patch({ due_date: e.target.value || null })} />
-        </Field>
-        <Field label="Invoice" className="col-span-2">
+        <Field label="Invoice">
           <div className="flex items-center gap-2">
-            <Select value={c.invoice_id || ""} onChange={(e) => patch({ invoice_id: e.target.value || null })}>
+            <Select value={draft.invoice_id || ""} onChange={(e) => set({ invoice_id: e.target.value || null })}>
               <option value="">Not connected</option>
               {invoices
                 .filter((i) => i.company_id === c.company_id)
@@ -488,9 +558,9 @@ function CaseModal({
             )}
           </div>
         </Field>
-        <Field label="Opportunity" className="col-span-2">
+        <Field label="Opportunity">
           <div className="flex items-center gap-2">
-            <Select value={c.opportunity_id || ""} onChange={(e) => patch({ opportunity_id: e.target.value || null })}>
+            <Select value={draft.opportunity_id || ""} onChange={(e) => set({ opportunity_id: e.target.value || null })}>
               <option value="">Not connected</option>
               {opps.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -506,9 +576,10 @@ function CaseModal({
           </div>
         </Field>
       </div>
+      {isClosed(draft.status) && !isClosed(c.status) && <p className="mt-2 text-xs text-fg-3">Saving closes the case. A note typed below is kept as the outcome.</p>}
 
       {c.description && <p className="mt-4 whitespace-pre-wrap rounded-lg bg-surface-2/60 p-3 text-[13px] text-fg-2">{c.description}</p>}
-      {c.status === "closed" && (
+      {isClosed(c.status) && (
         <p className="mt-3 text-[13px] text-fg-2">
           <b className="text-fg">Closed</b> {c.closed_at ? fmtDay(c.closed_at.slice(0, 10)) : ""}
           {c.resolution ? ` · ${c.resolution}` : ""}
@@ -537,6 +608,16 @@ function CaseModal({
                 )}
                 <span className="whitespace-pre-wrap">{e.body}</span>
               </div>
+              {!!e.attachments?.length && (
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {e.attachments.map((a) => (
+                    <button key={a.id} onClick={() => open(a)} className="inline-flex max-w-[220px] items-center gap-1 rounded-md border border-line px-2 py-0.5 text-xs text-fg-2 hover:bg-surface-2">
+                      <Paperclip className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{a.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="text-[11px] text-fg-4">
                 {e.actor_name || "Someone"} · {relTime(e.created_at)}
               </div>
@@ -571,8 +652,35 @@ function CaseModal({
           )}
           <Textarea className="col-span-2" rows={2} value={body} onChange={(e) => setBody(e.target.value)} placeholder={entryKind === "note" ? "Add a note…" : entryKind === "work" ? "What was done" : "What it was for"} />
         </div>
-        <div className="mt-2 flex justify-end">
-          <Button size="sm" variant="secondary" onClick={add}>
+        {files.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {files.map((f, i) => (
+              <span key={i} className="inline-flex max-w-[220px] items-center gap-1 rounded-md bg-surface-2 px-2 py-0.5 text-xs text-fg-2">
+                <Paperclip className="h-3 w-3 shrink-0" />
+                <span className="truncate">{f.name}</span>
+                <button onClick={() => setFiles((l) => l.filter((_, j) => j !== i))} className="text-fg-4 hover:text-fg" aria-label={`Remove ${f.name}`}>
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="mt-2 flex items-center justify-between">
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const picked = Array.from(e.target.files || []);
+              setFiles((l) => [...l, ...picked]);
+              e.target.value = "";
+            }}
+          />
+          <Button size="sm" variant="ghost" onClick={() => fileInput.current?.click()}>
+            <Paperclip className="h-3.5 w-3.5" /> Attach files
+          </Button>
+          <Button size="sm" variant="secondary" onClick={add} disabled={busy}>
             Add {entryKind === "work" ? "work" : entryKind}
           </Button>
         </div>
@@ -585,27 +693,6 @@ function CaseModal({
           </Link>
         </div>
       )}
-
-      <Modal
-        open={closing}
-        onClose={() => setClosing(false)}
-        title={`Close case #${c.number}`}
-        size="sm"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setClosing(false)}>
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={closeCase}>
-              Close case
-            </Button>
-          </>
-        }
-      >
-        <Field label="Resolution" hint="Shown on the company's Timeline">
-          <Textarea rows={3} value={resolution} onChange={(e) => setResolution(e.target.value)} placeholder="What was done / the outcome" autoFocus />
-        </Field>
-      </Modal>
     </Modal>
   );
 }

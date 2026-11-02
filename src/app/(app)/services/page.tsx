@@ -15,7 +15,7 @@ import { cn, fmtDay, isCanceled, money, moneyShort, num, today } from "@/lib/for
 import { SERVICES, hasService, sourceLabel } from "@/lib/services";
 import { monthly, runningSub, type Charge } from "@/lib/billing";
 import { isOpen, type Opportunity } from "@/lib/sales";
-import type { Case } from "@/lib/cases";
+import { isClosed, type Case } from "@/lib/cases";
 import { muteActive, pendingItems, useMutes } from "@/lib/pending";
 import { loadDay } from "@/lib/analytics";
 import { PERIODS, inRange, periodName, ranges, revenue, type Period, type Range } from "@/lib/dashboard";
@@ -115,7 +115,7 @@ export default function ServicesPage() {
       const x = issuesBy.get(id);
       return { expired: a.expired + (x?.expired || 0), soon: a.soon + (x?.soon || 0), missing: a.missing + (x?.missing || 0) };
     }, { expired: 0, soon: 0, missing: 0 });
-    const openCases = cases.rows.filter((c) => c.status !== "closed" && c.category === key && (!c.company_id || inScope(c.company_id)));
+    const openCases = cases.rows.filter((c) => !isClosed(c.status) && c.category === key && (!c.company_id || inScope(c.company_id)));
     const openOpps = opps.rows.filter((o) => isOpen(o) && o.service === key && inScope(o.company_id));
     const mrr = s.ch.filter((c) => runningSub(c, t)).reduce((a, c) => a + monthly(c), 0);
     const pending = s.ch.filter((c) => c.kind === "one_time" && c.status === "unpaid").reduce((a, c) => a + Number(c.amount), 0);
