@@ -12,7 +12,7 @@ import { useStore } from "@/lib/store";
 import { sb } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { blankDraft, blankLine, draftToRow, remittanceDefault, type InvoiceDraft } from "@/lib/invoice";
-import { itemTotal, oppNumber, type OppItem, type Opportunity } from "@/lib/sales";
+import { itemName, oppNumber, type OppItem, type Opportunity } from "@/lib/sales";
 import type { Company, Currency } from "@/lib/types";
 
 /** The customer block for a carrier. */
@@ -51,8 +51,23 @@ function NewInvoice() {
         if (opp) {
           companyId = opp.company_id;
           const items = (it.data || []) as OppItem[];
+          // A product with variants needs its variant picked before it's invoiced.
+          const ids = [...new Set(items.filter((i) => i.product_id && !i.variant_id).map((i) => i.product_id as string))];
+          if (ids.length) {
+            const { data: vs } = await sb().from("tms_product_variants").select("product_id").in("product_id", ids).eq("active", true);
+            const missing = items.find((i) => !i.variant_id && (vs || []).some((v) => v.product_id === i.product_id));
+            if (missing) {
+              toast.error(`Pick the variant of ${missing.name} on the opportunity first`);
+              return router.replace(`/sales?tab=opportunities&opp=${opp.id}`);
+            }
+          }
+          // Each product (with its variant), and its discount as a line of its own.
           const rows = items.length
-            ? items.map((i) => ({ description: i.name, quantity: Number(i.quantity), unit_price: Number(i.unit_price), amount: itemTotal(i) }))
+            ? items.flatMap((i) => {
+                const line = { description: itemName(i), quantity: Number(i.quantity), unit_price: Number(i.unit_price), amount: Number(i.quantity) * Number(i.unit_price) };
+                const off = Number(i.discount) || 0;
+                return off > 0 ? [line, { description: `Discount · ${itemName(i)}`, quantity: 1, unit_price: -off, amount: -off }] : [line];
+              })
             : [{ description: opp.title, quantity: 1, unit_price: Number(opp.value), amount: Number(opp.value) }];
           draft.lines = rows.map((r, n) => ({ ...blankLine(n), ...r, gross_amount: r.amount }));
           draft.notes = `${oppNumber(opp)} · ${opp.title}`;
@@ -75,6 +90,8 @@ function NewInvoice() {
     setSaving(false);
     if (inv) {
       if (agreementId) await sb().from("tms_agreements").update({ invoice_id: inv.id }).eq("id", agreementId);
+      // Made from an opportunity: it moves to Invoice sent now, and to Won (with its cases) once paid.
+      if (oppId) await sb().from("tms_invoices").update({ opportunity_id: oppId }).eq("id", inv.id);
       toast.success(`Invoice ${inv.invoice_number} created`);
       router.push(`/invoices/${inv.id}`);
     }

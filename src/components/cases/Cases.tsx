@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Briefcase, Clock, DollarSign, Headset, MessageSquare, Paperclip, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, Empty, Pill, Stat, neutralPill } from "@/components/ui/Bits";
-import { Field, Input, Segmented, Select, Textarea } from "@/components/ui/Field";
+import { Checkbox, Field, Input, Segmented, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { EditListButton, useOptions, type OptionListKey } from "@/components/ui/OptionList";
@@ -15,7 +15,7 @@ import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { cn, fmtDay, money, num, relTime, today } from "@/lib/format";
-import { CASE_STATUSES, PRIORITIES, hoursLabel, isClosed, priorityOf, statusOf, type Case, type CaseEntry, type CaseKind, type CasePriority, type CaseStatus, type EntryKind } from "@/lib/cases";
+import { CASE_STATUSES, PAYMENT_METHODS, PRIORITIES, hoursLabel, isClosed, isOverdue, priorityOf, statusOf, type Case, type CaseEntry, type CaseKind, type CasePriority, type CaseStatus, type EntryKind, type PaymentMethod } from "@/lib/cases";
 import type { Opportunity } from "@/lib/sales";
 
 // Cases (kind "work") and Customer Service (kind "customer_service"): the same screen. A case
@@ -72,7 +72,7 @@ export function CasesView({ kind, companyId }: { kind: CaseKind; companyId?: str
   const ids = new Set(scoped.map((c) => c.id));
   const month = t.slice(0, 7);
   const open = scoped.filter((c) => !isClosed(c.status));
-  const overdue = open.filter((c) => c.due_date && c.due_date < t);
+  const overdue = open.filter((c) => isOverdue(c, t));
   const closedMonth = scoped.filter((c) => (c.closed_at || "").startsWith(month));
   const expMonth = entries.rows.filter((e) => ids.has(e.case_id) && e.kind === "expense" && (e.spent_on || e.created_at).startsWith(month)).reduce((s, e) => s + Number(e.amount || 0), 0);
   const opened = cases.rows.find((c) => c.id === openId) || null;
@@ -136,7 +136,7 @@ export function CasesView({ kind, companyId }: { kind: CaseKind; companyId?: str
               const log = entries.rows.filter((e) => e.case_id === c.id);
               const mins = log.reduce((s, e) => s + (e.kind === "work" ? e.minutes || 0 : 0), 0);
               const spent = log.reduce((s, e) => s + (e.kind === "expense" ? Number(e.amount || 0) : 0), 0);
-              const late = !isClosed(c.status) && c.due_date && c.due_date < t;
+              const late = isOverdue(c, t);
               return (
                 <li key={c.id}>
                   <button onClick={() => setOpenId(c.id)} className="flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-surface-2/50 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
@@ -335,8 +335,51 @@ function NewCaseModal({ kind, open, onClose, preset, onCreated }: { kind: CaseKi
 }
 
 type Attachment = CaseEntry["attachments"][number];
-type CaseDraft = Pick<Case, "status" | "priority" | "owner_id" | "due_date" | "invoice_id" | "opportunity_id">;
-const draftOf = (c: Case): CaseDraft => ({ status: c.status, priority: c.priority, owner_id: c.owner_id, due_date: c.due_date, invoice_id: c.invoice_id, opportunity_id: c.opportunity_id });
+type CaseDraft = Pick<Case, "status" | "priority" | "owner_id" | "due_date" | "invoice_id" | "opportunity_id" | "alert_off" | "alert_off_reason">;
+const draftOf = (c: Case): CaseDraft => ({
+  status: c.status,
+  priority: c.priority,
+  owner_id: c.owner_id,
+  due_date: c.due_date,
+  invoice_id: c.invoice_id,
+  opportunity_id: c.opportunity_id,
+  alert_off: !!c.alert_off,
+  alert_off_reason: c.alert_off_reason ?? null,
+});
+type PayAccount = { id: string; name: string; kind: string; last4: string | null };
+/** TOSS cards / bank accounts to say which one paid (name and last 4 only). */
+function usePayAccounts() {
+  const [list, setList] = useState<PayAccount[]>([]);
+  useEffect(() => {
+    let alive = true;
+    sb()
+      .rpc("tms_payment_accounts")
+      .then(({ data }) => alive && setList((data || []) as PayAccount[]));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return list;
+}
+/** The expense the sale says this case costs: its opportunity line, else its variant / product. */
+function useCaseExpense(c: Case | null) {
+  const [value, setValue] = useState<number | null>(null);
+  const itemId = c?.opportunity_item_id || null;
+  const variantId = c?.variant_id || null;
+  const productId = c?.product_id || null;
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const pick = async (table: string, id: string | null) => (id ? ((await sb().from(table).select("expense").eq("id", id).maybeSingle()).data as { expense: number | null } | null)?.expense ?? null : null);
+      const v = (await pick("tms_opportunity_items", itemId)) ?? (await pick("tms_product_variants", variantId)) ?? (await pick("tms_products", productId));
+      if (alive) setValue(v == null ? null : Number(v));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [itemId, variantId, productId]);
+  return value;
+}
 
 /**
  * One case: its details, the log, and adding notes (with files) / work / expenses. Changes to the
@@ -360,7 +403,7 @@ function CaseModal({
   onEntry: (e: CaseEntry) => void;
   onEntryDeleted: (id: string) => void;
 }) {
-  const { companyById, members, invoices, me, isOwner } = useStore();
+  const { companyById, members, invoices, me, isOwner, memberName } = useStore();
   const opps = useOpportunities(c?.company_id || "");
   const catLabel = useCategoryLabel(c?.kind ?? "work");
   const [entryKind, setEntryKind] = useState<EntryKind>("note");
@@ -368,6 +411,12 @@ function CaseModal({
   const [minutes, setMinutes] = useState("");
   const [amount, setAmount] = useState("");
   const [spentOn, setSpentOn] = useState(today());
+  const [method, setMethod] = useState<PaymentMethod | "">("");
+  const [accountId, setAccountId] = useState("");
+  const [processedBy, setProcessedBy] = useState(me.id);
+  const [website, setWebsite] = useState("");
+  const accounts = usePayAccounts();
+  const productExpense = useCaseExpense(c);
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -424,6 +473,13 @@ function CaseModal({
       if (a <= 0) return toast.error("Enter the expense amount"), false;
       row.amount = a;
       row.spent_on = spentOn || today();
+      if (!method) return toast.error("How was it paid?"), false;
+      const needs = PAYMENT_METHODS.find((m) => m.v === method)?.account;
+      if (needs && accounts.some((x) => x.kind === needs) && !accountId) return toast.error(`Which ${needs === "card" ? "card" : "bank account"} paid?`), false;
+      row.payment_method = method;
+      row.account_id = needs ? accountId || null : null;
+      row.processed_by = processedBy || null;
+      row.website = website.trim() || null;
     }
     if (entryKind === "note" && !row.body && !files.length) return true;
     const attachments = await upload(files);
@@ -438,6 +494,7 @@ function CaseModal({
     setBody("");
     setMinutes("");
     setAmount("");
+    setWebsite("");
     setFiles([]);
     return true;
   };
@@ -447,6 +504,7 @@ function CaseModal({
     setBusy(false);
   };
   const save = async () => {
+    if (draft.alert_off && !(draft.alert_off_reason || "").trim()) return toast.error("Say why the overdue alert is off");
     setBusy(true);
     const note = entryKind === "note" ? body.trim() : "";
     if (pendingEntry && !(await addEntry())) return setBusy(false);
@@ -532,9 +590,27 @@ function CaseModal({
             ))}
           </Select>
         </Field>
-        <Field label="Due date">
+        <Field label="Due date" hint={c.product_id && draft.due_date && !draft.alert_off ? "Set from the product's timeframe" : undefined}>
           <Input type="date" value={draft.due_date || ""} onChange={(e) => set({ due_date: e.target.value || null })} />
         </Field>
+        {draft.due_date && (
+          <div className="col-span-2 sm:col-span-4">
+            <Checkbox
+              checked={!!draft.alert_off}
+              onChange={(v) => set({ alert_off: v, alert_off_reason: v ? draft.alert_off_reason : null })}
+              label="Turn off the overdue alert (we did our part, the entity is taking longer)"
+            />
+            {draft.alert_off && (
+              <Input
+                className="mt-2"
+                value={draft.alert_off_reason || ""}
+                onChange={(e) => set({ alert_off_reason: e.target.value })}
+                placeholder="Why? (required) e.g. Filed on time, the state takes 4–6 weeks"
+                aria-label="Why the overdue alert is off"
+              />
+            )}
+          </div>
+        )}
         <Field label="Owner" className="col-span-2">
           <Select value={draft.owner_id || ""} onChange={(e) => set({ owner_id: e.target.value || null })}>
             <option value="">Nobody</option>
@@ -614,6 +690,25 @@ function CaseModal({
                 )}
                 <span className="whitespace-pre-wrap">{e.body}</span>
               </div>
+              {e.kind === "expense" && (e.payment_method || e.processed_by || e.website) && (
+                <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-fg-3">
+                  {e.payment_method && (
+                    <span>
+                      {PAYMENT_METHODS.find((m) => m.v === e.payment_method)?.label}
+                      {e.account_id && (() => {
+                        const a = accounts.find((x) => x.id === e.account_id);
+                        return a ? ` · ${a.name}${a.last4 ? ` ••${a.last4}` : ""}` : "";
+                      })()}
+                    </span>
+                  )}
+                  {e.processed_by && <span>Processed by {memberName(e.processed_by)}</span>}
+                  {e.website && (
+                    <a href={/^https?:\/\//i.test(e.website) ? e.website : `https://${e.website}`} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">
+                      {e.website.replace(/^https?:\/\//i, "")}
+                    </a>
+                  )}
+                </div>
+              )}
               {!!e.attachments?.length && (
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {e.attachments.map((a) => (
@@ -641,7 +736,11 @@ function CaseModal({
         <Segmented<EntryKind>
           size="sm"
           value={entryKind}
-          onChange={setEntryKind}
+          onChange={(k) => {
+            setEntryKind(k);
+            // An expense starts at what the product says it costs (still editable).
+            if (k === "expense" && !amount && productExpense != null) setAmount(String(productExpense));
+          }}
           options={[
             { value: "note", label: "Note" },
             { value: "work", label: "Work time" },
@@ -652,8 +751,52 @@ function CaseModal({
           {entryKind === "work" && <Input type="number" min={1} value={minutes} onChange={(e) => setMinutes(e.target.value)} placeholder="Minutes" suffix="min" />}
           {entryKind === "expense" && (
             <>
-              <Input type="number" min={0} step="0.01" prefix="$" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" />
-              <Input type="date" value={spentOn} onChange={(e) => setSpentOn(e.target.value)} />
+              <Field label="Amount" hint={productExpense != null ? `From the product: ${money(productExpense)}` : undefined}>
+                <Input type="number" min={0} step="0.01" prefix="$" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" />
+              </Field>
+              <Field label="Date">
+                <Input type="date" value={spentOn} onChange={(e) => setSpentOn(e.target.value)} />
+              </Field>
+              <Field label="Payment method">
+                <Select value={method} onChange={(e) => (setMethod(e.target.value as PaymentMethod | ""), setAccountId(""))}>
+                  <option value="">Pick…</option>
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m.v} value={m.v}>
+                      {m.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              {(() => {
+                const need = PAYMENT_METHODS.find((m) => m.v === method)?.account;
+                if (!need) return <div className="hidden sm:block" />;
+                const list = accounts.filter((a) => a.kind === need);
+                return (
+                  <Field label={need === "card" ? "Card used" : "Bank account"} hint={list.length ? undefined : "None in Accounting yet"}>
+                    <Select value={accountId} onChange={(e) => setAccountId(e.target.value)} disabled={!list.length}>
+                      <option value="">Pick…</option>
+                      {list.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                          {a.last4 ? ` ••${a.last4}` : ""}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                );
+              })()}
+              <Field label="Processed by">
+                <Select value={processedBy} onChange={(e) => setProcessedBy(e.target.value)}>
+                  {members.map((m) => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.full_name || m.email}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Website">
+                <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="e.g. sunbiz.org" />
+              </Field>
             </>
           )}
           <Textarea className="col-span-2" rows={2} value={body} onChange={(e) => setBody(e.target.value)} placeholder={entryKind === "note" ? "Add a note…" : entryKind === "work" ? "What was done" : "What it was for"} />

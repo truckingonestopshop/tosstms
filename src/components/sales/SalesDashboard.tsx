@@ -13,7 +13,7 @@ import { PERIODS, inRange, lastMonths, ranges, type Period, type Range } from "@
 import { PeriodMenu, defaultCustom } from "@/components/dashboard/PeriodPicker";
 import { billingTotals, type Charge } from "@/lib/billing";
 import { payState, balance } from "@/lib/invoice";
-import { isRotting, oppNumber, weighted, type Opportunity } from "@/lib/sales";
+import { isOpen, isRotting, oppNumber, weighted, type Opportunity } from "@/lib/sales";
 import { stagesOf, useSales } from "./SalesProvider";
 import { svcLabel } from "./Opportunities";
 
@@ -43,7 +43,7 @@ export function SalesDashboard() {
   const { cur, prev } = ranges(period, t, custom);
   const all = opps.rows.filter((o) => inScope(o.company_id) && (!pid || o.pipeline_id === pid));
   const stageOf = (o: Opportunity) => stages.rows.find((s) => s.id === o.stage_id);
-  const open = all.filter((o) => o.status === "open");
+  const open = all.filter((o) => isOpen(o));
   const closedIn = (r: Range, s: "won" | "lost") => all.filter((o) => o.status === s && inRange(o.closed_at, r));
   const sum = (l: Opportunity[]) => l.reduce((a, o) => a + Number(o.value), 0);
   const won = closedIn(cur, "won");
@@ -72,7 +72,7 @@ export function SalesDashboard() {
   for (const o of all) {
     const k = o.owner_id || "";
     const r = owners.get(k) || { open: 0, value: 0, won: 0, wonValue: 0, lost: 0 };
-    if (o.status === "open") {
+    if (isOpen(o)) {
       r.open++;
       r.value += Number(o.value);
     }

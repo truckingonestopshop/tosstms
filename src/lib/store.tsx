@@ -204,6 +204,11 @@ function fail(e: unknown, what: string) {
 }
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
+/** A driver's expiry dates and the file kinds that carry the same date. */
+const EXPIRY_FILES: Record<"cdl_expiry" | "medical_card_expiry", string[]> = {
+  cdl_expiry: ["cdl", "driver_photo_license_front", "driver_photo_license_back"],
+  medical_card_expiry: ["medical_card"],
+};
 const normMember = (r: Member): Member => ({ ...r, languages: Array.isArray(r.languages) ? r.languages : [] });
 const byPaidOn = (a: InvoicePayment, b: InvoicePayment) => a.paid_on.localeCompare(b.paid_on) || a.created_at.localeCompare(b.created_at);
 const normPayment = (r: InvoicePayment): InvoicePayment => ({ ...r, amount: Number(r.amount) || 0 });
@@ -480,6 +485,10 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
     const { data, error } = await sb().from("tms_drivers").update(clean(patch)).eq("id", id).select().single();
     if (error) return fail(error, "Couldn't save the driver"), false;
     setDrivers((l) => upsert(l, data as Driver));
+    // A date typed on the driver goes on its files too (license photos, medical card).
+    const drv = data as Driver;
+    if ("cdl_expiry" in patch && drv.cdl_expiry) datesOnFiles(id, "cdl_expiry", drv.cdl_expiry);
+    if ("medical_card_expiry" in patch && drv.medical_card_expiry) datesOnFiles(id, "medical_card_expiry", drv.medical_card_expiry);
     return true;
   }, []);
   /** Storage files of documents that the database deleted along with their owner. */
@@ -668,17 +677,35 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
   // ---------------------------------------------------------------- documents
   // A newer CDL / medical card file with an expiry date updates the driver's dates,
   // so the driver record and the file on record can't disagree.
+  /**
+   * One date for the same paper everywhere: the driver's License expires / Medical card expires and
+   * the newest file of each kind (license document and its front / back photos; medical card).
+   */
+  async function datesOnFiles(driverId: string, field: "cdl_expiry" | "medical_card_expiry", date: string, except?: string) {
+    const types = EXPIRY_FILES[field];
+    const ids = types
+      .map((t) => ref.current.documents.filter((d) => d.driver_id === driverId && d.doc_type === t).sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at))[0])
+      .filter((d): d is DocumentItem => !!d && d.id !== except && d.expires_on !== date)
+      .map((d) => d.id);
+    if (!ids.length) return;
+    const { data, error } = await sb().from("tms_documents").update({ expires_on: date }).in("id", ids).select();
+    if (!error && data) setDocuments((l) => (data as DocumentItem[]).reduce((acc, d) => upsert(acc, d), l));
+  }
   const syncDriverExpiry = useCallback(async (doc: DocumentItem) => {
     if (!doc.driver_id || !doc.expires_on) return;
-    const field = doc.doc_type === "cdl" ? "cdl_expiry" : doc.doc_type === "medical_card" ? "medical_card_expiry" : null;
+    const field = (Object.keys(EXPIRY_FILES) as (keyof typeof EXPIRY_FILES)[]).find((k) => EXPIRY_FILES[k].includes(doc.doc_type));
     if (!field) return;
     const newest = ref.current.documents
       .filter((d) => d.driver_id === doc.driver_id && d.doc_type === doc.doc_type && d.id !== doc.id)
       .every((d) => d.uploaded_at <= doc.uploaded_at);
     const drv = ref.current.drivers.find((d) => d.id === doc.driver_id);
-    if (!newest || !drv || drv[field] === doc.expires_on) return;
-    const { error } = await sb().from("tms_drivers").update({ [field]: doc.expires_on }).eq("id", drv.id);
-    if (!error) setDrivers((l) => l.map((d) => (d.id === drv.id ? { ...d, [field]: doc.expires_on } : d)));
+    if (!newest || !drv) return;
+    if (drv[field] !== doc.expires_on) {
+      const { error } = await sb().from("tms_drivers").update({ [field]: doc.expires_on }).eq("id", drv.id);
+      if (!error) setDrivers((l) => l.map((d) => (d.id === drv.id ? { ...d, [field]: doc.expires_on } : d)));
+    }
+    // …and on the other files of the same paper (license front ↔ back ↔ license document).
+    datesOnFiles(drv.id, field, doc.expires_on, doc.id);
   }, []);
 
   const uploadDocument = useCallback<Store["uploadDocument"]>(async (file, meta) => {

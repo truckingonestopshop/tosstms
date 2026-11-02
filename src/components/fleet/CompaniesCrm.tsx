@@ -9,7 +9,7 @@ import { Input, Segmented, Select } from "@/components/ui/Field";
 import { driverAlert } from "@/components/fleet/Drivers";
 import { useStore } from "@/lib/store";
 import { useLiveTable } from "@/lib/live";
-import type { Opportunity } from "@/lib/sales";
+import { isOpen, type Opportunity } from "@/lib/sales";
 import { toast } from "@/lib/toast";
 import { ACTIVE_STATUSES, daysUntil, fmtDay, money, today } from "@/lib/format";
 import { SERVICES, activeServices, hasService } from "@/lib/services";
@@ -63,7 +63,7 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
   const [sort, setSort] = useState<Sort>("name");
   const [layout, setLayout] = useState<"cards" | "table">("cards");
   // Open opportunities per company (Sales), shown on leads and in the table.
-  const opps = useLiveTable<Opportunity>("tms_opportunities", { filter: { status: "open" } }).rows;
+  const opps = useLiveTable<Opportunity>("tms_opportunities").rows.filter(isOpen);
   const pipe = new Map<string, { n: number; value: number }>();
   for (const o of opps) {
     const r = pipe.get(o.company_id) || { n: 0, value: 0 };

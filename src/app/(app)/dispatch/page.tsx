@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { DispatchFrame, DispatchGate } from "@/components/fleet/CompanyNav";
-import { useMemo } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, Building2, CalendarClock, FileWarning, Plus, Truck as TruckIcon, XCircle } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, Building2, CalendarClock, ChevronDown, FileWarning, Plus, Truck as TruckIcon, XCircle } from "lucide-react";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader, Empty, Page, Pill, Stat } from "@/components/ui/Bits";
 import { StatusPill } from "@/components/loads/StatusMenu";
@@ -17,6 +17,17 @@ import { addDays, cn, daysUntil, fmtDay, isCanceled, lane, money, moneyShort, nu
 import { checklist, fleetPaperwork, problems, shortName } from "@/lib/docs";
 import { muteActive, useMutes } from "@/lib/pending";
 import type { Load, Truck } from "@/lib/types";
+
+type GrossBy = "all" | "delivered" | "picked" | "booked";
+const GROSS_BY: { v: GrossBy; label: string }[] = [
+  { v: "all", label: "All loads" },
+  { v: "delivered", label: "Delivered" },
+  { v: "picked", label: "Picked up" },
+  { v: "booked", label: "Booked" },
+];
+/** Statuses after delivery / after pickup. */
+const DELIVERED = new Set(["delivered", "invoiced", "paid"]);
+const PICKED = new Set(["in_transit", "delivered", "invoiced", "paid"]);
 
 function greeting() {
   const h = new Date().getHours();
@@ -39,9 +50,21 @@ function Dashboard() {
   const L = useMemo(() => loads.filter((l) => inScope(l.company_id)), [loads, inScope]);
   const T = useMemo(() => trucks.filter((x) => inScope(x.company_id)), [trucks, inScope]);
 
+  // Which loads "Gross this month" adds up: all of the month's loads, or only those delivered,
+  // picked up or booked this month.
+  const [grossBy, setGrossBy] = useState<GrossBy>("all");
   const k = useMemo(() => {
     const inMonth = L.filter((l) => (l.delivery_date || l.pickup_date || "").startsWith(month));
-    const m = inMonth.filter((l) => !isCanceled(l.status));
+    const m =
+      grossBy === "all"
+        ? inMonth.filter((l) => !isCanceled(l.status))
+        : L.filter((l) => !isCanceled(l.status)).filter((l) =>
+            grossBy === "delivered"
+              ? DELIVERED.has(l.status) && (l.delivery_date || "").startsWith(month)
+              : grossBy === "picked"
+                ? PICKED.has(l.status) && (l.pickup_date || "").startsWith(month)
+                : (l.created_at || "").startsWith(month),
+          );
     // Canceled loads never count in gross or fees; they are shown apart.
     const canceled = inMonth.filter((l) => isCanceled(l.status));
     const gross = m.reduce((s, l) => s + l.gross_amount, 0);
@@ -65,13 +88,14 @@ function Dashboard() {
       count: m.length,
       canceled: canceled.length,
       canceledGross: canceled.reduce((s, l) => s + l.gross_amount, 0),
-      change: lastSame ? ((gross - lastSame) / lastSame) * 100 : null,
+      // "vs last month" only compares like with like (all of the month's loads).
+      change: grossBy === "all" && lastSame ? ((gross - lastSame) / lastSame) * 100 : null,
       transit,
       booked,
       ready: delivered.length,
       readyFee: delivered.reduce((s, l) => s + l.dispatcher_cut, 0),
     };
-  }, [L, month]);
+  }, [L, month, grossBy]);
 
   // Today's stops
   const todayStops = useMemo(() => {
@@ -207,7 +231,19 @@ function Dashboard() {
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
-          label="Gross this month"
+          label={
+            <span className="relative inline-flex items-center gap-1 hover:text-fg">
+              Gross this month{grossBy !== "all" && ` · ${GROSS_BY.find((g) => g.v === grossBy)!.label.toLowerCase()}`}
+              <ChevronDown className="h-3 w-3" />
+              <select value={grossBy} onChange={(e) => setGrossBy(e.target.value as GrossBy)} className="absolute inset-0 cursor-pointer opacity-0" aria-label="Which loads">
+                {GROSS_BY.map((g) => (
+                  <option key={g.v} value={g.v}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+            </span>
+          }
           value={money(k.gross, { cents: false })}
           sub={
             k.change === null ? (

@@ -27,6 +27,7 @@ import { Popover, MenuItem, MenuSep } from "@/components/ui/Menu";
 import { Empty, Pill, neutralPill } from "@/components/ui/Bits";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { useStore } from "@/lib/store";
+import { canOpen } from "@/components/layout/nav";
 import { openDocument, errMsg } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn, daysUntil, fileSize, fmtDay, relTime } from "@/lib/format";
@@ -66,7 +67,11 @@ export function DocumentsPanel({
   emptyText?: string;
   compact?: boolean;
 }) {
-  const { documents, docTypes, uploadDocument, docTypeName, loads, drivers, trucks, trailers, updateDriver } = useStore();
+  const { documents, docTypes, uploadDocument, docTypeName, loads, drivers, trucks, trailers, updateDriver, me, memberById } = useStore();
+  // Load paperwork (rate cons, BOLs, lumper receipts…) is for people who work in Dispatch: those
+  // given the Dispatch section on Users (owners always are).
+  const dispatcher = canOpen(memberById(me.id) ?? { role: me.role }, "dispatch");
+  const loadTypes = useMemo(() => new Set(docTypes.filter((t) => t.scope === "load").map((t) => t.key)), [docTypes]);
   const scope = target.scope;
   // A driver's "Not required" marks come from the driver itself, so they follow every change.
   const waived = target.scope === "driver" ? drivers.find((x) => x.id === target.id)?.waived_docs : undefined;
@@ -99,10 +104,10 @@ export function DocumentsPanel({
 
   const list = useMemo(() => {
     const own = (includeAll && scope === "company" ? documents.filter((d) => d.company_id === target.companyId) : docsOf(documents, target)).filter(
-      (d) => !isPhotoDoc(d.doc_type),
+      (d) => !isPhotoDoc(d.doc_type) && (dispatcher || scope !== "company" || (!d.load_id && !loadTypes.has(d.doc_type))),
     );
     return [...own].sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
-  }, [documents, target, includeAll, scope]);
+  }, [documents, target, includeAll, scope, dispatcher, loadTypes]);
   const old = useMemo(() => supersededIds(list), [list]);
   const chosen = docTypes.find((t) => t.key === type);
 
@@ -282,7 +287,7 @@ export function DocumentsPanel({
             {includeAll && (
               <>
                 <option value="company">Carrier files</option>
-                <option value="loads">Load paperwork</option>
+                {dispatcher && <option value="loads">Load paperwork</option>}
                 <option value="people">Drivers, trucks & trailers</option>
               </>
             )}

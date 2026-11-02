@@ -18,7 +18,7 @@ import { toast } from "@/lib/toast";
 import { cn, fmtDay, money, relTime, today } from "@/lib/format";
 import { SERVICES } from "@/lib/services";
 import { intervalPer, INTERVALS, type ChargeService } from "@/lib/billing";
-import { daysInStage, isRotting, itemTotal, oppNumber, statusMeta, weighted, type OppEvent, type OppItem, type OppTask, type Opportunity, type Product } from "@/lib/sales";
+import { isOpen, SALES_LEVELS, daysInStage, discountCap, isRotting, itemTotal, oppNumber, statusMeta, weighted, type OppEvent, type OppItem, type OppTask, type Opportunity, type Product, type ProductVariant, type SalesLevel } from "@/lib/sales";
 import { stagesOf, useSales } from "./SalesProvider";
 import { useCloseFlow, usePatchOpps } from "./OppClose";
 import { ProductModal } from "./Products";
@@ -127,7 +127,7 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
               <Trash2 className="h-4 w-4" /> Delete
             </Button>
             <div className="ml-auto flex flex-wrap gap-2">
-              {o.status === "open" ? (
+              {isOpen(o) ? (
                 <>
                   <Button variant="outline" onClick={() => close([o.id], "abandoned")}>
                     Abandoned
@@ -140,7 +140,7 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
                   </Button>
                 </>
               ) : (
-                <Button variant="outline" onClick={() => close([o.id], "open")}>
+                <Button variant="outline" onClick={() => close([o.id], "new")}>
                   Reopen
                 </Button>
               )}
@@ -311,6 +311,10 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
  *  saved to the product list; the Add menu searches products, adds a custom line or a new product. */
 function Products({ o, lines }: { o: Opportunity; lines: OppItem[] }) {
   const { products, items } = useSales();
+  const { me, memberById, isOwner } = useStore();
+  const variants = useLiveTable<ProductVariant>("tms_product_variants", { order: "sort", ascending: true });
+  // How much this person may discount: a rep the Rep amount, a manager + Manager, the CRO all.
+  const level: SalesLevel = isOwner ? "cro" : memberById(me.id)?.sales_level ?? "rep";
   const patch = usePatchOpps();
   const [q, setQ] = useState("");
   const [productModal, setProductModal] = useState<{ initial?: Partial<Product>; line?: OppItem } | null>(null);
@@ -323,7 +327,13 @@ function Products({ o, lines }: { o: Opportunity; lines: OppItem[] }) {
     sync([...lines, data as OppItem]);
   };
   const addProduct = (p: Product) =>
-    insert({ opportunity_id: o.id, product_id: p.id, name: p.name, service: p.service, kind: p.kind, billing_interval: p.billing_interval, quantity: 1, unit_price: Number(p.price), sort: lines.length });
+    insert({ opportunity_id: o.id, product_id: p.id, name: p.name, service: p.service, kind: p.kind, billing_interval: p.billing_interval, quantity: 1, unit_price: Number(p.price), expense: p.expense, timeframe_days: p.timeframe_days, sort: lines.length });
+  /** Picking a variant sets its name, price, expense and timeframe on the line. */
+  const pickVariant = (i: OppItem, v: ProductVariant | undefined) => {
+    const p = catalog.find((x) => x.id === i.product_id);
+    if (!v) return update(i, { variant_id: null, variant_name: null });
+    update(i, { variant_id: v.id, variant_name: v.name, unit_price: Number(v.price), expense: v.expense ?? p?.expense ?? null, timeframe_days: v.timeframe_days ?? p?.timeframe_days ?? null });
+  };
   const addCustom = () => insert({ opportunity_id: o.id, product_id: null, name: "Custom item", service: o.service, kind: "one_time", billing_interval: null, quantity: 1, unit_price: 0, sort: lines.length });
   const strip = (i: OppItem) => {
     const { id: _id, ...rest } = i;
@@ -406,6 +416,26 @@ function Products({ o, lines }: { o: Opportunity; lines: OppItem[] }) {
               <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_56px_88px] items-start gap-2 sm:grid-cols-[minmax(0,1fr)_64px_96px]">
                 <div className="min-w-0">
                   <Input key={`${i.id}-${i.name}`} defaultValue={i.name} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== i.name && update(i, { name: e.target.value.trim() })} className="h-8 text-[13px]" aria-label="Name" />
+                  {(() => {
+                    // A product with variants: the variant must be picked (it sets the price).
+                    const vs = variants.rows.filter((v) => v.product_id === i.product_id && (v.active || v.id === i.variant_id));
+                    if (!i.product_id || !vs.length) return null;
+                    return (
+                      <Select
+                        value={i.variant_id || ""}
+                        onChange={(e) => pickVariant(i, vs.find((v) => v.id === e.target.value))}
+                        className={cn("mt-1 h-8 text-[13px]", !i.variant_id && "border-red-500 text-red-700 dark:text-red-300")}
+                        aria-label="Variant"
+                      >
+                        <option value="">Pick a variant (required)…</option>
+                        {vs.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.name} · {money(Number(v.price))}
+                          </option>
+                        ))}
+                      </Select>
+                    );
+                  })()}
                   <div className="mt-1 flex flex-wrap items-center gap-1">
                     <select value={i.kind} onChange={(e) => update(i, { kind: e.target.value as OppItem["kind"], billing_interval: e.target.value === "subscription" ? i.billing_interval || "monthly" : null })} className="rounded bg-transparent text-[11px] text-fg-3" aria-label="Type">
                       <option value="one_time">One-time</option>
@@ -425,6 +455,32 @@ function Products({ o, lines }: { o: Opportunity; lines: OppItem[] }) {
                 <Input key={`${i.id}-q${i.quantity}`} type="number" min={0} step="1" defaultValue={Number(i.quantity)} onBlur={(e) => Number(e.target.value) !== Number(i.quantity) && update(i, { quantity: Number(e.target.value) || 0 })} className="h-8 text-[13px]" aria-label="Quantity" />
                 <div>
                   <Input key={`${i.id}-p${i.unit_price}`} type="number" min={0} step="0.01" prefix="$" defaultValue={Number(i.unit_price)} onBlur={(e) => Number(e.target.value) !== Number(i.unit_price) && update(i, { unit_price: Number(e.target.value) || 0 })} className="h-8 text-[13px]" aria-label="Price" />
+                  {(() => {
+                    const p = catalog.find((x) => x.id === i.product_id);
+                    const cap = p ? discountCap(p, level) : 0;
+                    if (!p || (!cap && !Number(i.discount))) return null;
+                    return (
+                      <Input
+                        key={`${i.id}-d${i.discount}`}
+                        type="number"
+                        min={0}
+                        max={cap}
+                        step="0.01"
+                        prefix="−$"
+                        defaultValue={Number(i.discount) || ""}
+                        placeholder={`up to ${cap}`}
+                        title={`Discount: you can give up to ${money(cap)} (${SALES_LEVELS.find((x) => x.v === level)?.label})`}
+                        onBlur={(e) => {
+                          const v = Number(e.target.value) || 0;
+                          if (v === Number(i.discount)) return;
+                          if (v > cap) return toast.error(`The most you can discount ${p.name} is ${money(cap)}`), (e.target.value = String(Number(i.discount) || ""));
+                          update(i, { discount: v });
+                        }}
+                        className="mt-1 h-8 text-[13px]"
+                        aria-label="Discount"
+                      />
+                    );
+                  })()}
                   <div className="tnum mt-1 text-right text-[12px] font-medium text-fg">
                     {money(itemTotal(i), { cents: false })}
                     {i.kind === "subscription" && <span className="font-normal text-fg-4">{intervalPer(i.billing_interval)}</span>}

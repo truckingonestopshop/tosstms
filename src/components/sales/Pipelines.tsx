@@ -12,7 +12,7 @@ import { confirmDialog } from "@/components/ui/Confirm";
 import { errMsg, sb } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
-import type { LostReason, OppField, Pipeline, Stage } from "@/lib/sales";
+import { isOpen, type LostReason, type OppField, type Pipeline, type Stage } from "@/lib/sales";
 import { stagesOf, useSales } from "./SalesProvider";
 
 // Pipelines setup (like GHL): pipelines, their stages (add, rename, color, win %, "too long after
@@ -86,7 +86,7 @@ export function PipelinesSetup() {
       <Card className="self-start p-2">
         <div className="px-2 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-4">Pipelines</div>
         {pipes.map((p) => {
-          const n = opps.rows.filter((o) => o.pipeline_id === p.id && o.status === "open").length;
+          const n = opps.rows.filter((o) => o.pipeline_id === p.id && isOpen(o)).length;
           return (
             <div key={p.id} {...pipeSort.rowProps(p.id)} className={cn("flex items-center gap-1 rounded-lg pl-1", sortRow, current?.id === p.id && "bg-surface-2")}>
               <SortHandle {...pipeSort.handle(p.id)} />
@@ -128,7 +128,7 @@ export function PipelinesSetup() {
             <div className="px-4 pt-3 text-xs text-fg-3 sm:px-5">Drag the handle (or use the arrows) to reorder. Win % makes the weighted forecast; &quot;too long after&quot; flags opportunities stuck in the stage.</div>
             <ul className="space-y-2 p-4 sm:px-5">
               {list.map((s, i) => {
-                const n = opps.rows.filter((o) => o.stage_id === s.id && o.status === "open").length;
+                const n = opps.rows.filter((o) => o.stage_id === s.id && isOpen(o)).length;
                 return (
                   <li
                     key={s.id}

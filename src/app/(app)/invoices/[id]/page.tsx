@@ -38,6 +38,7 @@ import { toast } from "@/lib/toast";
 import { saveElementPdf } from "@/lib/pdf";
 import { METHODS, PAY_META, balance, draftOf, draftToRow, methodLabel, payState, type InvoiceDraft } from "@/lib/invoice";
 import { cn, cut, fmtDateTime, fmtDay, lane, money, today } from "@/lib/format";
+import { caseHref } from "@/lib/cases";
 import type { Invoice, PaymentMethod } from "@/lib/types";
 
 export default function InvoicePage({ params }: PageProps<"/invoices/[id]">) {
@@ -413,7 +414,7 @@ function InvoiceCases({ inv }: { inv: Invoice }) {
             const st = statusOf(c.status);
             return (
               <li key={c.id}>
-                <Link href={`${c.kind === "work" ? "/cases" : "/customer-service"}?case=${c.id}`} className="flex items-center gap-2 px-4 py-2.5 transition-colors hover:bg-surface-2/60">
+                <Link href={caseHref(c)} className="flex items-center gap-2 px-4 py-2.5 transition-colors hover:bg-surface-2/60">
                   <span className="tnum text-xs font-semibold text-fg-4">#{c.number}</span>
                   <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{c.title}</span>
                   <Pill className={st.pill}>{st.label}</Pill>

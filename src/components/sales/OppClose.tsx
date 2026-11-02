@@ -35,7 +35,7 @@ export function useCloseFlow() {
   const patch = usePatchOpps();
   const close = async (ids: string[], status: OppStatus) => {
     if (status === "won" || status === "lost") return setPending({ ids, status });
-    if (await patch(ids, { status, lost_reason_id: null })) toast.success(status === "open" ? "Reopened" : `Marked ${status}`);
+    if (await patch(ids, { status, lost_reason_id: null })) toast.success(status === "new" ? "Reopened" : `Marked ${status}`);
   };
   const node = <CloseModal value={pending} onClose={() => setPending(null)} />;
   return [close, node] as const;

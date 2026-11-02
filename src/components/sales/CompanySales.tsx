@@ -6,7 +6,7 @@ import { Paperclip, Plus, Target } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, Empty, Pill } from "@/components/ui/Bits";
 import { cn, fmtDay, money } from "@/lib/format";
-import { AGREEMENT_STATUSES, oppNumber, statusMeta } from "@/lib/sales";
+import { isOpen, AGREEMENT_STATUSES, oppNumber, statusMeta } from "@/lib/sales";
 import type { Company } from "@/lib/types";
 import { SalesProvider, useSales } from "./SalesProvider";
 import { NewOpportunity, svcLabel } from "./Opportunities";
@@ -27,9 +27,9 @@ function Inner({ company }: { company: Company }) {
   const [adding, setAdding] = useState(false);
   const list = opps.rows
     .filter((o) => o.company_id === company.id)
-    .sort((a, b) => Number(b.status === "open") - Number(a.status === "open") || b.updated_at.localeCompare(a.updated_at));
+    .sort((a, b) => Number(isOpen(b)) - Number(isOpen(a)) || b.updated_at.localeCompare(a.updated_at));
   const agr = agreements.rows.filter((a) => a.company_id === company.id);
-  const openValue = list.filter((o) => o.status === "open").reduce((s, o) => s + Number(o.value), 0);
+  const openValue = list.filter((o) => isOpen(o)).reduce((s, o) => s + Number(o.value), 0);
   const wonValue = list.filter((o) => o.status === "won").reduce((s, o) => s + Number(o.value), 0);
 
   return (
@@ -58,7 +58,7 @@ function Inner({ company }: { company: Company }) {
               const st = statusMeta(o.status);
               return (
                 <li key={o.id}>
-                  <button type="button" onClick={() => setOpen(o.id)} className={cn("flex w-full flex-wrap items-center gap-2 px-4 py-2.5 text-left hover:bg-surface-2/50 sm:px-5", o.status !== "open" && "opacity-75")}>
+                  <button type="button" onClick={() => setOpen(o.id)} className={cn("flex w-full flex-wrap items-center gap-2 px-4 py-2.5 text-left hover:bg-surface-2/50 sm:px-5", !isOpen(o) && "opacity-75")}>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] font-medium text-fg">
                         <span className="tnum mr-1.5 text-xs font-semibold text-fg-4">{oppNumber(o)}</span>

@@ -4,19 +4,59 @@
 import type { ChargeInterval, ChargeService } from "./billing";
 import type { Company } from "./types";
 
+export type ProductKind = "subscription" | "one_time" | "exchange";
+export const PRODUCT_KINDS: { v: ProductKind; label: string }[] = [
+  { v: "subscription", label: "Subscription" },
+  { v: "one_time", label: "One-time" },
+  { v: "exchange", label: "Exchange" },
+];
+export const kindLabel = (k: ProductKind) => PRODUCT_KINDS.find((x) => x.v === k)?.label ?? k;
+
 export interface Product {
   id: string;
   name: string;
   service: ChargeService;
-  kind: "subscription" | "one_time";
+  kind: ProductKind;
   price: number;
   billing_interval: ChargeInterval | null;
   description: string | null;
   active: boolean;
   sort: number;
+  /** what TOSS pays for it (state fee…), prefilled on the case's expense (migration 0051) */
+  expense: number | null;
+  /** days the work takes: the case's due date */
+  timeframe_days: number | null;
+  /** most each level may discount, in dollars (a manager: rep + manager; the CRO: all three) */
+  discount_rep: number;
+  discount_manager: number;
+  discount_cro: number;
   created_at: string;
   updated_at: string;
 }
+
+/** One version of a product with its own price (e.g. Articles of Incorporation · Florida). */
+export interface ProductVariant {
+  id: string;
+  product_id: string;
+  name: string;
+  price: number;
+  /** empty: the product's */
+  expense: number | null;
+  timeframe_days: number | null;
+  active: boolean;
+  sort: number;
+  created_at: string;
+}
+
+export type SalesLevel = "rep" | "manager" | "cro";
+export const SALES_LEVELS: { v: SalesLevel; label: string }[] = [
+  { v: "rep", label: "Rep" },
+  { v: "manager", label: "Manager" },
+  { v: "cro", label: "CRO" },
+];
+/** The most this level may discount the product (in dollars). */
+export const discountCap = (p: Pick<Product, "discount_rep" | "discount_manager" | "discount_cro">, level: SalesLevel) =>
+  Number(p.discount_rep || 0) + (level !== "rep" ? Number(p.discount_manager || 0) : 0) + (level === "cro" ? Number(p.discount_cro || 0) : 0);
 
 export type TemplateKind = "agreement" | "template" | "email";
 export interface Template {
@@ -62,10 +102,14 @@ export interface LostReason {
   active: boolean;
 }
 
-/** Stage = where it is on the board; status = whether it's still live (like GHL). */
-export type OppStatus = "open" | "won" | "lost" | "abandoned";
+/**
+ * Stage = where it is on the board; status = where the sale is: New, Invoice sent (an invoice was
+ * made from it), Won (the invoice was paid: a case per product is opened), Lost or Abandoned.
+ */
+export type OppStatus = "new" | "invoice_sent" | "won" | "lost" | "abandoned";
 export const OPP_STATUSES: { v: OppStatus; label: string; pill: string }[] = [
-  { v: "open", label: "Open", pill: "bg-sky-500/10 text-sky-700 ring-sky-600/25 dark:text-sky-300" },
+  { v: "new", label: "New", pill: "bg-sky-500/10 text-sky-700 ring-sky-600/25 dark:text-sky-300" },
+  { v: "invoice_sent", label: "Invoice sent", pill: "bg-violet-500/10 text-violet-700 ring-violet-600/25 dark:text-violet-300" },
   { v: "won", label: "Won", pill: "bg-emerald-500/10 text-emerald-700 ring-emerald-600/25 dark:text-emerald-300" },
   { v: "lost", label: "Lost", pill: "bg-red-500/10 text-red-700 ring-red-600/25 dark:text-red-300" },
   { v: "abandoned", label: "Abandoned", pill: "bg-surface-2 text-fg-3 ring-line" },
@@ -100,12 +144,14 @@ export interface Opportunity {
   updated_at: string;
 }
 export const oppNumber = (o: Pick<Opportunity, "number">) => (o.number ? `OPP-${o.number}` : "");
-export const isOpen = (o: Pick<Opportunity, "status">) => o.status === "open";
+/** Still being worked (New or Invoice sent). */
+export const isOpen = (o: Pick<Opportunity, "status">) => o.status === "new" || o.status === "invoice_sent";
+export const OPEN_STATUSES: OppStatus[] = ["new", "invoice_sent"];
 
 /** Days since the opportunity entered its stage. */
 export const daysInStage = (o: Pick<Opportunity, "stage_entered_at">, now: number) => Math.floor((now - new Date(o.stage_entered_at).getTime()) / 86400000);
 /** Sat in its stage longer than the stage allows. */
-export const isRotting = (o: Opportunity, s: Stage | undefined, now: number) => o.status === "open" && !!s?.rot_days && daysInStage(o, now) > s.rot_days;
+export const isRotting = (o: Opportunity, s: Stage | undefined, now: number) => isOpen(o) && !!s?.rot_days && daysInStage(o, now) > s.rot_days;
 /** Value × the stage's win %. */
 export const weighted = (o: Pick<Opportunity, "value">, s: Stage | undefined) => (Number(o.value) || 0) * ((s?.probability ?? 0) / 100);
 
@@ -115,13 +161,24 @@ export interface OppItem {
   product_id: string | null;
   name: string;
   service: ChargeService;
-  kind: "subscription" | "one_time";
+  kind: ProductKind;
   billing_interval: "weekly" | "monthly" | "quarterly" | "yearly" | null;
   quantity: number;
   unit_price: number;
   sort: number;
+  variant_id: string | null;
+  variant_name: string | null;
+  /** off the line, in dollars (limited by who gives it) */
+  discount: number;
+  discount_by: string | null;
+  expense: number | null;
+  timeframe_days: number | null;
 }
-export const itemTotal = (i: Pick<OppItem, "quantity" | "unit_price">) => (Number(i.quantity) || 0) * (Number(i.unit_price) || 0);
+/** Quantity × price, less the discount. */
+export const itemTotal = (i: Pick<OppItem, "quantity" | "unit_price"> & { discount?: number | null }) =>
+  Math.max(0, (Number(i.quantity) || 0) * (Number(i.unit_price) || 0) - (Number(i.discount) || 0));
+/** "Articles of Incorporation · Florida" */
+export const itemName = (i: Pick<OppItem, "name" | "variant_name">) => (i.variant_name ? `${i.name} · ${i.variant_name}` : i.name);
 
 export interface OppTask {
   id: string;

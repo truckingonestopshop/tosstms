@@ -16,6 +16,7 @@ import { fleetPaperwork } from "@/lib/docs";
 import type { Company, DocType, DocumentItem, Driver, Trailer, Truck } from "@/lib/types";
 import { ACTIONS, type ActionName } from "./actions";
 import { HunterError, hunterApi } from "./hunter";
+import { caseHref } from "@/lib/cases";
 
 type Row = Record<string, unknown>;
 const uuid = z.string().uuid();
@@ -122,7 +123,7 @@ export function copilotTools(ctx: ToolContext) {
           rows(sb.from("tms_loads").select("status").eq("company_id", company_id).in("status", ["new", "booked", "in_transit", "delivered"])),
           rows(sb.from("tms_invoices").select("status,total_due,amount_paid,due_date").eq("company_id", company_id).in("status", ["sent", "draft"])),
           rows(sb.from("tms_cases").select("status").eq("company_id", company_id).not("status", "in", "(completed,cancelled)")),
-          rows(sb.from("tms_opportunities").select("status,value").eq("company_id", company_id).eq("status", "open")),
+          rows(sb.from("tms_opportunities").select("status,value").eq("company_id", company_id).in("status", ["new", "invoice_sent"])),
           rows(sb.from("tms_company_events").select("kind,message,actor_name,created_at").eq("company_id", company_id).order("created_at", { ascending: false }).limit(8)),
         ]);
         const comp = (c.compliance || {}) as { safety_rating?: string; fmcsa?: Row };
@@ -301,12 +302,12 @@ export function copilotTools(ctx: ToolContext) {
     }),
 
     sales: tool({
-      description: "Sales opportunities (pipelines): title, company, stage, status (open/won/lost), value, service, owner, expected close. Filter by company or status.",
-      inputSchema: z.object({ company_id: uuid.optional(), status: z.enum(["open", "won", "lost", "abandoned"]).optional(), limit: z.number().int().min(1).max(100).default(LIMIT) }),
+      description: "Sales opportunities (pipelines): title, company, stage, status (new, invoice_sent = invoice made, won = invoice paid, lost, abandoned; open = new or invoice_sent), value, service, owner, expected close. Filter by company or status.",
+      inputSchema: z.object({ company_id: uuid.optional(), status: z.enum(["open", "new", "invoice_sent", "won", "lost", "abandoned"]).optional(), limit: z.number().int().min(1).max(100).default(LIMIT) }),
       execute: async ({ company_id, status, limit }) => {
         let q = sb.from("tms_opportunities").select("id,number,title,company_id,status,value,service,expected_close,stage_id,owner_id,created_at").order("created_at", { ascending: false }).limit(500);
         if (company_id) q = q.eq("company_id", company_id);
-        if (status) q = q.eq("status", status);
+        if (status) q = status === "open" ? q.in("status", ["new", "invoice_sent"]) : q.eq("status", status);
         const list = await rows(q);
         const [co, stages, members] = await Promise.all([
           names("tms_companies", list.map((o) => o.company_id)),
@@ -317,7 +318,7 @@ export function copilotTools(ctx: ToolContext) {
         const mb = new Map(members.map((m) => [m.user_id as string, m.full_name as string]));
         return {
           total: list.length,
-          open_value: list.filter((o) => o.status === "open").reduce((s, o) => s + Number(o.value || 0), 0),
+          open_value: list.filter((o) => o.status === "new" || o.status === "invoice_sent").reduce((s, o) => s + Number(o.value || 0), 0),
           opportunities: list.slice(0, limit).map((o) => compact({ id: o.id, number: o.number, title: o.title, company: co.get(o.company_id as string), status: o.status, stage: st.get(o.stage_id as string), value: o.value, service: o.service, owner: mb.get(o.owner_id as string), expected_close: o.expected_close, page: `/sales?tab=opportunities&opp=${o.id}` })),
         };
       },
@@ -333,7 +334,7 @@ export function copilotTools(ctx: ToolContext) {
         if (open_only) q = q.not("status", "in", "(completed,cancelled)");
         const list = await rows(q);
         const co = await names("tms_companies", list.map((c) => c.company_id));
-        return { total: list.length, cases: list.slice(0, limit).map((c) => compact({ ...c, company: co.get(c.company_id as string), company_id: undefined, owner_id: undefined, page: `${c.kind === "work" ? "/cases" : "/customer-service"}?case=${c.id}` })) };
+        return { total: list.length, cases: list.slice(0, limit).map((c) => compact({ ...c, company: co.get(c.company_id as string), company_id: undefined, owner_id: undefined, page: caseHref(c as { id: string; kind: "work" | "customer_service"; company_id: string | null }) })) };
       },
     }),
 

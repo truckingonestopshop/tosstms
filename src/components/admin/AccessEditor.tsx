@@ -11,9 +11,18 @@ const VIEWS: { v: TmsView; label: string; hint: string }[] = [
   { v: "office", label: "Office", hint: "Carrier profile first, lists" },
 ];
 
+export type SalesLevel = "rep" | "manager" | "cro";
+const LEVELS: { v: SalesLevel; label: string; hint: string }[] = [
+  { v: "rep", label: "Rep", hint: "Rep discount" },
+  { v: "manager", label: "Manager", hint: "Rep + manager" },
+  { v: "cro", label: "CRO", hint: "All discounts" },
+];
+
 export interface Access {
   tms: TmsRole | null;
   tms_view: TmsView;
+  /** discounts they may give on sales (owners: all) */
+  tms_sales_level: SalesLevel;
   leads: LeadsRole | null;
   super_admin: boolean;
 }
@@ -35,6 +44,12 @@ export function AccessEditor({ value, onChange, lockSelf }: { value: Access; onC
           <div className="mt-3">
             <div className="mb-1.5 text-[11px] font-semibold text-fg-3">View</div>
             <Choices options={VIEWS} value={value.tms_view} onPick={(v) => onChange({ ...value, tms_view: v as TmsView })} />
+            {value.tms !== "owner" && (
+              <>
+                <div className="mb-1.5 mt-3 text-[11px] font-semibold text-fg-3">Sales level</div>
+                <Choices options={LEVELS} value={value.tms_sales_level} onPick={(v) => onChange({ ...value, tms_sales_level: v as SalesLevel })} />
+              </>
+            )}
           </div>
         }
       />

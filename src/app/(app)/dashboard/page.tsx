@@ -26,7 +26,7 @@ import { addDays, cn, isCanceled, money, moneyShort, num, today } from "@/lib/fo
 import { SERVICES, serviceLabel } from "@/lib/services";
 import { billingTotals, invoiceOpen, monthly, runningSub, type Charge, type ChargeService } from "@/lib/billing";
 import { isOpen, type Agreement, type OppTask, type Opportunity, type Pipeline, type Stage } from "@/lib/sales";
-import { PRIORITIES, isClosed, type Case } from "@/lib/cases";
+import { PRIORITIES, caseHref, isClosed, isOverdue, type Case } from "@/lib/cases";
 import { useOptions } from "@/components/ui/OptionList";
 import { muteActive, ownDocItems, pendingItems, useMutes } from "@/lib/pending";
 import { payState } from "@/lib/invoice";
@@ -126,7 +126,7 @@ export default function DashboardPage() {
   const open = (l: Case[]) => l.filter((c) => !isClosed(c.status));
   const closedCases = cs.filter((c) => inRange(c.closed_at, cur));
   const avgClose = closedCases.length ? closedCases.reduce((s, c) => s + (new Date(c.closed_at!).getTime() - new Date(c.created_at).getTime()) / 86400000, 0) / closedCases.length : null;
-  const overdueCases = open(cs).filter((c) => c.due_date && c.due_date < t);
+  const overdueCases = open(cs).filter((c) => isOverdue(c, t));
 
   // ---- needs attention ----------------------------------------------------------------------------------
   const ownDocs = useLiveTable<{ id: string; name: string; folder: string; expires_on: string | null }>("tms_own_documents").rows;
@@ -144,11 +144,11 @@ export default function DashboardPage() {
   type Alert = { key: string; icon: typeof AlertTriangle; text: string; sub?: string; href: string; tone: "red" | "amber" | "blue" };
   const attention: Alert[] = [];
   if (overdueInv.length) attention.push({ key: "inv", icon: FileWarning, text: `${overdueInv.length} overdue invoice${overdueInv.length > 1 ? "s" : ""}`, sub: money(overdueInv.reduce((s, i) => s + invoiceOpen(i), 0)), href: "/invoices", tone: "red" });
-  for (const c of overdueCases.slice(0, 4)) attention.push({ key: `case${c.id}`, icon: Briefcase, text: `Case #${c.number} overdue: ${c.title}`, sub: companyById(c.company_id)?.name, href: `/${c.kind === "work" ? "cases" : "customer-service"}?case=${c.id}`, tone: "red" });
+  for (const c of overdueCases.slice(0, 4)) attention.push({ key: `case${c.id}`, icon: Briefcase, text: `Case #${c.number} overdue: ${c.title}`, sub: companyById(c.company_id)?.name, href: caseHref(c), tone: "red" });
   for (const l of noDriver.slice(0, 3)) attention.push({ key: `nd${l.id}`, icon: TruckIcon, text: `No driver · picks up ${l.pickup_date}`, sub: `${l.origin_city}, ${l.origin_state} → ${l.destination_city}, ${l.destination_state}`, href: `/loads/${l.id}`, tone: "red" });
   const expired = pending.filter((i) => i.state === "expired").length;
   if (expired) attention.push({ key: "exp", icon: CalendarClock, text: `${expired} expired document${expired > 1 ? "s" : ""}`, sub: "Carriers, drivers, trucks, trailers", href: "/pending", tone: "red" });
-  for (const c of open(cs).filter((c) => c.priority === "urgent").slice(0, 3)) attention.push({ key: `urg${c.id}`, icon: AlertTriangle, text: `Urgent: #${c.number} ${c.title}`, sub: companyById(c.company_id)?.name, href: `/${c.kind === "work" ? "cases" : "customer-service"}?case=${c.id}`, tone: "red" });
+  for (const c of open(cs).filter((c) => c.priority === "urgent").slice(0, 3)) attention.push({ key: `urg${c.id}`, icon: AlertTriangle, text: `Urgent: #${c.number} ${c.title}`, sub: companyById(c.company_id)?.name, href: caseHref(c), tone: "red" });
   if (csWaiting.length) attention.push({ key: "csw", icon: Headset, text: `${csWaiting.length} customer service case${csWaiting.length > 1 ? "s" : ""} open over 3 days`, href: "/customer-service", tone: "amber" });
   if (unpaid.length) attention.push({ key: "unp", icon: Wallet, text: `${unpaid.length} unpaid charge${unpaid.length > 1 ? "s" : ""}`, sub: money(unpaid.reduce((s, c) => s + Number(c.amount), 0)), href: "/billing", tone: "amber" });
   if (lateOpps.length) attention.push({ key: "lopp", icon: Target, text: `${lateOpps.length} opportunit${lateOpps.length > 1 ? "ies" : "y"} past expected close`, sub: money(lateOpps.reduce((s, o) => s + Number(o.value), 0), { cents: false }), href: "/sales?tab=opportunities", tone: "amber" });

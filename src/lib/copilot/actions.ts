@@ -9,6 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { adminClient, adminConfigured } from "@/lib/server/admin";
 import { upsertCarrier } from "@/lib/server/carriers";
 import { hunterApi } from "./hunter";
+import { caseHref } from "@/lib/cases";
 
 const uuid = z.string().uuid();
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date as YYYY-MM-DD");
@@ -261,8 +262,7 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
         .single();
       if (error) return fail(error, "Couldn't open the case");
       if (!(await check("tms_cases", data.id))) return notSeen("The case");
-      const base = i.kind === "work" ? "/cases" : "/customer-service";
-      return { ok: true, message: `Case #${data.number} opened. Checked: it's there.`, id: data.id, href: `${base}?case=${data.id}` };
+      return { ok: true, message: `Case #${data.number} opened. Checked: it's there.`, id: data.id, href: caseHref({ id: data.id, kind: i.kind, company_id: i.company_id }) };
     }
 
     case "create_opportunity": {
@@ -272,7 +272,7 @@ export async function runAction(sb: SupabaseClient, me: Me, name: ActionName, ra
       const { data: stage } = await sb.from("tms_pipeline_stages").select("id").eq("pipeline_id", pipe.id).order("sort").limit(1).maybeSingle();
       const { data, error } = await sb
         .from("tms_opportunities")
-        .insert({ company_id: i.company_id, title: i.title, service: i.service, value: i.value, expected_close: i.expected_close ?? null, pipeline_id: pipe.id, stage_id: stage?.id ?? null, status: "open", owner_id: me.id, created_by: me.id, source: "TOSS Copilot" })
+        .insert({ company_id: i.company_id, title: i.title, service: i.service, value: i.value, expected_close: i.expected_close ?? null, pipeline_id: pipe.id, stage_id: stage?.id ?? null, status: "new", owner_id: me.id, created_by: me.id, source: "TOSS Copilot" })
         .select("id,number")
         .single();
       if (error) return fail(error, "Couldn't create the opportunity");

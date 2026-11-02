@@ -282,7 +282,7 @@ export function DriverForm({ open, onClose, companyId, driver }: { open: boolean
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-fg-4">Other documents</div>
           {driver ? (
             <div className="space-y-3">
-              <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId, licenseExpiry: driver.cdl_expiry, waived: driver.waived_docs }} compact emptyText="No driver files yet." />
+              <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId, licenseExpiry: d.cdl_expiry || driver.cdl_expiry, waived: driver.waived_docs }} compact emptyText="No driver files yet." />
               <SigningRequests companyId={companyId} driverId={driver.id} category="driver" title="Sent to sign" />
             </div>
           ) : (

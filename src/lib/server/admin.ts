@@ -10,6 +10,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 
 export type TmsRole = "owner" | "dispatcher";
 export type TmsView = "dispatch" | "office";
+export type SalesLevel = "rep" | "manager" | "cro";
 export type LeadsRole = "owner" | "admin" | "member";
 export type AdminStatus = "active" | "invited" | "disabled";
 
@@ -28,6 +29,8 @@ export interface AdminUser {
   tms: TmsRole | null;
   /** which TOSS Cloud screens the person works in */
   tms_view: TmsView;
+  /** discounts they may give on sales: rep, manager (rep + manager), cro (all) */
+  tms_sales_level: SalesLevel;
   leads: LeadsRole | null;
 }
 
@@ -99,7 +102,7 @@ export async function listUsers(): Promise<AdminUser[]> {
   }
   const ws = await leadsWorkspace(a);
   const [tms, leads, supers, profiles] = await Promise.all([
-    a.from("tms_members").select("user_id, full_name, role, position, phone, avatar_path, workspace_view"),
+    a.from("tms_members").select("user_id, full_name, role, position, phone, avatar_path, workspace_view, sales_level"),
     ws ? a.from("workspace_members").select("user_id, role").eq("workspace_id", ws) : Promise.resolve({ data: [] as { user_id: string; role: string }[] }),
     a.from("toss_super_admins").select("user_id"),
     a.from("profiles").select("id, full_name"),
@@ -127,6 +130,7 @@ export async function listUsers(): Promise<AdminUser[]> {
         super_admin: superSet.has(u.id),
         tms: (t?.role as TmsRole) || null,
         tms_view: t?.workspace_view === "office" ? "office" : "dispatch",
+        tms_sales_level: t?.sales_level === "manager" || t?.sales_level === "cro" ? t.sales_level : "rep",
         leads: leadsBy.get(u.id) || null,
       } satisfies AdminUser;
     })
@@ -161,6 +165,7 @@ async function setTmsAccess(
   role: TmsRole | null,
   profile: { full_name?: string; position?: string | null; phone?: string | null },
   view?: TmsView,
+  salesLevel?: SalesLevel,
 ) {
   const a = adminClient();
   if (!role) {
@@ -173,6 +178,7 @@ async function setTmsAccess(
   if (profile.position !== undefined) row.position = profile.position || null;
   if (profile.phone !== undefined) row.phone = profile.phone || null;
   if (view) row.workspace_view = view;
+  if (salesLevel) row.sales_level = salesLevel;
   const { error } = await a.from("tms_members").upsert(row, { onConflict: "user_id" });
   if (error) throw new AdminError(error.message.includes("owner") ? "TOSS Cloud needs at least one owner." : error.message);
 }
@@ -230,6 +236,7 @@ export interface InviteInput {
   phone?: string | null;
   tms: TmsRole | null;
   tms_view?: TmsView;
+  tms_sales_level?: SalesLevel;
   leads: LeadsRole | null;
   super_admin?: boolean;
 }
@@ -263,7 +270,7 @@ export async function inviteUser(actor: { id: string; email: string }, input: In
   const u = data.user;
 
   await setNames(u, { full_name, position: input.position ?? null, phone: input.phone ?? null });
-  await setTmsAccess({ id: u.id, email }, input.tms, { full_name, position: input.position ?? null, phone: input.phone ?? null }, input.tms_view);
+  await setTmsAccess({ id: u.id, email }, input.tms, { full_name, position: input.position ?? null, phone: input.phone ?? null }, input.tms_view, input.tms_sales_level);
   await setLeadsAccess(u.id, input.leads);
   if (input.super_admin) await setSuperAdmin(actor.id, u.id, true);
   await audit(actor, "invite", { id: u.id, email }, { tms: input.tms, tms_view: input.tms_view || "dispatch", leads: input.leads, super_admin: !!input.super_admin, position: input.position || null });
@@ -276,6 +283,7 @@ export interface UpdateInput {
   phone?: string | null;
   tms?: TmsRole | null;
   tms_view?: TmsView;
+  tms_sales_level?: SalesLevel;
   leads?: LeadsRole | null;
   super_admin?: boolean;
 }
@@ -302,16 +310,20 @@ export async function updateUser(actor: { id: string; email: string }, id: strin
       input.tms,
       { full_name: names.full_name ?? before.full_name, position: names.position ?? before.position, phone: names.phone ?? before.phone },
       input.tms_view,
+      input.tms_sales_level,
     );
-  else if (input.tms_view && input.tms_view !== before.tms_view && willHaveTms) {
-    const { error } = await adminClient().from("tms_members").update({ workspace_view: input.tms_view }).eq("user_id", id);
+  else if (willHaveTms && ((input.tms_view && input.tms_view !== before.tms_view) || (input.tms_sales_level && input.tms_sales_level !== before.tms_sales_level))) {
+    const patch: Record<string, unknown> = {};
+    if (input.tms_view) patch.workspace_view = input.tms_view;
+    if (input.tms_sales_level) patch.sales_level = input.tms_sales_level;
+    const { error } = await adminClient().from("tms_members").update(patch).eq("user_id", id);
     if (error) throw new AdminError(error.message);
   }
   if (input.leads !== undefined && input.leads !== before.leads) await setLeadsAccess(id, input.leads);
   if (input.super_admin !== undefined && input.super_admin !== before.super_admin) await setSuperAdmin(actor.id, id, input.super_admin);
 
   const changes: Record<string, unknown> = {};
-  for (const k of ["full_name", "position", "phone", "tms", "tms_view", "leads", "super_admin"] as const) {
+  for (const k of ["full_name", "position", "phone", "tms", "tms_view", "tms_sales_level", "leads", "super_admin"] as const) {
     const v = k === "full_name" ? names.full_name : input[k];
     if (v !== undefined && v !== (before as unknown as Record<string, unknown>)[k]) changes[k] = { from: (before as unknown as Record<string, unknown>)[k] ?? null, to: v ?? null };
   }
@@ -393,7 +405,7 @@ export function previewUsers(): AdminUser[] {
   const now = new Date().toISOString();
   const ago = (d: number) => new Date(Date.now() - d * 86400000).toISOString();
   const u = (id: string, email: string, full_name: string, position: string | null, tms: TmsRole | null, leads: LeadsRole | null, status: AdminStatus, last: string | null, sa = false): AdminUser => ({
-    id, email, full_name, position, phone: null, avatar_path: null, created_at: ago(40), invited_at: ago(40), last_sign_in_at: last, status, super_admin: sa, tms, tms_view: "dispatch", leads,
+    id, email, full_name, position, phone: null, avatar_path: null, created_at: ago(40), invited_at: ago(40), last_sign_in_at: last, status, super_admin: sa, tms, tms_view: "dispatch", tms_sales_level: "rep", leads,
   });
   return [
     u("demo-me", "dispatch@truckingonestopshop.net", "Preview Dispatcher", "Dispatch Manager", "owner", "owner", "active", now, true),

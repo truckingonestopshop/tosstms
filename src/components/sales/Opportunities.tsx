@@ -17,7 +17,7 @@ import { cn, fmtDay, money, today } from "@/lib/format";
 import { SERVICES, serviceLabel } from "@/lib/services";
 import type { ChargeService } from "@/lib/billing";
 import type { ServiceKey } from "@/lib/types";
-import { OPP_STATUSES, daysInStage, isRotting, oppNumber, statusMeta, weighted, type OppStatus, type Opportunity, type Stage } from "@/lib/sales";
+import { isOpen, OPP_STATUSES, daysInStage, isRotting, oppNumber, statusMeta, weighted, type OppStatus, type Opportunity, type Stage } from "@/lib/sales";
 import { stagesOf, useSales } from "./SalesProvider";
 import { useCloseFlow, usePatchOpps } from "./OppClose";
 import { OpportunityDetail } from "./OpportunityDetail";
@@ -40,7 +40,7 @@ export function Opportunities() {
   const [pid, setPid] = useState("");
   const [q, setQ] = useState("");
   const [owner, setOwner] = useState("");
-  const [status, setStatus] = useState<OppStatus | "all">("open");
+  const [status, setStatus] = useState<OppStatus | "all" | "open">("open");
   const [service, setService] = useState("");
   const [source, setSource] = useState("");
   const [tag, setTag] = useState("");
@@ -74,7 +74,7 @@ export function Opportunities() {
   const in30 = new Date(now + 30 * 86400000).toISOString().slice(0, 10);
   const list = scoped
     .filter((o) => !pipelineId || o.pipeline_id === pipelineId)
-    .filter((o) => status === "all" || o.status === status)
+    .filter((o) => status === "all" || (status === "open" ? isOpen(o) : o.status === status))
     .filter((o) => !owner || (owner === "none" ? !o.owner_id : o.owner_id === owner))
     .filter((o) => !service || o.service === service)
     .filter((o) => !source || o.source === source)
@@ -82,7 +82,7 @@ export function Opportunities() {
     .filter((o) => {
       const d = o.expected_close;
       if (closeBy === "none") return !d;
-      if (closeBy === "overdue") return !!d && d < t && o.status === "open";
+      if (closeBy === "overdue") return !!d && d < t && isOpen(o);
       if (closeBy === "month") return !!d && d.startsWith(month);
       if (closeBy === "30") return !!d && d >= t && d <= in30;
       return true;
@@ -158,6 +158,7 @@ export function Opportunities() {
       </Button>
       <div className="flex w-full flex-wrap gap-2">
         <Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className="w-auto" aria-label="Status">
+          <option value="open">Open (New + Invoice sent)</option>
           <option value="all">All statuses</option>
           {OPP_STATUSES.map((s) => (
             <option key={s.v} value={s.v}>
@@ -368,7 +369,7 @@ export function Opportunities() {
                       <td className="tnum px-3 py-2.5 text-right font-medium text-fg">{money(Number(o.value), { cents: false })}</td>
                       <td className="px-3 py-2.5 text-fg-2">{o.owner_id ? memberName(o.owner_id) : "—"}</td>
                       <td className="px-3 py-2.5 text-fg-2">{sources.label(o.source) || "—"}</td>
-                      <td className={cn("px-3 py-2.5", o.status === "open" && o.expected_close && o.expected_close < t ? "text-red-600 dark:text-red-400" : "text-fg-2")}>{o.expected_close ? fmtDay(o.expected_close) : "—"}</td>
+                      <td className={cn("px-3 py-2.5", isOpen(o) && o.expected_close && o.expected_close < t ? "text-red-600 dark:text-red-400" : "text-fg-2")}>{o.expected_close ? fmtDay(o.expected_close) : "—"}</td>
                       <td className="px-4 py-2.5 text-right text-[11px] text-fg-4">{fmtDay(o.updated_at.slice(0, 10))}</td>
                     </tr>
                   );
@@ -421,7 +422,7 @@ function OppCard({ o, stage, now, openTasks, onOpen, onDrag, dragging }: { o: Op
         <span className="tnum text-[10px] font-semibold text-fg-4">{oppNumber(o)}</span>
       </div>
       <div className="mt-1.5 flex flex-wrap items-center gap-1">
-        {o.status !== "open" && <Pill className={st.pill}>{st.label}</Pill>}
+        {!isOpen(o) && <Pill className={st.pill}>{st.label}</Pill>}
         <span className={cn("inline-flex items-center gap-0.5 text-[11px]", rot ? "font-medium text-amber-600 dark:text-amber-400" : "text-fg-4")}>
           {rot && <AlertTriangle className="h-3 w-3" />}
           {daysInStage(o, now)}d
@@ -496,7 +497,7 @@ function BulkBar({ selected, onDone, close, exportCsv }: { selected: Opportunity
       <Button size="sm" variant="outline" onClick={() => close(ids, "abandoned")}>
         Abandoned
       </Button>
-      <Button size="sm" variant="outline" onClick={() => close(ids, "open")}>
+      <Button size="sm" variant="outline" onClick={() => close(ids, "new")}>
         Reopen
       </Button>
       <Button size="sm" variant="outline" onClick={() => exportCsv(selected)}>

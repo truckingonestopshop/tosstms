@@ -29,6 +29,8 @@ export interface Member {
   updated_at?: string;
   /** menu sections this person can open (null = all; owners always see all) */
   sections?: string[] | null;
+  /** how much discount they may give on sales (migration 0051): rep, manager (rep + manager), cro (all) */
+  sales_level?: "rep" | "manager" | "cro";
 }
 
 /** The fields a member edits on their profile. */

@@ -516,9 +516,26 @@ function Permits({ company }: { company: Company }) {
     }
   };
 
+  // Files dropped anywhere on the card are added with the permit / expiry / truck picked above.
+  const [drag, setDrag] = useState(false);
   return (
-    <Card>
-      <CardHeader title="Permits" subtitle="Pending list: expired and expiring permits come first" />
+    <Card
+      className={cn(drag && "ring-2 ring-brand")}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setDrag(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrag(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDrag(false);
+        add(e.dataTransfer.files);
+      }}
+    >
+      <CardHeader title="Permits" subtitle={drag ? "Drop to add as the permit picked below" : "Pending list: expired and expiring permits come first. Drop files here or use Add permit."} />
       <div className="m-4 grid grid-cols-1 gap-2.5 rounded-xl border border-dashed border-line-strong bg-surface-2/40 p-3 sm:m-5 sm:grid-cols-4 sm:items-end">
         <Field label="Permit">
           <Select value={type} onChange={(e) => setType(e.target.value)}>

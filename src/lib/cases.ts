@@ -30,6 +30,13 @@ export interface Case {
   description: string | null;
   resolution: string | null;
   due_date: string | null;
+  /** from a sale (migration 0051): the product / variant / opportunity line it was opened for */
+  product_id?: string | null;
+  variant_id?: string | null;
+  opportunity_item_id?: string | null;
+  /** overdue alert turned off (the entity takes longer), with the reason */
+  alert_off?: boolean;
+  alert_off_reason?: string | null;
   closed_at: string | null;
   created_by: string | null;
   created_at: string;
@@ -37,6 +44,15 @@ export interface Case {
 }
 
 export type EntryKind = "note" | "work" | "expense";
+export type PaymentMethod = "card" | "bank" | "client_bank" | "client_card";
+export const PAYMENT_METHODS: { v: PaymentMethod; label: string; account?: "card" | "bank" }[] = [
+  { v: "card", label: "TOSS card", account: "card" },
+  { v: "bank", label: "TOSS bank account", account: "bank" },
+  { v: "client_bank", label: "Client's bank account" },
+  { v: "client_card", label: "Client's credit card" },
+];
+/** Late and the alert isn't turned off. */
+export const isOverdue = (c: Pick<Case, "status" | "due_date" | "alert_off">, today: string) => !isClosed(c.status) && !c.alert_off && !!c.due_date && c.due_date < today;
 export interface CaseEntry {
   id: string;
   case_id: string;
@@ -46,6 +62,12 @@ export interface CaseEntry {
   amount: number | null;
   spent_on: string | null;
   attachments: { id: string; name: string; path: string; mime: string | null }[];
+  /** expenses: how it was paid (a TOSS card / bank account from Accounting, or the client's) */
+  payment_method?: PaymentMethod | null;
+  account_id?: string | null;
+  /** who processed it */
+  processed_by?: string | null;
+  website?: string | null;
   actor_id: string | null;
   actor_name: string | null;
   created_at: string;
@@ -77,6 +99,10 @@ export const PRIORITIES: { v: CasePriority; label: string; pill: string }[] = [
 ];
 export const statusOf = (s: CaseStatus) => CASE_STATUSES.find((x) => x.v === s) ?? CASE_STATUSES[0];
 export const priorityOf = (p: CasePriority) => PRIORITIES.find((x) => x.v === p)!;
+
+/** Where a case opens: inside its customer (Cases tab), so you stay in that account. */
+export const caseHref = (c: Pick<Case, "id" | "kind" | "company_id">) =>
+  c.company_id ? `/fleet?company=${c.company_id}&tab=cases&kind=${c.kind}&case=${c.id}` : `${c.kind === "work" ? "/cases" : "/customer-service"}?case=${c.id}`;
 
 /** "1h 30m" */
 export const hoursLabel = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? ` ${min % 60}m` : ""}` : `${min}m`);
