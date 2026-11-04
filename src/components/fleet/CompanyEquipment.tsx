@@ -24,31 +24,34 @@ export const EQUIPMENT_TABS: EquipmentTab[] = ["units", "trucks", "trailers", "d
 export const isEquipmentTab = (t: string): t is EquipmentTab => (EQUIPMENT_TABS as string[]).includes(t);
 
 export function CompanyEquipment({ company, tab, onTab }: { company: Company; tab: EquipmentTab; onTab: (t: EquipmentTab) => void }) {
-  const { trucks, trailers, drivers } = useStore();
+  const { trucks, trailers, drivers, view } = useStore();
+  const office = view === "office";
   const t = trucks.filter((x) => x.company_id === company.id);
   const tl = trailers.filter((x) => x.company_id === company.id);
   const d = drivers.filter((x) => x.company_id === company.id);
   const openSheet = useOpenSheet();
+  const allTabs = [
+    ...(!office ? [{ value: "units" as const, label: <><Network className="h-4 w-4" /> Units</>, count: t.filter((x) => x.status !== "inactive").length }] : []),
+    { value: "trucks" as const, label: <><TruckIcon className="h-4 w-4" /> Trucks</>, count: t.length },
+    { value: "trailers" as const, label: <><Container className="h-4 w-4" /> Trailers</>, count: tl.length },
+    { value: "drivers" as const, label: <><Users className="h-4 w-4" /> Drivers</>, count: d.length },
+    { value: "equipment_list" as const, label: <><Sheet className="h-4 w-4" /> Equipment list</>, count: t.length + tl.length },
+  ];
+  const activeTab: EquipmentTab = office && tab === "units" ? "drivers" : tab;
   return (
     <>
       <Tabs<EquipmentTab>
-        value={tab}
+        value={activeTab}
         onChange={onTab}
         className="mb-4"
-        tabs={[
-          { value: "units", label: <><Network className="h-4 w-4" /> Units</>, count: t.filter((x) => x.status !== "inactive").length },
-          { value: "trucks", label: <><TruckIcon className="h-4 w-4" /> Trucks</>, count: t.length },
-          { value: "trailers", label: <><Container className="h-4 w-4" /> Trailers</>, count: tl.length },
-          { value: "drivers", label: <><Users className="h-4 w-4" /> Drivers</>, count: d.length },
-          { value: "equipment_list", label: <><Sheet className="h-4 w-4" /> Equipment list</>, count: t.length + tl.length },
-        ]}
+        tabs={allTabs}
       />
-      {tab === "units" && <UnitsTab company={company} />}
-      {tab === "trucks" && <TrucksTab company={company} trucks={t} />}
-      {tab === "trailers" && <TrailersTab company={company} />}
-      {tab === "drivers" && <DriversTab company={company} drivers={d} />}
-      {tab === "equipment_list" && <EquipmentTable trucks={t} trailers={tl} onOpen={(k, id) => openSheet(k, id)} />}
-      <SheetHost tab={tab} />
+      {activeTab === "units" && <UnitsTab company={company} />}
+      {activeTab === "trucks" && <TrucksTab company={company} trucks={t} />}
+      {activeTab === "trailers" && <TrailersTab company={company} />}
+      {activeTab === "drivers" && <DriversTab company={company} drivers={d} />}
+      {activeTab === "equipment_list" && <EquipmentTable trucks={t} trailers={tl} onOpen={(k, id) => openSheet(k, id)} />}
+      <SheetHost tab={activeTab} />
     </>
   );
 }

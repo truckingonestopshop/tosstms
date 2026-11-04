@@ -70,7 +70,7 @@ export function DocumentsPanel({
   const { documents, docTypes, uploadDocument, docTypeName, loads, drivers, trucks, trailers, updateDriver, me, memberById } = useStore();
   // Load paperwork (rate cons, BOLs, lumper receipts…) is for people who work in Dispatch: those
   // given the Dispatch section on Users (owners always are).
-  const dispatcher = canOpen(memberById(me.id) ?? { role: me.role }, "dispatch");
+  const dispatcher = canOpen(memberById(me.id) ?? { role: me.role, workspace_view: me.view }, "dispatch");
   const loadTypes = useMemo(() => new Set(docTypes.filter((t) => t.scope === "load").map((t) => t.key)), [docTypes]);
   const scope = target.scope;
   // A driver's "Not required" marks come from the driver itself, so they follow every change.

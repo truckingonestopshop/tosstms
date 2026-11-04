@@ -48,7 +48,8 @@ function greeting() {
 const svcLabel = (s: ChargeService) => (s === "other" ? "Other" : serviceLabel(s as ServiceKey));
 
 export default function DashboardPage() {
-  const { me, scope, scopedCompany, inScope, companies, loads, trucks, drivers, trailers, documents, docTypes, invoices, payments, companyById, memberName } = useStore();
+  const { me, view, scope, scopedCompany, inScope, companies, loads, trucks, drivers, trailers, documents, docTypes, invoices, payments, companyById, memberName } = useStore();
+  const office = view === "office";
   const opps = useLiveTable<Opportunity>("tms_opportunities");
   const pipes = useLiveTable<Pipeline>("tms_pipelines", { order: "sort", ascending: true }).rows;
   const stageRows = useLiveTable<Stage>("tms_pipeline_stages", { order: "sort", ascending: true }).rows;
@@ -143,9 +144,9 @@ export default function DashboardPage() {
 
   type Alert = { key: string; icon: typeof AlertTriangle; text: string; sub?: string; href: string; tone: "red" | "amber" | "blue" };
   const attention: Alert[] = [];
-  if (overdueInv.length) attention.push({ key: "inv", icon: FileWarning, text: `${overdueInv.length} overdue invoice${overdueInv.length > 1 ? "s" : ""}`, sub: money(overdueInv.reduce((s, i) => s + invoiceOpen(i), 0)), href: "/invoices", tone: "red" });
+  if (overdueInv.length) attention.push({ key: "inv", icon: FileWarning, text: `${overdueInv.length} overdue invoice${overdueInv.length > 1 ? "s" : ""}`, sub: money(overdueInv.reduce((s, i) => s + invoiceOpen(i), 0)), href: office ? "/billing" : "/invoices", tone: "red" });
   for (const c of overdueCases.slice(0, 4)) attention.push({ key: `case${c.id}`, icon: Briefcase, text: `Case #${c.number} overdue: ${c.title}`, sub: companyById(c.company_id)?.name, href: caseHref(c), tone: "red" });
-  for (const l of noDriver.slice(0, 3)) attention.push({ key: `nd${l.id}`, icon: TruckIcon, text: `No driver · picks up ${l.pickup_date}`, sub: `${l.origin_city}, ${l.origin_state} → ${l.destination_city}, ${l.destination_state}`, href: `/loads/${l.id}`, tone: "red" });
+  if (!office) for (const l of noDriver.slice(0, 3)) attention.push({ key: `nd${l.id}`, icon: TruckIcon, text: `No driver · picks up ${l.pickup_date}`, sub: `${l.origin_city}, ${l.origin_state} → ${l.destination_city}, ${l.destination_state}`, href: `/loads/${l.id}`, tone: "red" });
   const expired = pending.filter((i) => i.state === "expired").length;
   if (expired) attention.push({ key: "exp", icon: CalendarClock, text: `${expired} expired document${expired > 1 ? "s" : ""}`, sub: "Carriers, drivers, trucks, trailers", href: "/pending", tone: "red" });
   for (const c of open(cs).filter((c) => c.priority === "urgent").slice(0, 3)) attention.push({ key: `urg${c.id}`, icon: AlertTriangle, text: `Urgent: #${c.number} ${c.title}`, sub: companyById(c.company_id)?.name, href: caseHref(c), tone: "red" });
@@ -162,7 +163,7 @@ export default function DashboardPage() {
   if (waitingSign.length) attention.push({ key: "agr", icon: FileWarning, text: `${waitingSign.length} agreement${waitingSign.length > 1 ? "s" : ""} waiting for signature`, href: "/sales?tab=templates", tone: "blue" });
   if (closingSoon.length) attention.push({ key: "cs7", icon: Target, text: `${closingSoon.length} opportunit${closingSoon.length > 1 ? "ies" : "y"} closing this week`, sub: money(closingSoon.reduce((s, o) => s + Number(o.value), 0), { cents: false }), href: "/sales?tab=opportunities", tone: "blue" });
   const idle = T.filter((x) => !busy.has(x.id)).length;
-  if (idle) attention.push({ key: "idle", icon: Route, text: `${idle} truck${idle > 1 ? "s" : ""} without a load`, sub: "Find them freight", href: "/loads?view=map", tone: "blue" });
+  if (!office && idle) attention.push({ key: "idle", icon: Route, text: `${idle} truck${idle > 1 ? "s" : ""} without a load`, sub: "Find them freight", href: "/loads?view=map", tone: "blue" });
 
   const firstName = (me.fullName || "").split(" ")[0];
   const periodLabel = periodName(period, cur);
@@ -185,13 +186,13 @@ export default function DashboardPage() {
       />
 
       {/* Key numbers, vs the period before */}
-      <div className="rise-grid mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className={cn("rise-grid mb-4 grid grid-cols-2 gap-3 md:grid-cols-3", office ? "xl:grid-cols-5" : "xl:grid-cols-6")}>
         <Kpi accent label="TOSS revenue" value={money(rev.total, { cents: false })} cur={rev.total} prev={revPrev.total} sub={revPrev.total || revPrev.collected ? "vs previous period" : undefined} href="/billing" />
         <Kpi label="Collected" value={money(rev.collected, { cents: false })} cur={rev.collected} prev={revPrev.collected} sub={revPrev.total || revPrev.collected ? "vs previous period" : undefined} href="/billing" />
         <Kpi label="Monthly recurring" value={money(billing.recurring, { cents: false })} sub={`${subs.length} active subscriptions`} href="/billing" />
         <Kpi label="Won" value={money(wonV, { cents: false })} cur={wonV} prev={wonPrevV} sub={`${won.length} deal${won.length === 1 ? "" : "s"}`} href="/sales" />
         <Kpi label="New clients" value={num(newClients(cur))} cur={newClients(cur)} prev={newClients(prev)} sub={`${num(newLeads(cur))} new leads`} href="/fleet" />
-        <Kpi label="Dispatch gross" value={money(gross, { cents: false })} cur={gross} prev={grossPrev} sub={`${inCur.length} loads`} href="/dispatch" />
+        {!office && <Kpi label="Dispatch gross" value={money(gross, { cents: false })} cur={gross} prev={grossPrev} sub={`${inCur.length} loads`} href="/dispatch" />}
       </div>
 
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -272,22 +273,24 @@ export default function DashboardPage() {
           )}
         </Panel>
 
-        <Panel title="Dispatch" href="/dispatch" icon={Route}>
-          <Mini
-            items={[
-              ["Active loads", num(activeLoads.length)],
-              ["Trucks · busy / free", `${busy.size} / ${Math.max(0, T.length - busy.size)}`],
-              [`TOSS fee · ${periodLabel}`, money(rev.fees, { cents: false })],
-              ["Rate per mile", loaded ? `$${(gross / loaded).toFixed(2)}` : "—"],
-              ["Gross per truck / week", perTruckWeek ? money(perTruckWeek, { cents: false }) : "—"],
-              ["Loads", num(inCur.length)],
-            ]}
-          />
-          <div className="mt-4">
-            <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider text-fg-4">Gross per week</div>
-            <BarChart data={weekly.map((w) => ({ label: w.label, value: Math.round(w.gross), sub: `${w.loads} loads` }))} format={(v) => moneyShort(v)} height={120} />
-          </div>
-        </Panel>
+        {!office && (
+          <Panel title="Dispatch" href="/dispatch" icon={Route}>
+            <Mini
+              items={[
+                ["Active loads", num(activeLoads.length)],
+                ["Trucks · busy / free", `${busy.size} / ${Math.max(0, T.length - busy.size)}`],
+                [`TOSS fee · ${periodLabel}`, money(rev.fees, { cents: false })],
+                ["Rate per mile", loaded ? `$${(gross / loaded).toFixed(2)}` : "—"],
+                ["Gross per truck / week", perTruckWeek ? money(perTruckWeek, { cents: false }) : "—"],
+                ["Loads", num(inCur.length)],
+              ]}
+            />
+            <div className="mt-4">
+              <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider text-fg-4">Gross per week</div>
+              <BarChart data={weekly.map((w) => ({ label: w.label, value: Math.round(w.gross), sub: `${w.loads} loads` }))} format={(v) => moneyShort(v)} height={120} />
+            </div>
+          </Panel>
+        )}
 
         <Panel title="Clients & leads" href="/fleet" icon={Building2}>
           <Mini

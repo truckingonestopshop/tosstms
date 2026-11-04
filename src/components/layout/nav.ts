@@ -82,10 +82,12 @@ export const sectionFor = (path: string) => (ACCOUNTING_SECTION.match(path) ? AC
 /**
  * Owners open everything; others the sections chosen for them on Users (none chosen = all).
  * Accounting (TOSS's own money) is the exception: only owners and people given it on Users.
+ * People on the Office view don't see the Dispatch section.
  */
-export function canOpen(m: { role: string; sections?: string[] | null } | undefined, key: string) {
+export function canOpen(m: { role: string; sections?: string[] | null; workspace_view?: string | null } | undefined, key: string) {
   // Accounting is never automatic, not even for owners: only people given it (database: can_accounting).
   if (key === "accounting") return !!m?.sections?.includes("accounting");
+  if (key === "dispatch" && m?.workspace_view === "office") return false;
   if (!m || m.role === "owner" || ALWAYS.has(key)) return true;
   return !m.sections || m.sections.includes(key);
 }

@@ -10,6 +10,7 @@ import { confirmDialog } from "@/components/ui/Confirm";
 import { errMsg, sb } from "@/lib/db";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
+import { useStore } from "@/lib/store";
 import { NameFields } from "@/components/ui/NameFields";
 import type { VaultCategory, VaultItem } from "@/lib/types";
 
@@ -56,6 +57,8 @@ const blank = (v?: Partial<VaultItem>): Draft => ({
 /** Portal logins and key contacts for a carrier. Passwords are encrypted in the database.
  * A carrier's credentials, or TOSS's own (companyId null: the Credentials section of the menu). */
 export function Vault({ companyId }: { companyId: string | null }) {
+  const { view } = useStore();
+  const office = view === "office";
   const [items, setItems] = useState<VaultItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [cat, setCat] = useState<"all" | VaultCategory>("all");
@@ -78,6 +81,7 @@ export function Vault({ companyId }: { companyId: string | null }) {
 
   const list = items.filter(
     (v) =>
+      (!office || !v.dispatch_only) &&
       (cat === "all" || v.category === cat) &&
       (!q || `${v.title} ${v.username} ${v.contact_email} ${v.contact_name} ${v.url} ${v.notes}`.toLowerCase().includes(q.toLowerCase())),
   );
@@ -132,7 +136,7 @@ export function Vault({ companyId }: { companyId: string | null }) {
 
       {items.length === 0 && !loading && (
         <div className="flex flex-wrap gap-1.5">
-          {PRESETS.map((p) => (
+          {PRESETS.filter((p) => !office || !p.dispatch_only).map((p) => (
             <button
               key={p.title}
               onClick={() => setEdit({ preset: p })}

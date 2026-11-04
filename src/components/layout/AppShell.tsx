@@ -43,8 +43,8 @@ function Gate({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  // Sections someone wasn't given (Users → access).
-  const self = memberById(me.id) ?? { role: me.role };
+  // Sections someone wasn't given (Users → access), or Dispatch when on the Office view.
+  const self = memberById(me.id) ?? { role: me.role, workspace_view: me.view };
   const section = sectionFor(path);
   if (section && !canOpen(self, section.key)) {
     const first = SECTIONS.find((n) => canOpen(self, n.key));

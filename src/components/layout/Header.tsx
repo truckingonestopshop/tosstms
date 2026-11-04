@@ -121,7 +121,8 @@ export function Header() {
 
 
 function UserMenu() {
-  const { me, memberById, isSuperAdmin, hasLeads } = useStore();
+  const { me, view, memberById, isSuperAdmin, hasLeads } = useStore();
+  const office = view === "office";
   const { go, curtain } = useAppLeave();
   const self = memberById(me.id);
   const name = self?.full_name || me.fullName || me.email;
@@ -216,17 +217,19 @@ function UserMenu() {
               ))}
             </div>
             <MenuSep />
-            <div className="lg:hidden">
-              <MenuItem
-                icon={BarChart3}
-                onClick={() => {
-                  close();
-                  router.push("/analytics");
-                }}
-              >
-                Analytics
-              </MenuItem>
-            </div>
+            {!office && (
+              <div className="lg:hidden">
+                <MenuItem
+                  icon={BarChart3}
+                  onClick={() => {
+                    close();
+                    router.push("/analytics");
+                  }}
+                >
+                  Analytics
+                </MenuItem>
+              </div>
+            )}
             <MenuItem
               icon={Settings}
               onClick={() => {

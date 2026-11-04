@@ -4,19 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Building2, FileText, Plus, Route, Truck } from "lucide-react";
 import { cn } from "@/lib/format";
-import { leaveCompany } from "@/lib/store";
+import { leaveCompany, useStore } from "@/lib/store";
 
 const TABS = [
   { href: "/fleet", label: "Carriers", icon: Building2, match: (p: string) => p.startsWith("/fleet") },
-  { href: "/dispatch", label: "Dispatch", icon: Route, match: (p: string) => p === "/dispatch" || p.startsWith("/analytics") },
-  { href: "/loads/new", label: "New load", icon: Plus, match: (p: string) => p === "/loads/new", primary: true },
-  { href: "/loads", label: "Loads", icon: Truck, match: (p: string) => p.startsWith("/loads") && p !== "/loads/new" },
-  { href: "/invoices", label: "Invoices", icon: FileText, match: (p: string) => p.startsWith("/invoices") },
+  { href: "/dispatch", label: "Dispatch", icon: Route, match: (p: string) => p === "/dispatch" || p.startsWith("/analytics"), dispatch: true },
+  { href: "/loads/new", label: "New load", icon: Plus, match: (p: string) => p === "/loads/new", primary: true, dispatch: true },
+  { href: "/loads", label: "Loads", icon: Truck, match: (p: string) => p.startsWith("/loads") && p !== "/loads/new", dispatch: true },
+  { href: "/invoices", label: "Invoices", icon: FileText, match: (p: string) => p.startsWith("/invoices"), dispatch: true },
 ];
 
-/** Phone bottom bar. The center button books a new load. */
+/** Phone bottom bar. The center button books a new load (hidden on Office view). */
 export function MobileNav() {
   const path = usePathname();
+  const { view } = useStore();
+  if (view === "office") return null;
   return (
     <nav className="no-print pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/90 backdrop-blur-xl md:hidden">
       <div className="mx-auto grid h-[60px] max-w-lg grid-cols-5">

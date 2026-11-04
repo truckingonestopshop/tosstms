@@ -22,7 +22,7 @@ function Items({ onPick }: { onPick?: () => void }) {
   const path = usePathname();
   const isOn = useActive();
   const { me, memberById } = useStore();
-  const self = memberById(me.id) ?? { role: me.role };
+  const self = memberById(me.id) ?? { role: me.role, workspace_view: me.view };
   // Sections this person can open (Users → access); empty groups drop out.
   const accounting = path.startsWith("/accounting");
   const groups = (accounting ? ACCOUNTING_SIDEBAR : SIDEBAR).map((g) => g.filter((n) => canOpen(self, n.key))).filter((g) => g.length);
@@ -102,7 +102,7 @@ const readPinned = () => {
 export function Sidebar() {
   const path = usePathname();
   const { me, memberById } = useStore();
-  const self = memberById(me.id) ?? { role: me.role };
+  const self = memberById(me.id) ?? { role: me.role, workspace_view: me.view };
   const accounting = path.startsWith("/accounting");
   const groups = (accounting ? ACCOUNTING_SIDEBAR : SIDEBAR).map((g) => g.filter((n) => canOpen(self, n.key))).filter((g) => g.length);
   const isOn = useActive();

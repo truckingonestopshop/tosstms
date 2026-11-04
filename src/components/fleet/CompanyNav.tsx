@@ -101,7 +101,7 @@ export function CompanyTabs({ company, value, onChange }: { company: Company; va
   const tabs = order
     .filter((k) =>
       k === "dispatch"
-        ? hasService(company, "dispatch")
+        ? !office && hasService(company, "dispatch")
         : k === "dot"
           ? hasService(company, "dot_compliance")
           : k === "mcpt"

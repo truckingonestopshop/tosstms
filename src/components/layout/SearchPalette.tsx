@@ -20,7 +20,8 @@ const ICONS = { load: Package, company: Building2, truck: Truck, trailer: Contai
 
 /** Ctrl/Cmd+K: jump to any load, carrier, truck, driver or invoice. */
 export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { loads, companies, trucks, trailers, drivers, invoices, companyById } = useStore();
+  const { loads, companies, trucks, trailers, drivers, invoices, companyById, view } = useStore();
+  const office = view === "office";
   const router = useRouter();
   const [q, setQ] = useState("");
   const [i, setI] = useState(0);
@@ -50,6 +51,15 @@ export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenCha
     const out: Hit[] = [];
     const has = (...v: (string | null | undefined)[]) => v.some((x) => x && x.toLowerCase().includes(s));
     if (!s) {
+      if (office) {
+        return companies.slice(0, 6).map((c) => ({
+          id: c.id,
+          kind: "company" as const,
+          title: c.name,
+          sub: [c.mc_number && `MC ${c.mc_number}`, c.dot_number && `DOT ${c.dot_number}`, `${c.commission_percent}%`].filter(Boolean).join(" · "),
+          href: `/fleet?company=${c.id}&tab=profile`,
+        }));
+      }
       return loads.slice(0, 6).map((l) => ({
         id: l.id,
         kind: "load" as const,
@@ -58,16 +68,18 @@ export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenCha
         href: `/loads/${l.id}`,
       }));
     }
-    for (const l of loads) {
-      if (has(l.load_number, l.rate_con_number, l.broker_name, l.origin_city, l.destination_city, l.broker_email, l.broker_phone))
-        out.push({
-          id: l.id,
-          kind: "load",
-          title: `${l.load_number ? `#${l.load_number} · ` : ""}${lane(l)}`,
-          sub: `${l.broker_name || "No broker"} · ${money(l.gross_amount, { cents: false })} · ${STATUS[l.status].label}`,
-          href: `/loads/${l.id}`,
-        });
-      if (out.length > 30) break;
+    if (!office) {
+      for (const l of loads) {
+        if (has(l.load_number, l.rate_con_number, l.broker_name, l.origin_city, l.destination_city, l.broker_email, l.broker_phone))
+          out.push({
+            id: l.id,
+            kind: "load",
+            title: `${l.load_number ? `#${l.load_number} · ` : ""}${lane(l)}`,
+            sub: `${l.broker_name || "No broker"} · ${money(l.gross_amount, { cents: false })} · ${STATUS[l.status].label}`,
+            href: `/loads/${l.id}`,
+          });
+        if (out.length > 30) break;
+      }
     }
     for (const c of companies)
       if (has(c.name, c.mc_number, c.dot_number, c.contact_name))
@@ -117,7 +129,7 @@ export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenCha
           href: `/invoices/${inv.id}`,
         });
     return out.slice(0, 40);
-  }, [q, loads, companies, trucks, trailers, drivers, invoices, companyById]);
+  }, [q, loads, companies, trucks, trailers, drivers, invoices, companyById, office]);
 
   const go = (h: Hit) => {
     h.run?.();
@@ -156,8 +168,8 @@ export function SearchPalette({ open, onOpenChange }: { open: boolean; onOpenCha
           <kbd className="hidden rounded border border-line px-1.5 text-[10px] text-fg-4 sm:block">Esc</kbd>
         </div>
         <div className="max-h-[55vh] overflow-y-auto p-1.5">
-          {!q && hits.length > 0 && <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-4">Recent loads</div>}
-          {hits.length === 0 && <div className="px-3 py-8 text-center text-sm text-fg-3">{q ? "Nothing found." : "No loads yet."}</div>}
+          {!q && hits.length > 0 && <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-4">{office ? "Companies" : "Recent loads"}</div>}
+          {hits.length === 0 && <div className="px-3 py-8 text-center text-sm text-fg-3">{q ? "Nothing found." : office ? "No companies yet." : "No loads yet."}</div>}
           {hits.map((h, idx) => {
             const Icon = ICONS[h.kind];
             return (
