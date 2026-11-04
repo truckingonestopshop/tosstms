@@ -3,11 +3,11 @@
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, Input, Select } from "@/components/ui/Field";
-import { AUTO, TEXTLIKE, VALIDATIONS, type AutoKey, type SignField, type SignRole, type Validation } from "@/lib/signing";
+import { AUTO, TEXTLIKE, VALIDATIONS, inferAutoKey, type AutoKey, type SignField, type SignRole, type Validation } from "@/lib/signing";
 
 /**
- * The settings of one field (both builders): label, who fills it, required, read-only, what it
- * fills itself with, choices, format check, "only show when…", and a formula for numbers.
+ * The settings of one field (both builders): label, who fills it, saved text/default value,
+ * required, read-only, what it fills itself with, choices, format check, "only show when…", and a formula.
  */
 export function FieldSettings({ field: f, fields, who, onChange }: { field: SignField; fields: SignField[]; who: SignRole[]; onChange: (p: Partial<SignField>) => void }) {
   const others = fields.filter((x) => x.id !== f.id && (x.type === "checkbox" || x.type === "dropdown" || x.type === "radio"));
@@ -16,7 +16,14 @@ export function FieldSettings({ field: f, fields, who, onChange }: { field: Sign
   return (
     <div className="space-y-2">
       <Field label="Label">
-        <Input value={f.label} onChange={(e) => onChange({ label: e.target.value })} />
+        <Input
+          value={f.label}
+          onChange={(e) => {
+            const label = e.target.value;
+            const inferred = !f.auto && !f.value ? inferAutoKey(label, f.type) : null;
+            onChange(inferred ? { label, auto: inferred } : { label });
+          }}
+        />
       </Field>
       <Field label="Filled by">
         <Select value={f.role} onChange={(e) => onChange({ role: e.target.value })}>
@@ -28,9 +35,22 @@ export function FieldSettings({ field: f, fields, who, onChange }: { field: Sign
         </Select>
       </Field>
 
+      {typed && (
+        <Field label="Text / default value" hint="Saved on the template so you don't have to retype it next time.">
+          <Input
+            value={f.value || ""}
+            onChange={(e) => onChange({ value: e.target.value || null })}
+            placeholder={f.auto ? "Optional fallback if database is empty" : "Type text to keep on this template…"}
+          />
+        </Field>
+      )}
+      {f.type === "checkbox" && (
+        <Checkbox checked={f.value === "true"} onChange={(v) => onChange({ value: v ? "true" : null })} label="Checked by default on template" />
+      )}
+
       {(f.type === "dropdown" || f.type === "radio") && (
         <Field label="Choices">
-          <div className="space-y-1">
+          <div className="scrollbar-bold max-h-40 space-y-1 overflow-y-auto pr-1">
             {(f.options || []).map((o, i) => (
               <div key={i} className="flex items-center gap-1">
                 <Input value={o} onChange={(e) => onChange({ options: (f.options || []).map((x, j) => (j === i ? e.target.value : x)) })} className="h-8" aria-label={`Choice ${i + 1}`} />
@@ -43,14 +63,26 @@ export function FieldSettings({ field: f, fields, who, onChange }: { field: Sign
               <Plus className="h-3.5 w-3.5" /> Add choice
             </Button>
           </div>
+          {(f.options || []).length > 0 && (
+            <div className="mt-1.5">
+              <Select value={f.value || ""} onChange={(e) => onChange({ value: e.target.value || null })} aria-label="Default choice">
+                <option value="">No default choice</option>
+                {(f.options || []).map((o) => (
+                  <option key={o} value={o}>
+                    Default: {o}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
         </Field>
       )}
 
       {typed && (
-        <Field label="Fills itself with" hint={f.role === "toss" ? "Filled in when sending; can still be changed." : "Shown filled in."}>
+        <Field label="Fills itself with (database)" hint={f.role === "toss" ? "Filled in when sending; can still be changed." : "Auto-fills when you pick the person / company."}>
           <Select value={f.auto || ""} onChange={(e) => onChange({ auto: (e.target.value || null) as AutoKey | null })}>
-            <option value="">Nothing (typed)</option>
-            {AUTO.filter((a) => (f.type === "date" ? a.v === "today" || a.v === "driver.dob" : true)).map((a) => (
+            <option value="">Nothing (fixed / typed text)</option>
+            {AUTO.filter((a) => (f.type === "date" ? a.v === "today" || a.v === "driver.dob" || a.v === "driver.license_expiry" || a.v === "driver.medical_expiry" || a.v === "driver.hire_date" : true)).map((a) => (
               <option key={a.v} value={a.v}>
                 {a.label}
               </option>

@@ -36,6 +36,8 @@ export interface SignField {
   required: boolean;
   /** fills itself from the carrier / person / today (see AUTO) */
   auto?: AutoKey | null;
+  /** text or default value saved directly on the template */
+  value?: string | null;
   /** dropdown / radio choices */
   options?: string[];
   validation?: Validation | null;
@@ -253,12 +255,17 @@ export type AutoKey =
   | "company.mc"
   | "company.ein"
   | "company.address"
+  | "company.street"
+  | "company.city"
+  | "company.state"
+  | "company.zip"
   | "company.phone"
   | "company.email"
   | "company.owner"
   | "recipient.name"
   | "recipient.email"
   | "recipient.phone"
+  | "recipient.title"
   | "driver.name"
   | "driver.phone"
   | "driver.email"
@@ -281,12 +288,17 @@ export const AUTO: { v: AutoKey; label: string }[] = [
   { v: "company.mc", label: "Company: MC" },
   { v: "company.ein", label: "Company: EIN" },
   { v: "company.address", label: "Company: address" },
+  { v: "company.street", label: "Company: street" },
+  { v: "company.city", label: "Company: city" },
+  { v: "company.state", label: "Company: state" },
+  { v: "company.zip", label: "Company: ZIP" },
   { v: "company.phone", label: "Company: phone" },
   { v: "company.email", label: "Company: email" },
   { v: "company.owner", label: "Company: owner / main contact" },
   { v: "recipient.name", label: "Signer: name" },
   { v: "recipient.email", label: "Signer: email" },
   { v: "recipient.phone", label: "Signer: phone" },
+  { v: "recipient.title", label: "Signer: title / role" },
   { v: "driver.name", label: "Driver: name" },
   { v: "driver.phone", label: "Driver: phone" },
   { v: "driver.email", label: "Driver: email" },
@@ -311,6 +323,10 @@ export interface AutoSource {
     mc_number?: string | null;
     ein?: string | null;
     address?: string | null;
+    street?: string | null;
+    city?: string | null;
+    state?: string | null;
+    zip?: string | null;
     contact_phone?: string | null;
     contact_email?: string | null;
     contact_first_name?: string | null;
@@ -328,7 +344,22 @@ export interface AutoSource {
     dob?: string | null;
     hire_date?: string | null;
   } | null;
-  recipient?: { name?: string | null; email?: string | null; phone?: string | null } | null;
+  person?: {
+    first_name?: string | null;
+    last_name?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    title?: string | null;
+    is_owner?: boolean;
+    is_der?: boolean;
+    is_contact?: boolean;
+    license_type?: string | null;
+    license_number?: string | null;
+    license_state?: string | null;
+    license_expiry?: string | null;
+    dob?: string | null;
+  } | null;
+  recipient?: { name?: string | null; email?: string | null; phone?: string | null; title?: string | null } | null;
   /** YYYY-MM-DD; defaults to today */
   date?: string;
 }
@@ -346,6 +377,8 @@ const localToday = () => {
 /** The value an auto field takes ("" when the source doesn't have it). */
 export function autoValue(key: AutoKey, s: AutoSource): string {
   const c = s.company || {};
+  const p = s.person || {};
+  const personName = [p.first_name, p.last_name].filter(Boolean).join(" ");
   const date = s.date || localToday();
   const [y, m, d] = date.split("-").map(Number);
   switch (key) {
@@ -360,37 +393,51 @@ export function autoValue(key: AutoKey, s: AutoSource): string {
     case "company.ein":
       return c.ein || "";
     case "company.address":
-      return (c.address || "").replace(/\s*\n\s*/g, ", ");
+      return (c.address || [c.street, c.city, c.state, c.zip].filter(Boolean).join(", ")).replace(/\s*\n\s*/g, ", ");
+    case "company.street":
+      return c.street || "";
+    case "company.city":
+      return c.city || "";
+    case "company.state":
+      return c.state || "";
+    case "company.zip":
+      return c.zip || "";
     case "company.phone":
       return c.contact_phone || "";
     case "company.email":
       return c.contact_email || "";
     case "company.owner":
-      return [c.contact_first_name, c.contact_last_name].filter(Boolean).join(" ");
+      return [c.contact_first_name, c.contact_last_name].filter(Boolean).join(" ") || (p.is_owner ? personName : "");
     case "recipient.name":
-      return s.recipient?.name || "";
+      return s.recipient?.name || personName || s.driver?.name || "";
     case "recipient.email":
-      return s.recipient?.email || "";
+      return s.recipient?.email || p.email || s.driver?.email || "";
     case "recipient.phone":
-      return s.recipient?.phone || "";
+      return s.recipient?.phone || p.phone || s.driver?.phone || "";
+    case "recipient.title":
+      return s.recipient?.title || p.title || (p.is_owner ? "Owner" : p.is_der ? "DER" : s.driver ? "Driver" : "");
     case "driver.name":
-      return s.driver?.name || "";
+      return s.driver?.name || personName || s.recipient?.name || "";
     case "driver.phone":
-      return s.driver?.phone || "";
+      return s.driver?.phone || p.phone || s.recipient?.phone || "";
     case "driver.email":
-      return s.driver?.email || "";
+      return s.driver?.email || p.email || s.recipient?.email || "";
     case "driver.license":
-      return s.driver?.cdl_number || "";
+      return s.driver?.cdl_number || p.license_number || "";
     case "driver.license_state":
-      return s.driver?.cdl_state || "";
+      return s.driver?.cdl_state || p.license_state || "";
     case "driver.license_type":
-      return s.driver?.license_type || "";
-    case "driver.license_expiry":
-      return s.driver?.cdl_expiry ? usDate(s.driver.cdl_expiry) : "";
+      return s.driver?.license_type || p.license_type || "";
+    case "driver.license_expiry": {
+      const exp = s.driver?.cdl_expiry || p.license_expiry;
+      return exp ? usDate(exp) : "";
+    }
     case "driver.medical_expiry":
       return s.driver?.medical_card_expiry ? usDate(s.driver.medical_card_expiry) : "";
-    case "driver.dob":
-      return s.driver?.dob ? usDate(s.driver.dob) : "";
+    case "driver.dob": {
+      const dob = s.driver?.dob || p.dob;
+      return dob ? usDate(dob) : "";
+    }
     case "driver.hire_date":
       return s.driver?.hire_date ? usDate(s.driver.hire_date) : "";
     case "today":
@@ -402,6 +449,56 @@ export function autoValue(key: AutoKey, s: AutoSource): string {
     case "today.year":
       return String(y);
   }
+}
+
+/** Matches a field's label or type to a database auto-fill key when one wasn't explicitly picked. */
+export function inferAutoKey(label: string, type?: FieldType): AutoKey | null {
+  const l = (label || "").trim().toLowerCase();
+  if (/\b(dob|date of birth|birth\s*date)\b/.test(l)) return "driver.dob";
+  if (/\b(hire\s*date|date\s*hired)\b/.test(l)) return "driver.hire_date";
+  if (/\b(med(ical)?\s*(card)?\s*exp(ir(y|es|ation))?)\b/.test(l)) return "driver.medical_expiry";
+  if (/\b(cdl|licen[cs]e)\s*exp(ir(y|es|ation))?\b/.test(l) || l === "expires") return "driver.license_expiry";
+  if (/\b(cdl|licen[cs]e)\s*(state|st)\b/.test(l)) return "driver.license_state";
+  if (/\b(cdl|licen[cs]e)\s*(type|class)\b/.test(l)) return "driver.license_type";
+  if (/\b(cdl|driver'?s?\s*licen[cs]e|licen[cs]e\s*(#|no|num|number)?)\b/.test(l)) return "driver.license";
+  if (/\b(usdot|dot\s*(#|no|num|number)?)\b/.test(l)) return "company.dot";
+  if (/\b(mc\s*(#|no|num|number)?)\b/.test(l)) return "company.mc";
+  if (/\b(ein|tax\s*id|fein)\b/.test(l)) return "company.ein";
+  if (/\b(dba)\b/.test(l)) return "company.dba";
+  if (/\b(company|carrier|motor\s*carrier|legal\s*name|employer)\b/.test(l)) return "company.name";
+  if (/\b(company\s*address|carrier\s*address|business\s*address|address)\b/.test(l)) return "company.address";
+  if (/\b(street)\b/.test(l)) return "company.street";
+  if (/\b(city)\b/.test(l)) return "company.city";
+  if (/\b(zip|postal)\b/.test(l)) return "company.zip";
+  if (/\b(owner)\b/.test(l)) return "company.owner";
+  if (/\b(driver\s*name|applicant(\s*name)?)\b/.test(l)) return "driver.name";
+  if (/\b(driver\s*phone)\b/.test(l)) return "driver.phone";
+  if (/\b(driver\s*email)\b/.test(l)) return "driver.email";
+  if (/\b(company\s*phone)\b/.test(l)) return "company.phone";
+  if (/\b(company\s*email)\b/.test(l)) return "company.email";
+  if (/\b(phone|mobile|cell|telephone)\b/.test(l)) return "recipient.phone";
+  if (/\b(e-?mail)\b/.test(l)) return "recipient.email";
+  if (/\b(full\s*name|signer\s*name|printed\s*name|name)\b/.test(l)) return "recipient.name";
+  if (/\b(title|position|role)\b/.test(l)) return "recipient.title";
+  if (/\b(date\s*signed|today'?s?\s*date|signing\s*date)\b/.test(l)) return "today";
+  if (type === "name") return "recipient.name";
+  if (type === "email") return "recipient.email";
+  if (type === "company") return "company.name";
+  if (type === "title") return "recipient.title";
+  if (type === "date") return "today";
+  return null;
+}
+
+/**
+ * Resolves the starting value of a template field from the database source (company, driver,
+ * owner/DER/contact, signer) and any text/value saved directly on the template (`f.value`).
+ */
+export function resolveFieldValue(f: SignField, s: AutoSource): string {
+  const saved = (f.value ?? "").trim();
+  if (f.auto) return autoValue(f.auto, s) || saved;
+  if (saved) return f.value!;
+  const inferred = inferAutoKey(f.label, f.type);
+  return inferred ? autoValue(inferred, s) : "";
 }
 
 /** A field's value is empty (checkboxes: "" or "false"). */

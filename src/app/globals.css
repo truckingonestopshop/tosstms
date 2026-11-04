@@ -190,21 +190,29 @@
   }
 }
 
-/* A sideways scroller whose bar is easy to see and grab (the Loads board). */
+/* A scroller whose vertical and horizontal bars are always visible and easy to grab. */
 @utility scrollbar-bold {
-  scrollbar-color: var(--fg-4) transparent;
+  scrollbar-width: auto;
+  scrollbar-color: var(--fg-4) var(--surface-2);
   &::-webkit-scrollbar {
-    height: 12px;
+    width: 11px;
+    height: 11px;
+  }
+  &::-webkit-scrollbar-track {
+    background: var(--surface-2);
+    border-radius: 999px;
   }
   &::-webkit-scrollbar-thumb {
     background: var(--fg-4);
     border-radius: 999px;
-    border: 3px solid transparent;
+    border: 2px solid var(--surface-2);
     background-clip: padding-box;
   }
   &::-webkit-scrollbar-thumb:hover {
     background: var(--fg-3);
-    background-clip: padding-box;
+  }
+  &::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
 

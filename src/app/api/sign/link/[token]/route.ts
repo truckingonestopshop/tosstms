@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { adminClient, adminConfigured } from "@/lib/server/admin";
 import { logEvent } from "@/lib/server/signing";
-import { AUTO, autoValue, type SignField, type SignRole } from "@/lib/signing";
+import { AUTO, autoValue, resolveFieldValue, type SignField, type SignRole } from "@/lib/signing";
 
 export const runtime = "nodejs";
 
@@ -53,7 +53,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const role = link.roles[0]?.key || "signer";
   // The visitor's own name / email / phone fill the fields that ask for them.
   const values: Record<string, string> = { ...link.values };
-  for (const f of link.fields) if (f.role === role && f.auto?.startsWith("recipient.") && AUTO.some((a) => a.v === f.auto)) values[f.id] = autoValue(f.auto, { recipient: { name, email, phone } });
+  for (const f of link.fields) {
+    if (!values[f.id] && f.value) values[f.id] = f.value;
+    if (f.role === role) {
+      if (f.auto?.startsWith("recipient.") && AUTO.some((a) => a.v === f.auto)) {
+        values[f.id] = autoValue(f.auto, { recipient: { name, email, phone } });
+      } else if (!values[f.id]) {
+        const v = resolveFieldValue(f, { recipient: { name, email, phone } });
+        if (v) values[f.id] = v;
+      }
+    }
+  }
   const db = adminClient();
   const { data: request, error } = await db
     .from("tms_sign_requests")

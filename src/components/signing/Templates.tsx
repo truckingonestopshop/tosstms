@@ -74,7 +74,7 @@ export function TemplatesList() {
   return (
     <>
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="-mx-1 flex gap-1 overflow-x-auto">
+        <div className="scrollbar-bold -mx-1 flex gap-1 overflow-x-auto pb-1">
           {[{ v: "all" as const, label: "All" }, ...CATEGORIES].map((c) => (
             <button key={c.v} onClick={() => setCat(c.v)} className={cn("flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] font-medium", cat === c.v ? "border-transparent bg-inverse text-inverse-fg" : "border-line text-fg-3 hover:text-fg")}>
               {c.label}
@@ -193,7 +193,7 @@ function SendTemplate({ template, onClose }: { template: SignTemplate | null; on
   return (
     <Modal open onClose={onClose} title={`Send ${template.name}`} subtitle="For which company?" size="sm">
       <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name or DOT" autoFocus />
-      <ul className="mt-2 max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line">
+      <ul className="scrollbar-bold mt-2 max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line">
         {list.map((c) => (
           <li key={c.id}>
             <button onClick={() => setCompany(c.id)} className="flex w-full items-center justify-between px-3 py-2 text-left text-[13px] hover:bg-surface-2">

@@ -125,7 +125,7 @@ export function SigningDashboard() {
 
       <Card className="overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-line px-4 py-3 sm:px-5 lg:flex-row lg:items-center">
-          <div className="-mx-1 flex gap-1 overflow-x-auto">
+          <div className="scrollbar-bold -mx-1 flex gap-1 overflow-x-auto pb-1">
             {TABS.map((t) => (
               <button key={t.v} onClick={() => (setTab(t.v), setPicked(new Set()))} className={cn("flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium", tab === t.v ? "bg-inverse text-inverse-fg" : "text-fg-3 hover:bg-surface-2 hover:text-fg")}>
                 {t.label}
@@ -181,7 +181,7 @@ export function SigningDashboard() {
         ) : list.length === 0 ? (
           <Empty icon={FileSignature} title={scoped.length ? "Nothing here" : "Nothing sent yet"} body={scoped.length ? undefined : "Send a document from + New, from a company's Documents tab, a DER or a driver, or share a public link."} />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="scrollbar-bold overflow-x-auto">
             <table className="w-full min-w-[820px] text-[13px]">
               <thead className="text-left text-[11px] uppercase tracking-wider text-fg-4">
                 <tr className="border-b border-line">
@@ -343,7 +343,7 @@ function CompanyPicker({ open, onClose, onPick }: { open: boolean; onClose: () =
       <Field label="Company">
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, DOT or MC" autoFocus />
       </Field>
-      <ul className="mt-2 max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line">
+      <ul className="scrollbar-bold mt-2 max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line">
         {list.map((c) => (
           <li key={c.id}>
             <button onClick={() => onPick(c.id)} className="flex w-full items-center justify-between px-3 py-2 text-left text-[13px] hover:bg-surface-2">

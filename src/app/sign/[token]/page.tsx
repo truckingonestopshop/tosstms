@@ -182,10 +182,11 @@ export default function SignPage({ params }: { params: Promise<{ token: string }
         </a>
       )}
 
-      <PdfPages
-        src={view.fileUrl}
-        pages={view.pages}
-        className="pb-44"
+      <div className="scrollbar-bold overflow-x-auto">
+        <PdfPages
+          src={view.fileUrl}
+          pages={view.pages}
+          className="min-w-[340px] pb-44"
         overlay={(page) =>
           view.signedCopy ? null : (
             <div className="absolute inset-0">
@@ -211,6 +212,7 @@ export default function SignPage({ params }: { params: Promise<{ token: string }
           )
         }
       />
+      </div>
 
       {canAct && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>

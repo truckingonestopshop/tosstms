@@ -70,7 +70,7 @@ export function SigningRequests({ companyId, driverId, personId, category, title
       ) : list.length === 0 ? (
         <Empty icon={FileSignature} title={requests.rows.length ? "Nothing here" : "Nothing sent for signing yet"} />
       ) : (
-        <ul className="divide-y divide-line">
+        <ul className="scrollbar-bold max-h-[420px] divide-y divide-line overflow-y-auto">
           {list.map((r) => {
             const st = REQUEST_STATUS[r.status];
             const signers = signersOf(recipients.rows.filter((x) => x.request_id === r.id));
@@ -234,7 +234,7 @@ export function RequestModal({ r, recipients, onClose, onSaved }: { r: SignReque
         ))}
       </ul>
       <h3 className="mb-2 mt-5 text-[13px] font-semibold text-fg">History</h3>
-      <ul className="space-y-1">
+      <ul className="scrollbar-bold max-h-56 space-y-1 overflow-y-auto pr-1">
         {events.map((e) => (
           <li key={e.id} className="text-xs text-fg-3">
             <span className="text-fg-2">{new Date(e.created_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</span> · {e.action}

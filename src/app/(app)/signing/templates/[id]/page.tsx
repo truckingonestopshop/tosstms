@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { use, useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, Page, PageHeader } from "@/components/ui/Bits";
 import { Checkbox, Field, Input, Select } from "@/components/ui/Field";
@@ -16,6 +16,19 @@ import { fieldsFromBody } from "@/components/signing/written";
 
 // One template: its PDF with the fields placed on it, who signs, and where it's sent from.
 
+function toPayload(t: SignTemplate) {
+  const fields = t.kind === "written" ? fieldsFromBody(t.body || "") : t.fields;
+  return {
+    name: t.name.trim() || "Untitled template",
+    category: t.category,
+    doc_type: t.doc_type,
+    roles: t.roles,
+    fields,
+    body: t.body,
+    letterhead: !!t.letterhead,
+  };
+}
+
 export default function TemplatePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [t, setT] = useState<SignTemplate | null>(null);
@@ -23,6 +36,8 @@ export default function TemplatePage({ params }: { params: Promise<{ id: string 
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileAs = useFileAs(t?.category || "company");
+  const latestRef = useRef<SignTemplate | null>(null);
+  const savedRef = useRef("");
 
   useEffect(() => {
     sb()
@@ -33,33 +48,68 @@ export default function TemplatePage({ params }: { params: Promise<{ id: string 
       .then(async ({ data, error }) => {
         if (error) return toast.error(errMsg(error));
         const tpl = data as SignTemplate;
+        const snap = JSON.stringify(toPayload(tpl));
+        latestRef.current = tpl;
+        savedRef.current = snap;
         setT(tpl);
-        setSaved(JSON.stringify(tpl));
+        setSaved(snap);
         if (tpl.file_path) setUrl(await signedUrl(tpl.file_path));
       });
   }, [id]);
 
+  const persist = useCallback(
+    async (tpl: SignTemplate, manual = false) => {
+      if (manual && !tpl.name.trim()) return toast.error("Name the template");
+      const payload = toPayload(tpl);
+      const snap = JSON.stringify(payload);
+      setBusy(true);
+      const { error } = await sb().from("tms_sign_templates").update(payload).eq("id", tpl.id);
+      setBusy(false);
+      if (error) {
+        if (manual) toast.error(errMsg(error));
+        return;
+      }
+      savedRef.current = snap;
+      setSaved(snap);
+      if (manual) {
+        if (tpl.kind === "written" && !payload.fields.some((f) => f.role !== "toss")) {
+          toast.info("Saved (add a signature field for a signer before sending)");
+        } else {
+          toast.success("Template saved");
+        }
+      }
+    },
+    [],
+  );
+
+  // Auto-save every change after a brief pause so placed fields, positions and texts are never lost.
+  useEffect(() => {
+    latestRef.current = t;
+    if (!t) return;
+    const snap = JSON.stringify(toPayload(t));
+    if (snap === savedRef.current) return;
+    const timer = setTimeout(() => {
+      void persist(t, false);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [t, persist]);
+
+  // Flush any unsaved change if the user navigates back before the timer fires.
+  useEffect(() => {
+    return () => {
+      const cur = latestRef.current;
+      if (!cur) return;
+      const payload = toPayload(cur);
+      if (JSON.stringify(payload) !== savedRef.current) {
+        void sb().from("tms_sign_templates").update(payload).eq("id", cur.id);
+      }
+    };
+  }, []);
+
   if (!t) return <Page>{<div className="py-20 text-center text-sm text-fg-3">Loading…</div>}</Page>;
   const set = (p: Partial<SignTemplate>) => setT((x) => (x ? { ...x, ...p } : x));
-  const dirty = JSON.stringify(t) !== saved;
-  const save = async () => {
-    if (!t.name.trim()) return toast.error("Name the template");
-    // Written: the fields are the ones in the text.
-    const fields = t.kind === "written" ? fieldsFromBody(t.body || "") : t.fields;
-    if (t.kind === "written" && !fields.some((f) => f.role !== "toss")) return toast.error("Add at least one field for a signer (Fields → Signature)");
-    setBusy(true);
-    const { data, error } = await sb()
-      .from("tms_sign_templates")
-      .update({ name: t.name.trim(), category: t.category, doc_type: t.doc_type, roles: t.roles, fields, body: t.body, letterhead: !!t.letterhead })
-      .eq("id", t.id)
-      .select()
-      .single();
-    setBusy(false);
-    if (error) return toast.error(errMsg(error));
-    setT(data as SignTemplate);
-    setSaved(JSON.stringify(data));
-    toast.success("Template saved");
-  };
+  const dirty = JSON.stringify(toPayload(t)) !== saved;
+  const save = () => persist(t, true);
 
   return (
     <Page>
@@ -71,9 +121,14 @@ export default function TemplatePage({ params }: { params: Promise<{ id: string 
         }
         title={t.name || "Template"}
         actions={
-          <Button variant="primary" onClick={save} disabled={busy || !dirty}>
-            {dirty ? "Save template" : "Saved"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-fg-3">
+              {busy ? "Saving…" : dirty ? "Unsaved changes" : <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check className="h-3.5 w-3.5" /> All changes saved</span>}
+            </span>
+            <Button variant="primary" onClick={save} disabled={busy}>
+              Save template
+            </Button>
+          </div>
         }
       />
       <Card className="mb-4 p-4">

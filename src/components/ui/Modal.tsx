@@ -85,7 +85,7 @@ export function Modal({
             </button>
           </div>
         )}
-        <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4", bodyClassName)}>{children}</div>
+        <div className={cn("scrollbar-bold min-h-0 flex-1 overflow-y-auto overflow-x-auto overscroll-contain px-5 py-4", bodyClassName)}>{children}</div>
         {footer && <div className="pb-safe flex items-center justify-end gap-2 border-t border-line bg-surface px-5 py-3">{footer}</div>}
       </div>
     </div>,
@@ -132,7 +132,7 @@ export function Drawer({
             </button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+        <div className="scrollbar-bold min-h-0 flex-1 overflow-y-auto overflow-x-auto overscroll-contain">{children}</div>
         {footer && <div className="pb-safe flex items-center gap-2 border-t border-line px-5 py-3">{footer}</div>}
       </div>
     </div>,

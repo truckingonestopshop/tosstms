@@ -129,8 +129,8 @@ export function mergeToken(key: AutoKey) {
 export function fieldTokenLabel(f: Pick<SignField, "label" | "type">, roleLabel: string) {
   return `${f.label || FIELD_TYPES.find((t) => t.v === f.type)?.label} · ${roleLabel}`;
 }
-/** A field's other settings (choices, format check, read-only, condition, formula) on its chip. */
-export type FieldExtra = Pick<SignField, "options" | "validation" | "readOnly" | "showIf" | "formula">;
+/** A field's other settings (saved value, choices, format check, read-only, condition, formula) on its chip. */
+export type FieldExtra = Pick<SignField, "value" | "options" | "validation" | "readOnly" | "showIf" | "formula">;
 export const extraOf = (el: HTMLElement): FieldExtra => {
   try {
     return JSON.parse(el.dataset.extra || "{}") as FieldExtra;
@@ -140,7 +140,7 @@ export const extraOf = (el: HTMLElement): FieldExtra => {
 };
 export function fieldToken(f: Omit<SignField, "x" | "y" | "w" | "h" | "page">, roleLabel: string) {
   const box = FIELD_BOX[f.type];
-  const extra: FieldExtra = { options: f.options, validation: f.validation, readOnly: f.readOnly, showIf: f.showIf, formula: f.formula };
+  const extra: FieldExtra = { value: f.value, options: f.options, validation: f.validation, readOnly: f.readOnly, showIf: f.showIf, formula: f.formula };
   return `<span class="tk tk-field" data-field="${f.id}" data-type="${f.type}" data-role="${esc(f.role)}" data-label="${esc(f.label)}" data-required="${f.required ? "1" : ""}" data-auto="${f.auto || ""}" data-extra="${esc(JSON.stringify(extra))}" contenteditable="false" style="min-width:${Math.min(box.w, 160)}px">${esc(fieldTokenLabel(f, roleLabel))}</span>&nbsp;`;
 }
 export const newWrittenField = (type: FieldType, role: string): Omit<SignField, "x" | "y" | "w" | "h" | "page"> => {
@@ -213,7 +213,7 @@ export async function renderWritten(
     root.querySelectorAll<HTMLElement>("[data-field]").forEach((el) => {
       const f = fieldOf(el);
       if (f.role === TOSS) {
-        const v = opts.toss[f.id] || "";
+        const v = opts.toss[f.id] ?? f.value ?? "";
         el.replaceWith(document.createTextNode(f.type === "checkbox" ? (v === "true" ? "☒" : "☐") : v || "____________"));
         return;
       }

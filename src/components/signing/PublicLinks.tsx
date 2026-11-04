@@ -10,7 +10,7 @@ import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { relTime } from "@/lib/format";
-import { TOSS, autoValue, isEmpty, type SignTemplate } from "@/lib/signing";
+import { TOSS, autoValue, isEmpty, resolveFieldValue, type SignTemplate } from "@/lib/signing";
 import { renderWritten } from "./written";
 import { signingPath } from "./Templates";
 
@@ -69,7 +69,11 @@ export function PublicLinks({ template, onClose }: { template: SignTemplate | nu
         if (up.error) throw up.error;
         file = { path, name, pages: out.pages, fields: out.fields };
       } else {
-        for (const f of template.fields) if (f.role === TOSS && f.auto && !f.auto.startsWith("recipient.")) values[f.id] = autoValue(f.auto, src);
+        for (const f of template.fields) {
+          if (f.auto?.startsWith("recipient.")) continue;
+          const v = resolveFieldValue(f, src);
+          if (v) values[f.id] = v;
+        }
         const missing = template.fields.find((f) => f.role === TOSS && f.required && isEmpty(f, values[f.id]));
         if (missing) throw new Error(`"${missing.label}" is filled by TOSS and can't be filled for a public link. Make it the signer's, or send the document instead.`);
       }
@@ -129,7 +133,7 @@ export function PublicLinks({ template, onClose }: { template: SignTemplate | nu
         <Checkbox checked={verify} onChange={setVerify} label="Confirm their email with a one-time code" className="sm:col-span-3" />
       </div>
 
-      <ul className="mt-4 space-y-2">
+      <ul className="scrollbar-bold mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
         {mine.length === 0 && <li className="text-xs text-fg-4">No public links for this template yet.</li>}
         {mine.map((l) => (
           <li key={l.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-line p-3">

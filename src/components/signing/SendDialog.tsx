@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, Copy, FileSignature, MessageSquare, PenLine, Plus, Upload, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, FileSignature, MessageSquare, Pencil, PenLine, Plus, Save, Upload, UserCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -11,8 +11,27 @@ import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/format";
-import { CATEGORIES, RECIPIENT_KINDS, TOSS, autoValue, fieldTypeLabel, isEmpty, type RecipientKind, type Verify, type AutoSource, type PageSize, type SignField, type SignRequest, type SignRole, type SignTemplate, type TemplateCategory } from "@/lib/signing";
+import {
+  CATEGORIES,
+  RECIPIENT_KINDS,
+  TOSS,
+  autoValue,
+  fieldTypeLabel,
+  inferAutoKey,
+  isEmpty,
+  resolveFieldValue,
+  type RecipientKind,
+  type Verify,
+  type AutoSource,
+  type PageSize,
+  type SignField,
+  type SignRequest,
+  type SignRole,
+  type SignTemplate,
+  type TemplateCategory,
+} from "@/lib/signing";
 import type { CompanyPerson } from "@/components/fleet/CompanyPeople";
+import type { Driver } from "@/lib/types";
 import { FieldBuilder } from "./FieldBuilder";
 import { signingPath, uploadSigningPdf, useFileAs } from "./Templates";
 
@@ -68,9 +87,12 @@ export function SendDialog({
   // The driver the document is about: their details fill the driver fields, they are suggested as
   // the driver signer, and the signed copy is filed on them. Starts as the driver it is sent from.
   const [drvId, setDrvId] = useState(driverId || "");
-  const driver = drivers.find((d) => d.id === drvId);
-  const companyDrivers = drivers.filter((d) => d.company_id === companyId && (d.status === "active" || d.id === drvId)).sort((a, b) => a.name.localeCompare(b.name));
-  const person = people.rows.find((p) => p.id === personId);
+  const [perId, setPerId] = useState(personId || "");
+  const [pickedContactId, setPickedContactId] = useState("");
+  const [saveAsTemplate, setSaveAsTemplate] = useState(true);
+  const driver = drivers.find((d) => d.id === drvId) || null;
+  const companyDrivers = drivers.filter((d) => d.company_id === companyId).sort((a, b) => a.name.localeCompare(b.name));
+  const person = people.rows.find((p) => p.id === perId) || null;
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState<"pick" | "place" | "details" | "done">("pick");
@@ -106,78 +128,236 @@ export function SendDialog({
       setSent(null);
       setShow(category || "all");
       setDrvId(driverId || "");
+      setPerId(personId || "");
+      setPickedContactId(driverId ? `d:${driverId}` : personId ? `p:${personId}` : "");
+      setSaveAsTemplate(true);
     }
   }
 
-  // Who can be picked: the carrier's main contact, its owners / DERs / contacts, its drivers.
+  // Everyone in the database for this company: owners, DERs, contacts, drivers, and main/secondary profile contacts.
   const contacts = useMemo(() => {
-    const out: (Who & { id: string; label: string; tags: string[] })[] = [];
+    const out: (Who & {
+      id: string;
+      label: string;
+      tags: string[];
+      title?: string;
+      driverId?: string;
+      personId?: string;
+      driver?: Driver | null;
+      person?: CompanyPerson | null;
+    })[] = [];
     const main = [company?.contact_first_name, company?.contact_last_name].filter(Boolean).join(" ");
-    if (main) out.push({ id: "main", label: `${main} · main contact`, tags: ["signer"], name: main, email: company?.contact_email || "", phone: company?.contact_phone || "" });
+    if (main) {
+      out.push({
+        id: "main",
+        label: `${main} · Company owner / main contact`,
+        tags: ["owner", "signer"],
+        name: main,
+        email: company?.contact_email || "",
+        phone: company?.contact_phone || "",
+        title: "Owner",
+      });
+    }
+    const sec = [company?.secondary_first_name, company?.secondary_last_name].filter(Boolean).join(" ");
+    if (sec) {
+      out.push({
+        id: "secondary",
+        label: `${sec} · ${company?.secondary_title || "Secondary contact"}`,
+        tags: ["contact", "signer"],
+        name: sec,
+        email: company?.secondary_email || "",
+        phone: company?.secondary_phone || "",
+        title: company?.secondary_title || undefined,
+      });
+    }
     for (const p of people.rows) {
       const tags = [p.is_owner && "owner", p.is_der && "der", p.is_contact && "contact"].filter(Boolean) as string[];
       const name = [p.first_name, p.last_name].filter(Boolean).join(" ");
-      out.push({ id: `p:${p.id}`, label: `${name} · ${tags.map((t) => (t === "der" ? "DER" : t)).join(", ")}`, tags, name, email: p.email || "", phone: p.phone || "" });
+      const linkedDriver = p.driver_id ? drivers.find((d) => d.id === p.driver_id) || null : null;
+      out.push({
+        id: `p:${p.id}`,
+        label: `${name} · ${tags.map((t) => (t === "der" ? "DER" : t === "owner" ? "Owner" : "Contact")).join(", ") || "Person"}`,
+        tags,
+        name,
+        email: p.email || "",
+        phone: p.phone || "",
+        title: p.title || (p.is_owner ? "Owner" : p.is_der ? "DER" : undefined),
+        personId: p.id,
+        driverId: p.driver_id || undefined,
+        person: p,
+        driver: linkedDriver,
+      });
     }
-    for (const d of drivers.filter((d) => d.company_id === companyId && d.status === "active")) out.push({ id: `d:${d.id}`, label: `${d.name} · driver`, tags: ["driver"], name: d.name, email: d.email || "", phone: d.phone || "" });
+    for (const d of companyDrivers) {
+      out.push({
+        id: `d:${d.id}`,
+        label: `${d.name} · Driver${d.cdl_number ? ` (${d.license_type || "CDL"} ${d.cdl_number})` : ""}${d.status !== "active" ? " (inactive)" : ""}`,
+        tags: ["driver"],
+        name: d.name,
+        email: d.email || "",
+        phone: d.phone || "",
+        title: "Driver",
+        driverId: d.id,
+        driver: d,
+      });
+    }
     return out;
-  }, [company, people.rows, drivers, companyId]);
+  }, [company, people.rows, drivers, companyDrivers]);
 
-  /** The best person for a role, from where the document is sent. */
-  const guess = (role: SignRole): Who => {
+  /** The best person from the database for a role, based on where the document is sent from. */
+  const guessContact = (role: SignRole) => {
     const key = `${role.key} ${role.label}`.toLowerCase();
     const pick = (id: string | undefined) => contacts.find((c) => c.id === id);
-    const c =
+    return (
       (key.includes("driver") && (pick(drvId && `d:${drvId}`) || contacts.find((x) => x.tags.includes("driver")))) ||
-      (key.includes("der") && (pick(personId && `p:${personId}`) || contacts.find((x) => x.tags.includes("der")))) ||
-      pick(personId && `p:${personId}`) ||
+      (key.includes("der") && (pick(perId && `p:${perId}`) || contacts.find((x) => x.tags.includes("der")))) ||
+      pick(perId && `p:${perId}`) ||
       pick(drvId && `d:${drvId}`) ||
       contacts.find((x) => x.tags.includes("owner")) ||
-      contacts[0];
+      contacts[0] ||
+      null
+    );
+  };
+  const guess = (role: SignRole): Who => {
+    const c = guessContact(role);
     return c ? { name: c.name, email: c.email, phone: c.phone } : noOne;
   };
-  const autoSrc = (role?: string): AutoSource => ({ company, driver: driver || null, recipient: role ? who[role] || null : Object.values(who)[0] || null });
-  /** Picks the driver: driver signers become them, and TOSS's driver fields refill with their details. */
-  const pickDriver = (id: string) => {
-    setDrvId(id);
-    const d = drivers.find((x) => x.id === id);
-    if (!src) return;
-    setWho((w) => {
-      const next = { ...w };
-      for (const r of src.roles) if (`${r.key} ${r.label}`.toLowerCase().includes("driver")) next[r.key] = d ? { ...(w[r.key] || noOne), name: d.name, email: d.email || "", phone: d.phone || "" } : { ...noOne };
-      return next;
-    });
-    setValues((v) => {
-      const next = { ...v };
-      for (const f of src.fields) if (f.role === TOSS && f.auto?.startsWith("driver.")) next[f.id] = autoValue(f.auto, { company, driver: d || null });
-      return next;
-    });
-  };
-  // The driver picker shows when the document has anything about a driver.
-  const usesDriver =
-    !!src &&
-    (src.roles.some((r) => `${r.key} ${r.label}`.toLowerCase().includes("driver")) ||
-      src.fields.some((f) => f.auto?.startsWith("driver.")) ||
-      (src.template?.kind === "written" && /data-merge="driver\./.test(src.template.body || "")) ||
-      src.template?.category === "driver");
+  const autoSrc = (role?: string, nextWho = who, nextDrv = driver, nextPer = person): AutoSource => ({
+    company,
+    driver: nextDrv,
+    person: nextPer,
+    recipient: role ? nextWho[role] || null : Object.values(nextWho)[0] || null,
+  });
 
-  /** Opens the details step: TOSS's auto fields fill themselves (they can still be typed over). */
-  const toDetails = (s: Source, people: Record<string, Who>) => {
-    const first = Object.values(people)[0] || null;
-    setValues((v) => {
-      const next = { ...v };
-      for (const f of s.fields) if (f.role === TOSS && f.auto && !(f.id in v)) next[f.id] = autoValue(f.auto, { company, driver: driver || null, recipient: first });
-      return next;
+  /** Computes auto-filled and template-saved values for every field on the document. */
+  const fillValues = (s: Source, nextWho: Record<string, Who>, nextDrv: Driver | null, nextPer: CompanyPerson | null, prev: Record<string, string> = {}) => {
+    const next: Record<string, string> = { ...prev };
+    const firstRec = Object.values(nextWho)[0] || null;
+    for (const f of s.fields) {
+      const rec = f.role !== TOSS ? nextWho[f.role] || firstRec : firstRec;
+      const source: AutoSource = { company, driver: nextDrv, person: nextPer, recipient: rec };
+      const key = f.auto || (!f.value ? inferAutoKey(f.label, f.type) : null);
+      if (key) {
+        next[f.id] = autoValue(key, source) || f.value || "";
+      } else if (!(f.id in next) || !next[f.id]) {
+        next[f.id] = resolveFieldValue(f, source);
+      }
+    }
+    return next;
+  };
+
+  /** Picks a person from the database (driver, owner, DER, contact) and auto-fills signer + all fields. */
+  const applyContact = (contactId: string, roleKey?: string) => {
+    setPickedContactId(contactId);
+    const c = contacts.find((x) => x.id === contactId);
+    if (!src) return;
+    if (!c) return;
+    const nextDrvId = c.driverId ?? (c.id.startsWith("d:") ? c.id.slice(2) : drvId);
+    const nextPerId = c.personId ?? (c.id.startsWith("p:") ? c.id.slice(2) : "");
+    const nextDrv = drivers.find((x) => x.id === nextDrvId) || c.driver || null;
+    const nextPer = people.rows.find((x) => x.id === nextPerId) || c.person || null;
+    setDrvId(nextDrvId || "");
+    setPerId(nextPerId || "");
+    const nextWho = { ...who };
+    if (roleKey) {
+      nextWho[roleKey] = { ...(nextWho[roleKey] || noOne), name: c.name, email: c.email, phone: c.phone };
+    } else {
+      const used = src.roles.filter((r) => src.fields.some((f) => f.role === r.key));
+      const targetRoles = used.length ? used : src.roles;
+      const driverRole = targetRoles.find((r) => `${r.key} ${r.label}`.toLowerCase().includes("driver"));
+      const derRole = targetRoles.find((r) => `${r.key} ${r.label}`.toLowerCase().includes("der"));
+      const matchedRole = (c.tags.includes("driver") && driverRole) || (c.tags.includes("der") && derRole) || targetRoles[0];
+      if (matchedRole) {
+        nextWho[matchedRole.key] = { ...(nextWho[matchedRole.key] || noOne), name: c.name, email: c.email, phone: c.phone };
+      }
+    }
+    setWho(nextWho);
+    setValues((prev) => fillValues(src, nextWho, nextDrv, nextPer, prev));
+  };
+
+  /** Saves placed fields / roles / defaults back to the template so the user never has to place them again. */
+  const saveTemplateProgress = async (s: Source, currentValues = values): Promise<Source> => {
+    const fieldsWithDefaults = s.fields.map((f) => {
+      const hasAuto = !!(f.auto || inferAutoKey(f.label, f.type));
+      if (!hasAuto && f.type !== "signature" && f.type !== "initials" && f.type !== "attachment" && currentValues[f.id] !== undefined) {
+        return { ...f, value: currentValues[f.id] || f.value || null };
+      }
+      return f;
     });
+    if (s.template) {
+      if (s.template.kind === "pdf") {
+        const { data, error } = await sb()
+          .from("tms_sign_templates")
+          .update({ name: s.title.trim() || s.template.name, doc_type: s.docType || null, roles: s.roles, fields: fieldsWithDefaults })
+          .eq("id", s.template.id)
+          .select()
+          .single();
+        if (!error && data) {
+          const updated = data as SignTemplate;
+          templates.put(updated);
+          const next = { ...s, template: updated, fields: fieldsWithDefaults };
+          setSrc(next);
+          return next;
+        }
+      }
+      return s;
+    }
+    if (!saveAsTemplate) return s;
+    const { data, error } = await sb()
+      .from("tms_sign_templates")
+      .insert({
+        name: s.title.trim() || s.name.replace(/\.pdf$/i, ""),
+        category: category || "company",
+        doc_type: s.docType || null,
+        kind: "pdf",
+        file_path: s.path,
+        file_name: s.name,
+        pages: s.pages,
+        roles: s.roles,
+        fields: fieldsWithDefaults,
+      })
+      .select()
+      .single();
+    if (error || !data) {
+      if (error) toast.error(errMsg(error));
+      return s;
+    }
+    const created = data as SignTemplate;
+    templates.put(created);
+    toast.success(`Saved "${created.name}" to Templates for next time`);
+    const next = { ...s, template: created, fields: fieldsWithDefaults };
+    setSrc(next);
+    return next;
+  };
+
+  /** Opens the details step: all database and template-saved fields fill themselves automatically. */
+  const toDetails = async (s: Source, initialWho: Record<string, Who>, fromPlace = false) => {
+    let current = s;
+    if (fromPlace) {
+      setBusy(true);
+      current = await saveTemplateProgress(s);
+      setBusy(false);
+    }
+    const firstRole = current.roles[0];
+    const guessed = firstRole ? guessContact(firstRole) : null;
+    const nextDrv = driver || guessed?.driver || null;
+    const nextPer = person || guessed?.person || null;
+    if (!drvId && guessed?.driverId) setDrvId(guessed.driverId);
+    if (!perId && guessed?.personId) setPerId(guessed.personId);
+    if (!pickedContactId && guessed?.id) setPickedContactId(guessed.id);
+    setValues((prev) => fillValues(current, initialWho, nextDrv, nextPer, prev));
     setStep("details");
   };
   const begin = async (s: Source) => {
-    const people = Object.fromEntries(s.roles.map((r) => [r.key, guess(r)]));
+    const initialWho = Object.fromEntries(s.roles.map((r) => [r.key, guess(r)]));
     setSrc(s);
     setUrl(s.path ? await signedUrl(s.path).catch(() => null) : null);
-    setWho(people);
-    if (s.template) toDetails(s, people);
-    else setStep("place");
+    setWho(initialWho);
+    if (s.template && (s.template.kind === "written" || s.fields.length > 0)) {
+      await toDetails(s, initialWho, false);
+    } else {
+      setStep("place");
+    }
   };
   // Sent from the gallery: skip picking, once the company's people are known (to suggest signers).
   const started = useRef<string | null>(null);
@@ -219,12 +399,14 @@ export function SendDialog({
     const tossMissing = src.fields.find((f) => f.role === TOSS && f.required && isEmpty(f, values[f.id]));
     if (tossMissing) return toast.error(`Fill in "${tossMissing.label}"`);
     setBusy(true);
+    // Persist any fixed field values back onto the PDF template so next time they are already filled in.
+    const savedSrc = await saveTemplateProgress(src, values);
     // A written template becomes a PDF now: values and TOSS's fields printed in, signer fields placed.
-    let file = { path: src.path, name: src.name, pages: src.pages, fields: src.fields };
-    if (src.template?.kind === "written") {
+    let file = { path: savedSrc.path, name: savedSrc.name, pages: savedSrc.pages, fields: savedSrc.fields };
+    if (savedSrc.template?.kind === "written") {
       try {
-        const out = await renderWritten(src.template.body || "", { merge: (k) => autoValue(k, autoSrc(usedRoles[0]?.key)), toss: values, letterhead: src.template.letterhead ? { title: src.title.trim() } : null });
-        const name = `${src.title.trim().replace(/[\\/:*?"<>|]+/g, "_")}.pdf`;
+        const out = await renderWritten(savedSrc.template.body || "", { merge: (k) => autoValue(k, autoSrc(usedRoles[0]?.key)), toss: values, letterhead: savedSrc.template.letterhead ? { title: savedSrc.title.trim() } : null });
+        const name = `${savedSrc.title.trim().replace(/[\\/:*?"<>|]+/g, "_")}.pdf`;
         const path = signingPath(`requests/${companyId}`, name);
         const up = await sb().storage.from(BUCKET).upload(path, new Blob([out.bytes.slice().buffer], { type: "application/pdf" }), { contentType: "application/pdf" });
         if (up.error) throw up.error;
@@ -234,19 +416,22 @@ export function SendDialog({
         return toast.error(errMsg(e));
       }
     }
-    // Signers' auto fields start filled (they can change them).
-    const all = { ...values };
-    for (const f of file.fields) if (f.role !== TOSS && f.auto && f.auto !== "today") all[f.id] = autoValue(f.auto, autoSrc(f.role)) || "";
+    // Every field (TOSS and signer pre-filled) starts with its resolved value.
+    const all: Record<string, string> = {};
+    for (const f of file.fields) {
+      const v = values[f.id] ?? resolveFieldValue(f, autoSrc(f.role));
+      if (v && !(f.type === "date" && f.auto === "today" && f.role !== TOSS)) all[f.id] = v;
+    }
     const { data: req, error } = await sb()
       .from("tms_sign_requests")
       .insert({
-        title: src.title.trim(),
-        template_id: src.template?.id || null,
+        title: savedSrc.title.trim(),
+        template_id: savedSrc.template?.id || null,
         company_id: companyId,
         driver_id: drvId || null,
-        person_id: personId || null,
+        person_id: perId || null,
         case_id: caseId || null,
-        doc_type: src.docType || null,
+        doc_type: savedSrc.docType || null,
         file_path: file.path,
         file_name: file.name,
         pages: file.pages,
@@ -298,8 +483,9 @@ export function SendDialog({
   };
 
   const list = templates.rows.filter((t) => show === "all" || t.category === show);
-  const tossFields = src?.fields.filter((f) => f.role === TOSS) || [];
+  const editableFields = src?.fields.filter((f) => f.type !== "signature" && f.type !== "initials" && f.type !== "attachment") || [];
   const usedRoles = src?.roles.filter((r) => src.fields.some((f) => f.role === r.key)) || [];
+  const roleLabel = (key: string) => (key === TOSS ? "TOSS" : src?.roles.find((r) => r.key === key)?.label || key);
 
   return (
     <Modal
@@ -318,8 +504,26 @@ export function SendDialog({
             <Button variant="ghost" onClick={() => setStep("pick")} className="mr-auto">
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
-            <Button variant="primary" onClick={() => (src?.fields.length ? toDetails(src, Object.fromEntries(src.roles.map((r) => [r.key, who[r.key] || guess(r)]))) : toast.error("Place at least one field"))}>
-              Next: who signs
+            {src?.template?.kind === "pdf" && (
+              <Button
+                variant="outline"
+                disabled={busy || !src.fields.length}
+                onClick={async () => {
+                  setBusy(true);
+                  await saveTemplateProgress(src);
+                  setBusy(false);
+                  toast.success("Template saved");
+                }}
+              >
+                <Save className="h-4 w-4" /> Save template
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              disabled={busy}
+              onClick={() => (src?.fields.length ? toDetails(src, Object.fromEntries(src.roles.map((r) => [r.key, who[r.key] || guess(r)])), true) : toast.error("Place at least one field"))}
+            >
+              {src?.template ? "Save & next: who signs" : saveAsTemplate ? "Save template & next" : "Next: who signs"}
             </Button>
           </>
         ) : step === "details" ? (
@@ -327,6 +531,11 @@ export function SendDialog({
             <Button variant="ghost" onClick={() => setStep(src?.template ? "pick" : "place")} className="mr-auto">
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
+            {(src?.template?.kind === "pdf" || (!src?.template && src?.path)) && (
+              <Button variant="outline" onClick={() => setStep("place")} disabled={busy}>
+                <Pencil className="h-4 w-4" /> Edit fields on PDF
+              </Button>
+            )}
             <Button variant="primary" onClick={send} disabled={busy}>
               Send for signing
             </Button>
@@ -352,24 +561,23 @@ export function SendDialog({
             <div className="flex-1" />
             <input ref={fileInput} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
             <Button variant="outline" onClick={() => fileInput.current?.click()} disabled={busy}>
-              <Upload className="h-4 w-4" /> Upload a one-time PDF
+              <Upload className="h-4 w-4" /> Upload a PDF
             </Button>
           </div>
           {list.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-fg-3">No templates here yet. Make one in Signing → Templates, or upload a PDF for this one time.</div>
+            <div className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-fg-3">No templates here yet. Make one in Signing → Templates, or upload a PDF now (it will be saved as a template automatically).</div>
           ) : (
-            <ul className="divide-y divide-line rounded-lg border border-line">
+            <ul className="scrollbar-bold max-h-[60dvh] divide-y divide-line overflow-y-auto rounded-lg border border-line">
               {list.map((t) => (
                 <li key={t.id}>
                   <button
                     onClick={() => begin({ template: t, title: t.name, path: t.file_path || "", name: t.file_name || "", pages: t.pages, roles: t.roles, fields: t.fields, docType: t.doc_type || "" })}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-2/60"
-                    disabled={!t.fields.length}
                   >
                     <FileSignature className="h-4 w-4 shrink-0 text-fg-4" />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] font-semibold text-fg">{t.name}</div>
-                      <div className="truncate text-xs text-fg-3">{t.fields.length ? `${t.roles.map((r) => r.label).join(", ")} · ${t.fields.length} fields` : "No fields yet: open it in Templates first"}</div>
+                      <div className="truncate text-xs text-fg-3">{t.fields.length ? `${t.roles.map((r) => r.label).join(", ")} · ${t.fields.length} fields` : "Click to place fields on this template"}</div>
                     </div>
                     <span className="text-xs text-fg-4">{CATEGORIES.find((c) => c.v === t.category)?.label}</span>
                   </button>
@@ -397,6 +605,14 @@ export function SendDialog({
               </Select>
             </Field>
           </div>
+          {!src.template && (
+            <Checkbox
+              className="mb-3"
+              checked={saveAsTemplate}
+              onChange={setSaveAsTemplate}
+              label="Save as a template so all placed fields, signature positions and texts are kept for next time"
+            />
+          )}
           <FieldBuilder src={url} pages={src.pages} roles={src.roles} fields={src.fields} onRoles={(roles) => setSrc({ ...src, roles })} onFields={(fields) => setSrc({ ...src, fields })} />
         </div>
       )}
@@ -408,22 +624,27 @@ export function SendDialog({
               <Input value={src.title} onChange={(e) => setSrc({ ...src, title: e.target.value })} />
             </Field>
           )}
-          {usesDriver && (
-            <section className="rounded-xl border border-line bg-surface-2/40 p-3">
-              <Field label="Driver" hint={companyDrivers.length ? "Their name, contact, license and dates fill in; the signed copy is filed on them" : "This company has no drivers yet: add them in Equipment & Drivers"}>
-                <Select value={drvId} onChange={(e) => pickDriver(e.target.value)} disabled={!companyDrivers.length}>
-                  <option value="">Pick a driver of {company?.name || "this company"}…</option>
-                  {companyDrivers.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                      {d.cdl_number ? ` · ${d.license_type || "CDL"} ${d.cdl_number}` : ""}
-                      {d.status !== "active" ? " (inactive)" : ""}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </section>
-          )}
+          <section className="rounded-xl border border-brand/30 bg-brand/5 p-3.5">
+            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-fg">
+              <UserCheck className="h-4 w-4 text-brand" /> Choose person from database (auto-fills document &amp; signer)
+            </div>
+            <Select
+              value={pickedContactId}
+              onChange={(e) => applyContact(e.target.value)}
+              disabled={!contacts.length}
+              aria-label="Choose person from database"
+            >
+              <option value="">{contacts.length ? `Pick a driver, owner, DER or contact of ${company?.name || "this company"}…` : "No people or drivers on this company yet — type details below"}</option>
+              {contacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-1 text-xs text-fg-3">
+              Picking a person automatically fills their name, email, phone, license/CDL, dates and company details into the document so you can just click Send.
+            </p>
+          </section>
           <section>
             <h3 className="mb-2 text-[13px] font-semibold text-fg">Who signs</h3>
             <div className="space-y-3">
@@ -436,14 +657,11 @@ export function SendDialog({
                     </span>
                     <Select
                       value=""
-                      onChange={(e) => {
-                        const c = contacts.find((x) => x.id === e.target.value);
-                        if (c) setWho({ ...who, [r.key]: { name: c.name, email: c.email, phone: c.phone } });
-                      }}
+                      onChange={(e) => applyContact(e.target.value, r.key)}
                       className="h-8 w-auto max-w-[60%] text-xs"
                       aria-label={`Pick ${r.label}`}
                     >
-                      <option value="">Pick from this company…</option>
+                      <option value="">Pick from database…</option>
                       {contacts.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.label}
@@ -452,9 +670,38 @@ export function SendDialog({
                     </Select>
                   </div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <Input value={who[r.key]?.name || ""} onChange={(e) => setWho({ ...who, [r.key]: { ...(who[r.key] || noOne), name: e.target.value } })} placeholder="Name" aria-label={`${r.label} name`} />
-                    <Input type="email" value={who[r.key]?.email || ""} onChange={(e) => setWho({ ...who, [r.key]: { ...(who[r.key] || noOne), email: e.target.value } })} placeholder="Email" aria-label={`${r.label} email`} />
-                    <Input type="tel" value={who[r.key]?.phone || ""} onChange={(e) => setWho({ ...who, [r.key]: { ...(who[r.key] || noOne), phone: e.target.value } })} placeholder="Phone (for text)" aria-label={`${r.label} phone`} />
+                    <Input
+                      value={who[r.key]?.name || ""}
+                      onChange={(e) => {
+                        const nextWho = { ...who, [r.key]: { ...(who[r.key] || noOne), name: e.target.value } };
+                        setWho(nextWho);
+                        setValues((prev) => fillValues(src, nextWho, driver, person, prev));
+                      }}
+                      placeholder="Name"
+                      aria-label={`${r.label} name`}
+                    />
+                    <Input
+                      type="email"
+                      value={who[r.key]?.email || ""}
+                      onChange={(e) => {
+                        const nextWho = { ...who, [r.key]: { ...(who[r.key] || noOne), email: e.target.value } };
+                        setWho(nextWho);
+                        setValues((prev) => fillValues(src, nextWho, driver, person, prev));
+                      }}
+                      placeholder="Email"
+                      aria-label={`${r.label} email`}
+                    />
+                    <Input
+                      type="tel"
+                      value={who[r.key]?.phone || ""}
+                      onChange={(e) => {
+                        const nextWho = { ...who, [r.key]: { ...(who[r.key] || noOne), phone: e.target.value } };
+                        setWho(nextWho);
+                        setValues((prev) => fillValues(src, nextWho, driver, person, prev));
+                      }}
+                      placeholder="Phone (for text)"
+                      aria-label={`${r.label} phone`}
+                    />
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
                     <Checkbox
@@ -520,18 +767,46 @@ export function SendDialog({
             ))}
           </section>
 
-          {tossFields.length > 0 && (
+          {editableFields.length > 0 && (
             <section>
-              <h3 className="mb-2 text-[13px] font-semibold text-fg">Filled by TOSS before sending</h3>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {tossFields.map((f) => (
-                  <Field key={f.id} label={`${f.label}${f.required ? "" : " (optional)"}`} hint={`${fieldTypeLabel(f.type)} · page ${f.page + 1}`}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="text-[13px] font-semibold text-fg">Document fields (auto-filled from database &amp; template)</h3>
+                {src.template?.kind === "pdf" && (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      await saveTemplateProgress(src, values);
+                      setBusy(false);
+                      toast.success("Default texts saved to template");
+                    }}
+                  >
+                    <Save className="h-3.5 w-3.5" /> Save texts to template
+                  </Button>
+                )}
+              </div>
+              <div className="scrollbar-bold grid max-h-[380px] grid-cols-1 gap-3 overflow-y-auto rounded-xl border border-line p-3 sm:grid-cols-2">
+                {editableFields.map((f) => (
+                  <Field
+                    key={f.id}
+                    label={`${f.label}${f.role === TOSS && f.required ? " *" : ""}`}
+                    hint={`${roleLabel(f.role)} · ${fieldTypeLabel(f.type)}${src.template?.kind === "pdf" ? ` · page ${f.page + 1}` : ""}`}
+                  >
                     {f.type === "checkbox" ? (
                       <Checkbox checked={values[f.id] === "true"} onChange={(v) => setValues({ ...values, [f.id]: v ? "true" : "" })} label="Checked" />
-                    ) : f.type === "signature" || f.type === "initials" ? (
-                      <p className="text-xs text-fg-3">TOSS signatures go on when TOSS signs as a signer. Make this field a signer&apos;s instead.</p>
+                    ) : (f.type === "dropdown" || f.type === "radio") && f.options?.length ? (
+                      <Select value={values[f.id] || ""} onChange={(e) => setValues({ ...values, [f.id]: e.target.value })}>
+                        <option value="">Choose…</option>
+                        {f.options.map((o) => (
+                          <option key={o} value={o}>
+                            {o}
+                          </option>
+                        ))}
+                      </Select>
                     ) : (
-                      <Input value={values[f.id] || ""} onChange={(e) => setValues({ ...values, [f.id]: e.target.value })} />
+                      <Input value={values[f.id] || ""} onChange={(e) => setValues({ ...values, [f.id]: e.target.value })} placeholder={f.role === TOSS ? "Filled by TOSS" : "Pre-filled for signer (optional)"} />
                     )}
                   </Field>
                 ))}

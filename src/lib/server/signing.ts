@@ -28,9 +28,11 @@ export async function loadRequest(id: string) {
   return { req: req as SignRequest | null, recipients: (recs || []) as SignRecipient[] };
 }
 
-/** Every value on the document: TOSS's, then each signer's (formulas worked out). */
+/** Every value on the document: template defaults, TOSS's, then each signer's (formulas worked out). */
 export function allValues(req: Pick<SignRequest, "values" | "fields">, recipients: SignRecipient[]) {
-  const v: Record<string, string> = { ...req.values };
+  const v: Record<string, string> = {};
+  for (const f of req.fields) if (f.value) v[f.id] = f.value;
+  Object.assign(v, req.values);
   for (const r of recipients) if (r.kind === "signer") for (const f of req.fields) if (f.role === r.role && r.values[f.id] !== undefined) v[f.id] = r.values[f.id];
   for (const f of req.fields) if (f.type === "number" && f.formula) v[f.id] = evalFormula(f.formula, req.fields, v);
   return v;

@@ -269,7 +269,7 @@ export function WrittenEditor({
     if (p.required !== undefined) el.dataset.required = p.required ? "1" : "";
     if (p.auto !== undefined) el.dataset.auto = p.auto || "";
     const extra = { ...extraOf(el) };
-    for (const k of ["options", "validation", "readOnly", "showIf", "formula"] as const) if (k in p) (extra as Record<string, unknown>)[k] = p[k];
+    for (const k of ["value", "options", "validation", "readOnly", "showIf", "formula"] as const) if (k in p) (extra as Record<string, unknown>)[k] = p[k];
     el.dataset.extra = JSON.stringify(extra);
     el.textContent = fieldTokenLabel({ label: el.dataset.label || "", type: el.dataset.type as FieldType }, roleLabel(el.dataset.role || TOSS));
     changed();
@@ -363,7 +363,7 @@ export function WrittenEditor({
           <input ref={img} type="file" accept="image/*" className="hidden" onChange={(e) => (e.target.files?.[0] && addImage(e.target.files[0]), (e.target.value = ""))} />
         </div>
 
-        <div className="overflow-x-auto rounded-xl bg-surface-2/60 p-3 sm:p-6">
+        <div className="scrollbar-bold max-h-[calc(100dvh-11rem)] overflow-y-auto overflow-x-auto rounded-xl bg-surface-2/60 p-3 sm:p-6">
           <div
             className="relative mx-auto bg-white shadow-sm ring-1 ring-line"
             style={{
@@ -389,7 +389,7 @@ export function WrittenEditor({
         </div>
       </div>
 
-      <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+      <aside className="scrollbar-bold space-y-4 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-7rem)] xl:self-start xl:overflow-y-auto xl:overflow-x-auto xl:pr-1">
         <div className="rounded-xl border border-line p-3">
           <div className="mb-2 text-xs font-semibold text-fg-2">Who signs</div>
           <ul className="space-y-1.5">
@@ -429,7 +429,7 @@ export function WrittenEditor({
                   </option>
                 ))}
               </Select>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="scrollbar-bold grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto pr-1">
                 {FIELD_TYPES.map((t) => {
                   const I = ICON[t.v];
                   return (
@@ -447,7 +447,7 @@ export function WrittenEditor({
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-4" />
                 <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a value" className="h-8 pl-8" />
               </div>
-              <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
+              <div className="scrollbar-bold max-h-80 space-y-3 overflow-y-auto pr-1">
                 {GROUPS.map((g) => {
                   const list = values.filter((a) => a.v.startsWith(g.prefix));
                   if (!list.length) return null;
