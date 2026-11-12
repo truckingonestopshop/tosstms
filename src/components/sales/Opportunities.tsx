@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Avatar, Card, Empty, Pill, neutralPill } from "@/components/ui/Bits";
 import { Checkbox, Field, Input, Segmented, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
-import { EditLink, EditListButton, useOptions } from "@/components/ui/OptionList";
+import { EditListButton, useOptions } from "@/components/ui/OptionList";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { errMsg, sb } from "@/lib/db";
 import { useStore } from "@/lib/store";
@@ -17,7 +17,7 @@ import { cn, fmtDay, money, today } from "@/lib/format";
 import { SERVICES, serviceLabel } from "@/lib/services";
 import type { ChargeService } from "@/lib/billing";
 import type { ServiceKey } from "@/lib/types";
-import { isOpen, OPP_STATUSES, daysInStage, isRotting, oppNumber, statusMeta, weighted, type OppStatus, type Opportunity, type Stage } from "@/lib/sales";
+import { expectedCloseForService, isOpen, OPP_STATUSES, daysInStage, isRotting, oppNumber, statusMeta, weighted, type OppStatus, type Opportunity, type Stage } from "@/lib/sales";
 import { stagesOf, useSales } from "./SalesProvider";
 import { useCloseFlow, usePatchOpps } from "./OppClose";
 import { OpportunityDetail } from "./OpportunityDetail";
@@ -32,7 +32,7 @@ export function Opportunities() {
   const pathname = usePathname();
   const params = useSearchParams();
   const { pipelines, stages, opps, tasks } = useSales();
-  const { companyById, memberName, members, inScope, companies } = useStore();
+  const { companyById, memberName, members, inScope, scopedCompany } = useStore();
   const [now] = useState(() => Date.now());
   const t = today();
 
@@ -153,14 +153,16 @@ export function Opportunities() {
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-4" />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="OPP #, title, company, DOT, MC, contact, tag" className="pl-9" />
       </div>
-      <Button variant="primary" onClick={() => setAdding(true)} disabled={!companies.length || !pipelines.rows.length}>
-        <Plus className="h-4 w-4" /> New opportunity
-      </Button>
+      {scopedCompany && (
+        <Button variant="primary" onClick={() => setAdding(true)} disabled={!pipelines.rows.length}>
+          <Plus className="h-4 w-4" /> New opportunity
+        </Button>
+      )}
       <div className="flex w-full flex-wrap gap-2">
         <Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className="w-auto" aria-label="Status">
           <option value="open">Open (New + Invoice sent)</option>
           <option value="all">All statuses</option>
-          {OPP_STATUSES.map((s) => (
+          {OPP_STATUSES.filter((s) => s.v !== "abandoned").map((s) => (
             <option key={s.v} value={s.v}>
               {s.label}
             </option>
@@ -288,7 +290,7 @@ export function Opportunities() {
           {/* Drop on a status to close it (like GHL's bottom bar). */}
           {drag && (
             <div className="fixed inset-x-0 bottom-4 z-40 mx-auto flex w-fit gap-2 rounded-2xl border border-line bg-surface p-2 shadow-pop">
-              {(["won", "lost", "abandoned"] as const).map((st) => (
+              {(["lost"] as const).map((st) => (
                 <div
                   key={st}
                   onDragOver={(e) => {
@@ -445,7 +447,8 @@ function OppCard({ o, stage, now, openTasks, onOpen, onDrag, dragging }: { o: Op
 
 function BulkBar({ selected, onDone, close, exportCsv }: { selected: Opportunity[]; onDone: () => void; close: (ids: string[], s: OppStatus) => void; exportCsv: (o: Opportunity[]) => void }) {
   const { pipelines, stages, opps } = useSales();
-  const { members } = useStore();
+  const { members, me, isOwner, memberById } = useStore();
+  const canDelete = isOwner || ["manager", "cro"].includes(memberById(me.id)?.sales_level || "");
   const patch = usePatchOpps();
   const ids = selected.map((o) => o.id);
   return (
@@ -488,14 +491,8 @@ function BulkBar({ selected, onDone, close, exportCsv }: { selected: Opportunity
           </option>
         ))}
       </Select>
-      <Button size="sm" variant="outline" onClick={() => close(ids, "won")}>
-        Won
-      </Button>
       <Button size="sm" variant="outline" onClick={() => close(ids, "lost")}>
         Lost
-      </Button>
-      <Button size="sm" variant="outline" onClick={() => close(ids, "abandoned")}>
-        Abandoned
       </Button>
       <Button size="sm" variant="outline" onClick={() => close(ids, "new")}>
         Reopen
@@ -503,20 +500,22 @@ function BulkBar({ selected, onDone, close, exportCsv }: { selected: Opportunity
       <Button size="sm" variant="outline" onClick={() => exportCsv(selected)}>
         <Download className="h-4 w-4" /> CSV
       </Button>
-      <Button
-        size="sm"
-        variant="danger-ghost"
-        onClick={async () => {
-          if (!(await confirmDialog({ title: `Delete ${selected.length} opportunit${selected.length === 1 ? "y" : "ies"}?`, body: "Their products, tasks and history are deleted too. The company Timeline keeps its entries.", confirmLabel: "Delete", danger: true }))) return;
-          const { error } = await sb().from("tms_opportunities").delete().in("id", ids);
-          if (error) return toast.error(errMsg(error));
-          for (const id of ids) opps.drop(id);
-          onDone();
-          toast.success("Deleted");
-        }}
-      >
-        <Trash2 className="h-4 w-4" /> Delete
-      </Button>
+      {canDelete && (
+        <Button
+          size="sm"
+          variant="danger-ghost"
+          onClick={async () => {
+            if (!(await confirmDialog({ title: `Delete ${selected.length} opportunit${selected.length === 1 ? "y" : "ies"}?`, body: "Their products, tasks and history are deleted too. The company Timeline keeps its entries.", confirmLabel: "Delete", danger: true }))) return;
+            const { error } = await sb().from("tms_opportunities").delete().in("id", ids);
+            if (error) return toast.error(errMsg(error));
+            for (const id of ids) opps.drop(id);
+            onDone();
+            toast.success("Deleted");
+          }}
+        >
+          <Trash2 className="h-4 w-4" /> Delete
+        </Button>
+      )}
       <Button size="sm" variant="ghost" className="ml-auto" onClick={onDone}>
         Clear
       </Button>
@@ -524,12 +523,12 @@ function BulkBar({ selected, onDone, close, exportCsv }: { selected: Opportunity
   );
 }
 
-/** New opportunity: the essentials, then the full card opens. */
+/** New opportunity: created from the customer's profile; products are added on the quote card. */
 export function NewOpportunity({ open, onClose, onCreated, pipelineId, companyId }: { open: boolean; onClose: () => void; onCreated: (o: Opportunity) => void; pipelineId?: string; companyId?: string }) {
   const sources = useOptions("opp_source");
-  const { pipelines, stages, opps, products, items } = useSales();
-  const { companies, members, me, scopedCompany, companyById } = useStore();
-  type D = { company_id: string; title: string; pipeline_id: string; stage_id: string; value: string; owner_id: string; source: string; contact_name: string; expected_close: string; service: ChargeService; product_id: string };
+  const { pipelines, stages, opps, products } = useSales();
+  const { members, me, scopedCompany, companyById } = useStore();
+  type D = { company_id: string; title: string; pipeline_id: string; stage_id: string; owner_id: string; source: string; contact_name: string; expected_close: string; service: ChargeService };
   const [d, setD] = useState<D | null>(null);
   const [busy, setBusy] = useState(false);
   const [wasOpen, setWasOpen] = useState(false);
@@ -538,16 +537,27 @@ export function NewOpportunity({ open, onClose, onCreated, pipelineId, companyId
     if (open) {
       const p = pipelineId || pipelines.rows.find((x) => x.active)?.id || pipelines.rows[0]?.id || "";
       const co = companyId || scopedCompany?.id || "";
-      setD({ company_id: co, title: "", pipeline_id: p, stage_id: stagesOf(stages.rows, p)[0]?.id || "", value: "", owner_id: me.id, source: "", contact_name: companyById(co)?.contact_name || "", expected_close: "", service: "dispatch", product_id: "" });
+      const initialService: ChargeService = "dispatch";
+      setD({
+        company_id: co,
+        title: "",
+        pipeline_id: p,
+        stage_id: stagesOf(stages.rows, p)[0]?.id || "",
+        owner_id: me.id,
+        source: "",
+        contact_name: companyById(co)?.contact_name || "",
+        expected_close: expectedCloseForService(initialService, products.rows),
+        service: initialService,
+      });
     }
   }
   if (!open || !d) return null;
   const set = (p: Partial<D>) => setD({ ...d, ...p });
   const save = async () => {
-    if (!d.company_id || !d.title.trim()) return toast.error("Pick a company and give it a title");
+    if (!d.company_id) return toast.error("Open the opportunity from a customer's profile");
+    if (!d.title.trim()) return toast.error("Give the opportunity a title");
     if (!d.stage_id) return toast.error("Pick a stage");
     setBusy(true);
-    const product = products.rows.find((p) => p.id === d.product_id);
     const { data, error } = await sb()
       .from("tms_opportunities")
       .insert({
@@ -555,13 +565,13 @@ export function NewOpportunity({ open, onClose, onCreated, pipelineId, companyId
         title: d.title.trim(),
         pipeline_id: d.pipeline_id,
         stage_id: d.stage_id,
-        value: Number(d.value) || (product ? Number(product.price) : 0),
+        value: 0,
         owner_id: d.owner_id || null,
         source: d.source || null,
         contact_name: d.contact_name.trim() || null,
-        expected_close: d.expected_close || null,
-        service: product?.service || d.service,
-        product_id: product?.id || null,
+        expected_close: d.expected_close || expectedCloseForService(d.service, products.rows),
+        service: d.service,
+        product_id: null,
       })
       .select()
       .single();
@@ -571,14 +581,6 @@ export function NewOpportunity({ open, onClose, onCreated, pipelineId, companyId
     }
     const o = data as Opportunity;
     opps.put(o);
-    if (product) {
-      const res = await sb()
-        .from("tms_opportunity_items")
-        .insert({ opportunity_id: o.id, product_id: product.id, name: product.name, service: product.service, kind: product.kind, billing_interval: product.billing_interval, quantity: 1, unit_price: Number(product.price) })
-        .select()
-        .single();
-      if (res.data) items.put(res.data as never);
-    }
     setBusy(false);
     toast.success(`${oppNumber(o)} added`);
     onCreated(o);
@@ -600,18 +602,10 @@ export function NewOpportunity({ open, onClose, onCreated, pipelineId, companyId
       }
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Company" required className="sm:col-span-2">
-          <Select value={d.company_id} onChange={(e) => set({ company_id: e.target.value, contact_name: d.contact_name || companyById(e.target.value)?.contact_name || "" })} disabled={!!companyId}>
-            <option value="">Select…</option>
-            {[...companies]
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.stage === "lead" ? " (lead)" : ""}
-                </option>
-              ))}
-          </Select>
+        <Field label="Company" className="sm:col-span-2">
+          <div className="flex h-9 items-center rounded-lg border border-line bg-surface-2/60 px-3 text-[13px] font-medium text-fg">
+            {companyById(d.company_id)?.name || "—"}
+          </div>
         </Field>
         <Field label="Title" required className="sm:col-span-2">
           <Input value={d.title} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. DOT Compliance yearly plan" autoFocus />
@@ -634,30 +628,14 @@ export function NewOpportunity({ open, onClose, onCreated, pipelineId, companyId
             ))}
           </Select>
         </Field>
-        <Field label="Product" hint="Added as the first line; more in the card" action={<EditLink href="/sales?tab=products" />}>
+        <Field label="Service">
           <Select
-            value={d.product_id}
+            value={d.service}
             onChange={(e) => {
-              const p = products.rows.find((x) => x.id === e.target.value);
-              set({ product_id: e.target.value, ...(p ? { service: p.service, title: d.title || p.name, value: d.value || String(p.price) } : {}) });
+              const svc = e.target.value as ChargeService;
+              set({ service: svc, expected_close: expectedCloseForService(svc, products.rows) });
             }}
           >
-            <option value="">None</option>
-            {[...products.rows]
-              .sort((a, b) => a.sort - b.sort)
-              .filter((p) => p.active)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} · {money(Number(p.price))}
-                </option>
-              ))}
-          </Select>
-        </Field>
-        <Field label="Value">
-          <Input type="number" min={0} step="0.01" prefix="$" value={d.value} onChange={(e) => set({ value: e.target.value })} />
-        </Field>
-        <Field label="Service">
-          <Select value={d.service} onChange={(e) => set({ service: e.target.value as ChargeService })}>
             {SERVICES.map((s) => (
               <option key={s.key} value={s.key}>
                 {s.label}
@@ -689,7 +667,7 @@ export function NewOpportunity({ open, onClose, onCreated, pipelineId, companyId
         <Field label="Contact">
           <Input value={d.contact_name} onChange={(e) => set({ contact_name: e.target.value })} />
         </Field>
-        <Field label="Expected close">
+        <Field label="Expected close" hint="Auto-set by service">
           <Input type="date" value={d.expected_close} onChange={(e) => set({ expected_close: e.target.value })} />
         </Field>
       </div>

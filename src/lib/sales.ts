@@ -43,6 +43,10 @@ export interface ProductVariant {
   /** empty: the product's */
   expense: number | null;
   timeframe_days: number | null;
+  /** per-variant discount caps in dollars (null/undefined falls back to the product's) */
+  discount_rep?: number | null;
+  discount_manager?: number | null;
+  discount_cro?: number | null;
   active: boolean;
   sort: number;
   created_at: string;
@@ -54,9 +58,143 @@ export const SALES_LEVELS: { v: SalesLevel; label: string }[] = [
   { v: "manager", label: "Manager" },
   { v: "cro", label: "CRO" },
 ];
-/** The most this level may discount the product (in dollars). */
-export const discountCap = (p: Pick<Product, "discount_rep" | "discount_manager" | "discount_cro">, level: SalesLevel) =>
-  Number(p.discount_rep || 0) + (level !== "rep" ? Number(p.discount_manager || 0) : 0) + (level === "cro" ? Number(p.discount_cro || 0) : 0);
+
+export interface VariantDiscountOverride {
+  discount_rep: number | null;
+  discount_manager: number | null;
+  discount_cro: number | null;
+}
+
+export interface DiscountTiers {
+  rep: number;
+  manager: number;
+  cro: number;
+  /** cumulative max for a Rep (= rep) */
+  repCap: number;
+  /** cumulative max for a Manager (= rep + manager) */
+  managerCap: number;
+  /** cumulative max for a CRO (= rep + manager + cro) */
+  croCap: number;
+  /** overall max discount (= rep + manager + cro) */
+  overall: number;
+}
+
+/** Resolves the Rep / Manager (extra) / CRO (extra) and cumulative discount caps for a product and optional variant. */
+export function resolveDiscountTiers(
+  p?: Pick<Product, "discount_rep" | "discount_manager" | "discount_cro"> | null,
+  v?: Pick<ProductVariant, "discount_rep" | "discount_manager" | "discount_cro"> | null,
+  override?: VariantDiscountOverride | null,
+): DiscountTiers {
+  const pick = (ov: number | null | undefined, vv: number | null | undefined, pv: number | null | undefined) => {
+    if (ov != null && !Number.isNaN(Number(ov))) return Number(ov);
+    if (vv != null && !Number.isNaN(Number(vv))) return Number(vv);
+    return Number(pv || 0) || 0;
+  };
+  const rep = pick(override?.discount_rep, v?.discount_rep, p?.discount_rep);
+  const manager = pick(override?.discount_manager, v?.discount_manager, p?.discount_manager);
+  const cro = pick(override?.discount_cro, v?.discount_cro, p?.discount_cro);
+  const repCap = rep;
+  const managerCap = rep + manager;
+  const croCap = rep + manager + cro;
+  return { rep, manager, cro, repCap, managerCap, croCap, overall: croCap };
+}
+
+/** The most this level may discount the product or variant (in dollars). */
+export const discountCap = (
+  p: Pick<Product, "discount_rep" | "discount_manager" | "discount_cro">,
+  level: SalesLevel,
+  v?: Pick<ProductVariant, "discount_rep" | "discount_manager" | "discount_cro"> | null,
+  override?: VariantDiscountOverride | null,
+) => {
+  const t = resolveDiscountTiers(p, v, override);
+  return level === "cro" ? t.croCap : level === "manager" ? t.managerCap : t.repCap;
+};
+
+/** Parses a stored variant discount JSON payload from tms_option_lists (list = 'variant_discount'). */
+export function parseVariantDiscount(label: string | null | undefined): VariantDiscountOverride | null {
+  if (!label) return null;
+  try {
+    const j = JSON.parse(label) as Partial<VariantDiscountOverride>;
+    return {
+      discount_rep: j.discount_rep == null ? null : Number(j.discount_rep),
+      discount_manager: j.discount_manager == null ? null : Number(j.discount_manager),
+      discount_cro: j.discount_cro == null ? null : Number(j.discount_cro),
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ---- Product Bundles --------------------------------------------------------------------------------
+export interface ProductBundleItem {
+  product_id: string;
+  variant_id?: string | null;
+  quantity: number;
+}
+
+export interface ProductBundle {
+  id: string;
+  value: string;
+  name: string;
+  service: ChargeService;
+  description: string | null;
+  items: ProductBundleItem[];
+  active: boolean;
+  sort: number;
+}
+
+export function parseBundleRow(row: { id: string; value: string; label: string; sort: number; active: boolean }): ProductBundle | null {
+  try {
+    const j = JSON.parse(row.label) as {
+      name?: string;
+      service?: ChargeService;
+      description?: string | null;
+      items?: ProductBundleItem[];
+    };
+    if (!j || typeof j.name !== "string") return null;
+    return {
+      id: row.id,
+      value: row.value,
+      name: j.name,
+      service: j.service || "mcpt",
+      description: j.description ?? null,
+      items: Array.isArray(j.items)
+        ? j.items.map((x) => ({
+            product_id: String(x.product_id || ""),
+            variant_id: x.variant_id || null,
+            quantity: Math.max(1, Number(x.quantity) || 1),
+          })).filter((x) => x.product_id)
+        : [],
+      active: row.active,
+      sort: row.sort,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Default expected-close timeframe (in days) depending on the service selected. */
+export const SERVICE_CLOSE_DAYS: Record<ChargeService, number> = {
+  dispatch: 7,
+  dot_compliance: 14,
+  mcpt: 14,
+  accounting: 14,
+  factoring: 7,
+  fuel_card: 5,
+  insurance: 14,
+  other: 14,
+};
+
+/** Automatically computes the expected close date (YYYY-MM-DD) for a selected service. */
+export function expectedCloseForService(service: ChargeService, products?: Product[], baseDate?: string): string {
+  const svcProducts = (products || []).filter((p) => p.active && p.service === service && p.timeframe_days != null && Number(p.timeframe_days) > 0);
+  const days = svcProducts.length
+    ? Math.max(...svcProducts.map((p) => Number(p.timeframe_days) || 0))
+    : (SERVICE_CLOSE_DAYS[service] ?? 14);
+  const d = baseDate ? new Date(`${baseDate}T12:00:00`) : new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 export type TemplateKind = "agreement" | "template" | "email";
 export interface Template {

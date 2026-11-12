@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Briefcase, Clock, DollarSign, Headset, MessageSquare, Paperclip, Plus, Search, Trash2, X } from "lucide-react";
+import { Briefcase, Clock, DollarSign, Headset, MessageSquare, Paperclip, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, Empty, Pill, Stat, neutralPill } from "@/components/ui/Bits";
 import { Checkbox, Field, Input, Segmented, Select, Textarea } from "@/components/ui/Field";
@@ -51,7 +51,7 @@ export function CasesView({ kind, companyId }: { kind: CaseKind; companyId?: str
   const pathname = usePathname();
   const { me, inScope, companyById, memberName, scopedCompany } = useStore();
   const cases = useLiveTable<Case>("tms_cases", { filter: companyId ? { kind, company_id: companyId } : { kind } });
-  const entries = useLiveTable<CaseEntry>("tms_case_entries", { order: "created_at", ascending: true });
+  const entries = useLiveTable<CaseEntry>("tms_case_entries", { order: "created_at", ascending: false });
   const [show, setShow] = useState<Show>("open");
   const [q, setQ] = useState("");
   // Links: ?new=1&company=…&opportunity=… (from an opportunity / invoice) and ?case=<id>.
@@ -174,7 +174,7 @@ export function CasesView({ kind, companyId }: { kind: CaseKind; companyId?: str
           setOpenId(c.id);
         }}
       />
-      <CaseModal c={opened} entries={entries.rows.filter((e) => e.case_id === openId)} onClose={close} onSaved={cases.put} onDeleted={cases.drop} onEntry={entries.put} onEntryDeleted={entries.drop} />
+      <CaseModal c={opened} entries={entries.rows.filter((e) => e.case_id === openId)} onClose={close} onSaved={cases.put} onEntry={entries.put} />
     </>
   );
 }
@@ -391,17 +391,13 @@ function CaseModal({
   entries,
   onClose,
   onSaved,
-  onDeleted,
   onEntry,
-  onEntryDeleted,
 }: {
   c: Case | null;
   entries: CaseEntry[];
   onClose: () => void;
   onSaved: (c: Case) => void;
-  onDeleted: (id: string) => void;
   onEntry: (e: CaseEntry) => void;
-  onEntryDeleted: (id: string) => void;
 }) {
   const { companyById, members, invoices, me, isOwner, memberName } = useStore();
   const opps = useOpportunities(c?.company_id || "");
@@ -428,6 +424,7 @@ function CaseModal({
     setBody("");
     setFiles([]);
   }
+  const sortedEntries = useMemo(() => [...entries].sort((a, b) => b.created_at.localeCompare(a.created_at)), [entries]);
   const totals = useMemo(
     () => ({
       mins: entries.reduce((s, e) => s + (e.kind === "work" ? e.minutes || 0 : 0), 0),
@@ -476,6 +473,7 @@ function CaseModal({
       if (!method) return toast.error("How was it paid?"), false;
       const needs = PAYMENT_METHODS.find((m) => m.v === method)?.account;
       if (needs && accounts.some((x) => x.kind === needs) && !accountId) return toast.error(`Which ${needs === "card" ? "card" : "bank account"} paid?`), false;
+      if (!files.length) return toast.error("Attach the receipt file (mandatory for expenses)"), false;
       row.payment_method = method;
       row.account_id = needs ? accountId || null : null;
       row.processed_by = processedBy || null;
@@ -527,21 +525,6 @@ function CaseModal({
     if (dirty && !(await confirmDialog({ title: "Discard your changes?", body: "They haven't been saved.", confirmLabel: "Discard", danger: true }))) return;
     onClose();
   };
-  const removeEntry = async (e: CaseEntry) => {
-    const { error } = await sb().from("tms_case_entries").delete().eq("id", e.id);
-    if (error) return toast.error(errMsg(error));
-    if (e.attachments?.length) await sb().storage.from(BUCKET).remove(e.attachments.map((a) => a.path));
-    onEntryDeleted(e.id);
-  };
-  const remove = async () => {
-    if (!(await confirmDialog({ title: `Delete case #${c.number}?`, body: "Its log, files and expenses are deleted too. The company's Timeline keeps the history.", confirmLabel: "Delete", danger: true }))) return;
-    const paths = entries.flatMap((e) => (e.attachments || []).map((a) => a.path));
-    const { error } = await sb().from("tms_cases").delete().eq("id", c.id);
-    if (error) return toast.error(errMsg(error));
-    if (paths.length) await sb().storage.from(BUCKET).remove(paths);
-    onDeleted(c.id);
-    onClose();
-  };
   const open = (a: Attachment) => openDocument(a.path, a.name).catch((e) => toast.error(errMsg(e)));
 
   return (
@@ -553,11 +536,6 @@ function CaseModal({
       subtitle={[company?.name, catLabel(c.category)].filter(Boolean).join(" · ")}
       footer={
         <>
-          {isOwner && (
-            <Button variant="danger-ghost" onClick={remove} className="mr-auto">
-              <Trash2 className="h-4 w-4" /> Delete
-            </Button>
-          )}
           <Button variant="ghost" onClick={leave}>
             {dirty ? "Cancel" : "Close"}
           </Button>
@@ -675,8 +653,8 @@ function CaseModal({
         </span>
       </div>
       <ul className="mt-2 space-y-2">
-        {entries.length === 0 && <li className="text-xs text-fg-4">Nothing logged yet.</li>}
-        {entries.map((e) => (
+        {sortedEntries.length === 0 && <li className="text-xs text-fg-4">Nothing logged yet.</li>}
+        {sortedEntries.map((e) => (
           <li key={e.id} className="group flex gap-2.5 rounded-lg border border-line px-3 py-2">
             {e.kind === "work" ? <Clock className="mt-0.5 h-4 w-4 shrink-0 text-violet-500" /> : e.kind === "expense" ? <DollarSign className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" /> : <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-fg-4" />}
             <div className="min-w-0 flex-1">
@@ -723,11 +701,6 @@ function CaseModal({
                 {e.actor_name || "Someone"} · {relTime(e.created_at)}
               </div>
             </div>
-            {(e.actor_id === me.id || isOwner) && (
-              <button onClick={() => removeEntry(e)} className="self-start text-fg-4 opacity-0 hover:text-fg group-hover:opacity-100" aria-label="Delete entry">
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            )}
           </li>
         ))}
       </ul>
@@ -826,8 +799,8 @@ function CaseModal({
               e.target.value = "";
             }}
           />
-          <Button size="sm" variant="ghost" onClick={() => fileInput.current?.click()}>
-            <Paperclip className="h-3.5 w-3.5" /> Attach files
+          <Button size="sm" variant="ghost" onClick={() => fileInput.current?.click()} className={cn(entryKind === "expense" && !files.length && "text-amber-700 dark:text-amber-300")}>
+            <Paperclip className="h-3.5 w-3.5" /> {entryKind === "expense" ? "Attach receipt *" : "Attach files"}
           </Button>
           <Button size="sm" variant="secondary" onClick={add} disabled={busy}>
             Add {entryKind === "work" ? "work" : entryKind}

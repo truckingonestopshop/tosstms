@@ -103,7 +103,6 @@ function CloseModal({ value, onClose }: { value: Pending | null; onClose: () => 
     toast.success(won ? `Won${list.length > 1 ? ` (${list.length})` : ""}` : `Marked lost${list.length > 1 ? ` (${list.length})` : ""}`);
     onClose();
     if (won && one && next === "invoice") router.push(`/invoices/new?opportunity=${one.id}`);
-    if (won && one && next === "case") router.push(`/cases?new=1&company=${one.company_id}&opportunity=${one.id}`);
   };
 
   return (
@@ -160,7 +159,6 @@ function CloseModal({ value, onClose }: { value: Pending | null; onClose: () => 
                 <Select value={next} onChange={(e) => setNext(e.target.value as typeof next)}>
                   <option value="">Stay here</option>
                   <option value="invoice">Create an invoice</option>
-                  <option value="case">Open a case (onboarding)</option>
                 </Select>
               </Field>
             )}

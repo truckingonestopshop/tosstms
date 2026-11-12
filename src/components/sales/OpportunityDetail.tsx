@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Briefcase, Building2, Check, Copy, FileText, MoreHorizontal, Package, PackagePlus, PenLine, Plus, Settings2, Trash2, X } from "lucide-react";
+import { Boxes, Building2, Copy, FileText, MoreHorizontal, Package, PackagePlus, Percent, PenLine, Plus, Settings2, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, Pill, neutralPill } from "@/components/ui/Bits";
-import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { Checkbox, Field, Input, Segmented, Select, Textarea } from "@/components/ui/Field";
 import { Drawer } from "@/components/ui/Modal";
 import { MenuItem, MenuSep, Popover } from "@/components/ui/Menu";
 import { SortHandle, bySort, saveOrder, sortRow, useSortable } from "@/components/ui/Sortable";
@@ -18,13 +18,37 @@ import { toast } from "@/lib/toast";
 import { cn, fmtDay, money, relTime, today } from "@/lib/format";
 import { SERVICES } from "@/lib/services";
 import { intervalPer, INTERVALS, type ChargeService } from "@/lib/billing";
-import { isOpen, SALES_LEVELS, daysInStage, discountCap, isRotting, itemTotal, oppNumber, statusMeta, weighted, type OppEvent, type OppItem, type OppTask, type Opportunity, type Product, type ProductVariant, type SalesLevel } from "@/lib/sales";
+import {
+  expectedCloseForService,
+  isOpen,
+  SALES_LEVELS,
+  daysInStage,
+  discountCap,
+  isRotting,
+  itemTotal,
+  oppNumber,
+  resolveDiscountTiers,
+  statusMeta,
+  weighted,
+  type OppEvent,
+  type OppItem,
+  type OppTask,
+  type Opportunity,
+  type Product,
+  type ProductBundle,
+  type ProductVariant,
+  type SalesLevel,
+} from "@/lib/sales";
 import { stagesOf, useSales } from "./SalesProvider";
 import { useCloseFlow, usePatchOpps } from "./OppClose";
-import { ProductModal } from "./Products";
+import { ProductModal, useProductBundles, useVariantDiscounts } from "./Products";
 import { OppAgreements } from "./Agreements";
 
-type Draft = Pick<Opportunity, "title" | "company_id" | "pipeline_id" | "stage_id" | "value" | "owner_id" | "followers" | "source" | "contact_name" | "expected_close" | "service" | "notes" | "custom"> & { tagsText: string };
+type Draft = Pick<
+  Opportunity,
+  "title" | "company_id" | "pipeline_id" | "stage_id" | "value" | "owner_id" | "followers" | "source" | "contact_name" | "expected_close" | "service" | "notes" | "custom"
+> & { tagsText: string };
+
 const draftOf = (o: Opportunity): Draft => ({
   title: o.title,
   company_id: o.company_id,
@@ -45,8 +69,8 @@ const draftOf = (o: Opportunity): Draft => ({
 /** The opportunity card: details, products, tasks, agreements, notes and history. */
 export function OpportunityDetail({ id, onClose }: { id: string | null; onClose: () => void }) {
   const sources = useOptions("opp_source");
-  const { opps, pipelines, stages, items, fields } = useSales();
-  const { companies, companyById, members, memberName } = useStore();
+  const { opps, pipelines, stages, items, fields, products } = useSales();
+  const { companyById, members, memberName, me, isOwner, memberById } = useStore();
   const o = opps.rows.find((x) => x.id === id) || null;
   const [d, setD] = useState<Draft | null>(null);
   const [loadedFor, setLoadedFor] = useState("");
@@ -54,6 +78,7 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
   const [close, closeNode] = useCloseFlow();
   const patch = usePatchOpps();
   const [saving, setSaving] = useState(false);
+
   if (o && loadedFor !== o.id) {
     setLoadedFor(o.id);
     setD(draftOf(o));
@@ -61,25 +86,26 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
   if (!o && loadedFor) setLoadedFor("");
   if (!o || !d) return closeNode;
 
+  const canDelete = isOwner || ["manager", "cro"].includes(memberById(me.id)?.sales_level || "");
   const lines = items.rows.filter((i) => i.opportunity_id === o.id);
   const stage = stages.rows.find((s) => s.id === o.stage_id);
   const company = companyById(o.company_id);
   const st = statusMeta(o.status);
   const set = (p: Partial<Draft>) => setD({ ...d, ...p });
-  // With products the value follows them (saved right away), so it doesn't count as an edit.
-  const comparable = (x: Draft) => JSON.stringify({ ...x, value: lines.length ? 0 : Number(x.value) });
-  const dirty = comparable(d) !== comparable(draftOf(o));
 
   const save = async () => {
-    if (!d.title.trim() || !d.company_id) return toast.error("Title and company are needed");
-    const missing = fields.rows.filter((f) => f.active && f.required && (d.custom[f.id] === undefined || d.custom[f.id] === null || d.custom[f.id] === ""));
-    if (missing.length) return toast.error(`Fill in ${missing.map((f) => f.label).join(", ")}`);
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    if (!d.title.trim()) return toast.error("Title is needed");
     setSaving(true);
     const { tagsText, ...rest } = d;
+    const latestLines = items.rows.filter((i) => i.opportunity_id === o.id);
     const ok = await patch([o.id], {
       ...rest,
+      company_id: o.company_id,
       title: d.title.trim(),
-      value: lines.length ? lines.reduce((s, i) => s + itemTotal(i), 0) : Number(d.value) || 0,
+      value: latestLines.length ? latestLines.reduce((s, i) => s + itemTotal(i), 0) : Number(d.value) || 0,
       contact_name: d.contact_name?.trim() || null,
       tags: [
         ...new Set(
@@ -97,6 +123,7 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
     }
   };
   const remove = async () => {
+    if (!canDelete) return;
     if (!(await confirmDialog({ title: `Delete ${oppNumber(o)}?`, body: "Its products, tasks and history are deleted too. The company Timeline keeps its entries.", confirmLabel: "Delete", danger: true }))) return;
     const { error } = await sb().from("tms_opportunities").delete().eq("id", o.id);
     if (error) return toast.error(errMsg(error));
@@ -123,28 +150,22 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
         }
         footer={
           <>
-            <Button variant="danger-ghost" onClick={remove}>
-              <Trash2 className="h-4 w-4" /> Delete
-            </Button>
+            {canDelete && (
+              <Button variant="danger-ghost" onClick={remove}>
+                <Trash2 className="h-4 w-4" /> Delete
+              </Button>
+            )}
             <div className="ml-auto flex flex-wrap gap-2">
               {isOpen(o) ? (
-                <>
-                  <Button variant="outline" onClick={() => close([o.id], "abandoned")}>
-                    Abandoned
-                  </Button>
-                  <Button variant="outline" className="text-red-600 dark:text-red-400" onClick={() => close([o.id], "lost")}>
-                    Lost
-                  </Button>
-                  <Button variant="outline" className="text-emerald-700 dark:text-emerald-400" onClick={() => close([o.id], "won")}>
-                    <Check className="h-4 w-4" /> Won
-                  </Button>
-                </>
+                <Button variant="outline" className="text-red-600 dark:text-red-400" onClick={() => close([o.id], "lost")}>
+                  Lost
+                </Button>
               ) : (
                 <Button variant="outline" onClick={() => close([o.id], "new")}>
                   Reopen
                 </Button>
               )}
-              <Button variant="primary" onClick={save} loading={saving} disabled={!dirty}>
+              <Button variant="primary" onClick={save} loading={saving}>
                 Save
               </Button>
             </div>
@@ -159,17 +180,10 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
                 <Field label="Title" required className="sm:col-span-2">
                   <Input value={d.title} onChange={(e) => set({ title: e.target.value })} />
                 </Field>
-                <Field label="Company" required className="sm:col-span-2">
-                  <Select value={d.company_id} onChange={(e) => set({ company_id: e.target.value })}>
-                    {[...companies]
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                          {c.stage === "lead" ? " (lead)" : ""}
-                        </option>
-                      ))}
-                  </Select>
+                <Field label="Company" className="sm:col-span-2">
+                  <div className="flex h-9 items-center rounded-lg border border-line bg-surface-2/60 px-3 text-[13px] font-medium text-fg">
+                    {company?.name || "—"}
+                  </div>
                 </Field>
                 <Field label="Pipeline">
                   <Select value={d.pipeline_id || ""} onChange={(e) => set({ pipeline_id: e.target.value, stage_id: stagesOf(stages.rows, e.target.value)[0]?.id || null })}>
@@ -193,7 +207,13 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
                   <Input type="number" min={0} step="0.01" prefix="$" value={lines.length ? lines.reduce((s, i) => s + itemTotal(i), 0) : d.value || ""} onChange={(e) => set({ value: Number(e.target.value) })} disabled={lines.length > 0} />
                 </Field>
                 <Field label="Service">
-                  <Select value={d.service} onChange={(e) => set({ service: e.target.value as ChargeService })}>
+                  <Select
+                    value={d.service}
+                    onChange={(e) => {
+                      const svc = e.target.value as ChargeService;
+                      set({ service: svc, expected_close: expectedCloseForService(svc, products.rows) });
+                    }}
+                  >
                     {SERVICES.map((s) => (
                       <option key={s.key} value={s.key}>
                         {s.label}
@@ -246,7 +266,7 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
                 <Field label="Contact">
                   <Input value={d.contact_name || ""} onChange={(e) => set({ contact_name: e.target.value })} />
                 </Field>
-                <Field label="Expected close">
+                <Field label="Expected close" hint="Auto-set by service">
                   <Input type="date" value={d.expected_close || ""} onChange={(e) => set({ expected_close: e.target.value || null })} />
                 </Field>
                 <Field label="Tags" hint="Comma separated">
@@ -288,9 +308,6 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
               <Link href={`/invoices/new?opportunity=${o.id}`} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-medium text-fg hover:bg-surface-2">
                 <FileText className="h-4 w-4" /> Create invoice
               </Link>
-              <Link href={`/cases?new=1&company=${o.company_id}&opportunity=${o.id}`} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-medium text-fg hover:bg-surface-2">
-                <Briefcase className="h-4 w-4" /> Open a case
-              </Link>
             </div>
           </div>
 
@@ -307,33 +324,95 @@ export function OpportunityDetail({ id, onClose }: { id: string | null; onClose:
   );
 }
 
-/** Products on the opportunity; the value follows their total. Lines can be reordered, copied and
- *  saved to the product list; the Add menu searches products, adds a custom line or a new product. */
+/** Products on the opportunity; supports adding individual products or bundles, and shows Available Discounts tab. */
 function Products({ o, lines }: { o: Opportunity; lines: OppItem[] }) {
   const { products, items } = useSales();
   const { me, memberById, isOwner } = useStore();
   const variants = useLiveTable<ProductVariant>("tms_product_variants", { order: "sort", ascending: true });
+  const vDiscounts = useVariantDiscounts();
+  const { bundles } = useProductBundles();
+  const activeBundles = bundles.filter((b) => b.active);
+
   // How much this person may discount: a rep the Rep amount, a manager + Manager, the CRO all.
   const level: SalesLevel = isOwner ? "cro" : memberById(me.id)?.sales_level ?? "rep";
   const patch = usePatchOpps();
   const [q, setQ] = useState("");
+  const [viewTab, setViewTab] = useState<"quote" | "discounts">("quote");
   const [productModal, setProductModal] = useState<{ initial?: Partial<Product>; line?: OppItem } | null>(null);
   const catalog = [...products.rows].sort(bySort);
   const sync = (next: OppItem[]) => patch([o.id], { value: next.reduce((s, i) => s + itemTotal(i), 0) });
+
   const insert = async (row: Partial<OppItem>) => {
     const { data, error } = await sb().from("tms_opportunity_items").insert(row).select().single();
     if (error) return toast.error(errMsg(error));
     items.put(data as OppItem);
     sync([...lines, data as OppItem]);
   };
+
   const addProduct = (p: Product) =>
-    insert({ opportunity_id: o.id, product_id: p.id, name: p.name, service: p.service, kind: p.kind, billing_interval: p.billing_interval, quantity: 1, unit_price: Number(p.price), expense: p.expense, timeframe_days: p.timeframe_days, sort: lines.length });
+    insert({
+      opportunity_id: o.id,
+      product_id: p.id,
+      name: p.name,
+      service: p.service,
+      kind: p.kind,
+      billing_interval: p.billing_interval,
+      quantity: 1,
+      unit_price: Number(p.price),
+      expense: p.expense,
+      timeframe_days: p.timeframe_days,
+      sort: lines.length,
+    });
+
+  /** Prepopulates all products from a bundle onto the quote so the agent can still modify or remove any line. */
+  const addBundle = async (b: ProductBundle) => {
+    const rowsToInsert = b.items
+      .map((bi, idx) => {
+        const p = catalog.find((x) => x.id === bi.product_id);
+        if (!p) return null;
+        const v = bi.variant_id ? variants.rows.find((x) => x.id === bi.variant_id) : undefined;
+        return {
+          opportunity_id: o.id,
+          product_id: p.id,
+          name: p.name,
+          service: p.service,
+          kind: p.kind,
+          billing_interval: p.billing_interval,
+          quantity: Math.max(1, Number(bi.quantity) || 1),
+          unit_price: v ? Number(v.price) : Number(p.price),
+          variant_id: v?.id || null,
+          variant_name: v?.name || null,
+          expense: v?.expense ?? p.expense ?? null,
+          timeframe_days: v?.timeframe_days ?? p.timeframe_days ?? null,
+          sort: lines.length + idx,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+    if (!rowsToInsert.length) return toast.error("This bundle has no active catalog products");
+    const { data, error } = await sb().from("tms_opportunity_items").insert(rowsToInsert).select();
+    if (error) return toast.error(errMsg(error));
+    const inserted = (data || []) as OppItem[];
+    for (const row of inserted) items.put(row);
+    sync([...lines, ...inserted]);
+    toast.success(`Added ${inserted.length} product${inserted.length === 1 ? "" : "s"} from ${b.name}`);
+  };
+
   /** Picking a variant sets its name, price, expense and timeframe on the line. */
   const pickVariant = (i: OppItem, v: ProductVariant | undefined) => {
     const p = catalog.find((x) => x.id === i.product_id);
     if (!v) return update(i, { variant_id: null, variant_name: null });
-    update(i, { variant_id: v.id, variant_name: v.name, unit_price: Number(v.price), expense: v.expense ?? p?.expense ?? null, timeframe_days: v.timeframe_days ?? p?.timeframe_days ?? null });
+    const nextCap = p ? discountCap(p, level, v, vDiscounts.byVariantId(v.id)) : 0;
+    const clampedDiscount = Number(i.discount) > nextCap ? nextCap : Number(i.discount) || 0;
+    update(i, {
+      variant_id: v.id,
+      variant_name: v.name,
+      unit_price: Number(v.price),
+      expense: v.expense ?? p?.expense ?? null,
+      timeframe_days: v.timeframe_days ?? p?.timeframe_days ?? null,
+      discount: clampedDiscount,
+    });
   };
+
   const addCustom = () => insert({ opportunity_id: o.id, product_id: null, name: "Custom item", service: o.service, kind: "one_time", billing_interval: null, quantity: 1, unit_price: 0, sort: lines.length });
   const strip = (i: OppItem) => {
     const { id: _id, ...rest } = i;
@@ -361,107 +440,184 @@ function Products({ o, lines }: { o: Opportunity; lines: OppItem[] }) {
   const total = lines.reduce((s, i) => s + itemTotal(i), 0);
   const monthly = lines.filter((i) => i.kind === "subscription").reduce((s, i) => s + itemTotal(i), 0);
   const found = catalog.filter((p) => p.active && (!q || `${p.name} ${p.description || ""}`.toLowerCase().includes(q.toLowerCase())));
+  const foundBundles = activeBundles.filter((b) => !q || `${b.name} ${b.description || ""}`.toLowerCase().includes(q.toLowerCase()));
+
   return (
     <Card>
       <CardHeader
         title="Products"
         subtitle={lines.length ? `${money(total)}${monthly ? ` · ${money(monthly)} recurring` : ""}` : "What you're selling them"}
         actions={
-          <Popover
-            align="end"
-            width={300}
-            onOpenChange={(v) => !v && setQ("")}
-            trigger={({ toggle, ref }) => (
-              <Button ref={ref} size="sm" variant="outline" onClick={toggle}>
-                <Plus className="h-4 w-4" /> Add
-              </Button>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {lines.length > 0 && (
+              <Segmented<"quote" | "discounts">
+                size="sm"
+                value={viewTab}
+                onChange={setViewTab}
+                options={[
+                  { value: "quote", label: "Quote" },
+                  { value: "discounts", label: <><Percent className="h-3 w-3" /> Available discounts</> },
+                ]}
+              />
             )}
-          >
-            {(close) => (
-              <>
-                {catalog.some((p) => p.active) && (
-                  <div className="p-1">
-                    <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a product" className="h-8 text-[13px]" autoFocus />
-                  </div>
+            {activeBundles.length > 0 && (
+              <Popover
+                align="end"
+                width={280}
+                trigger={({ toggle, ref }) => (
+                  <Button ref={ref} size="sm" variant="outline" onClick={toggle}>
+                    <Boxes className="h-4 w-4" /> + Bundle
+                  </Button>
                 )}
-                {found.map((p) => (
-                  <MenuItem key={p.id} icon={Package} onClick={() => (close(), addProduct(p))} hint={`${money(Number(p.price), { cents: false })}${p.kind === "subscription" ? intervalPer(p.billing_interval) : ""}`}>
-                    {p.name}
-                  </MenuItem>
-                ))}
-                {q && found.length === 0 && <div className="px-2.5 py-2 text-xs text-fg-4">No product matches.</div>}
-                {catalog.some((p) => p.active) && <MenuSep />}
-                <MenuItem icon={PenLine} onClick={() => (close(), addCustom())}>
-                  Custom item
-                </MenuItem>
-                <MenuItem icon={PackagePlus} onClick={() => (close(), setProductModal({ initial: q ? { name: q } : undefined }))}>
-                  {q ? `New product "${q}"` : "New product"}
-                </MenuItem>
-                <MenuSep />
-                <Link href="/sales?tab=products" onClick={close} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-fg-3 hover:bg-surface-2 hover:text-fg">
-                  <Settings2 className="h-4 w-4 opacity-70" /> Manage products
-                </Link>
-              </>
+              >
+                {(close) => (
+                  <>
+                    <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-4">Prepopulate bundle</div>
+                    {activeBundles.map((b) => (
+                      <MenuItem
+                        key={b.id}
+                        icon={Boxes}
+                        onClick={() => (close(), addBundle(b))}
+                        hint={`${b.items.length} item${b.items.length === 1 ? "" : "s"}`}
+                      >
+                        {b.name}
+                      </MenuItem>
+                    ))}
+                    <MenuSep />
+                    <Link href="/sales?tab=products" onClick={close} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-fg-3 hover:bg-surface-2 hover:text-fg">
+                      <Settings2 className="h-4 w-4 opacity-70" /> Manage bundles
+                    </Link>
+                  </>
+                )}
+              </Popover>
             )}
-          </Popover>
+            <Popover
+              align="end"
+              width={320}
+              onOpenChange={(v) => !v && setQ("")}
+              trigger={({ toggle, ref }) => (
+                <Button ref={ref} size="sm" variant="outline" onClick={toggle}>
+                  <Plus className="h-4 w-4" /> Add
+                </Button>
+              )}
+            >
+              {(close) => (
+                <>
+                  {(catalog.some((p) => p.active) || activeBundles.length > 0) && (
+                    <div className="p-1">
+                      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a product or bundle…" className="h-8 text-[13px]" autoFocus />
+                    </div>
+                  )}
+                  {foundBundles.length > 0 && (
+                    <>
+                      <div className="px-2.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-fg-4">Bundles (prepopulate & modify)</div>
+                      {foundBundles.map((b) => (
+                        <MenuItem
+                          key={`bundle-${b.id}`}
+                          icon={Boxes}
+                          onClick={() => (close(), addBundle(b))}
+                          hint={`${b.items.length} products`}
+                        >
+                          {b.name}
+                        </MenuItem>
+                      ))}
+                      {found.length > 0 && <MenuSep />}
+                    </>
+                  )}
+                  {found.map((p) => (
+                    <MenuItem key={p.id} icon={Package} onClick={() => (close(), addProduct(p))} hint={`${money(Number(p.price), { cents: false })}${p.kind === "subscription" ? intervalPer(p.billing_interval) : ""}`}>
+                      {p.name}
+                    </MenuItem>
+                  ))}
+                  {q && found.length === 0 && foundBundles.length === 0 && <div className="px-2.5 py-2 text-xs text-fg-4">No product or bundle matches.</div>}
+                  {(catalog.some((p) => p.active) || activeBundles.length > 0) && <MenuSep />}
+                  <MenuItem icon={PenLine} onClick={() => (close(), addCustom())}>
+                    Custom item
+                  </MenuItem>
+                  <MenuItem icon={PackagePlus} onClick={() => (close(), setProductModal({ initial: q ? { name: q } : undefined }))}>
+                    {q ? `New product "${q}"` : "New product"}
+                  </MenuItem>
+                  <MenuSep />
+                  <Link href="/sales?tab=products" onClick={close} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-fg-3 hover:bg-surface-2 hover:text-fg">
+                    <Settings2 className="h-4 w-4 opacity-70" /> Manage products & bundles
+                  </Link>
+                </>
+              )}
+            </Popover>
+          </div>
         }
       />
       {lines.length === 0 ? (
-        <div className="px-4 py-5 text-center text-xs text-fg-4">No products yet. Add one, or type the value in Details.</div>
+        <div className="px-4 py-5 text-center text-xs text-fg-4">No products yet. Add a product or bundle above to build the quote.</div>
+      ) : viewTab === "discounts" ? (
+        <AvailableDiscountsTab lines={lines} catalog={catalog} variants={variants.rows} vDiscounts={vDiscounts} level={level} />
       ) : (
         <ul className="divide-y divide-line">
-          {lines.map((i) => (
-            <li key={i.id} {...sort.rowProps(i.id)} className={cn("flex items-start gap-1.5 py-2 pl-1.5 pr-3", sortRow)}>
-              <SortHandle {...sort.handle(i.id)} className="mt-1.5" />
-              <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_56px_88px] items-start gap-2 sm:grid-cols-[minmax(0,1fr)_64px_96px]">
-                <div className="min-w-0">
-                  <Input key={`${i.id}-${i.name}`} defaultValue={i.name} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== i.name && update(i, { name: e.target.value.trim() })} className="h-8 text-[13px]" aria-label="Name" />
-                  {(() => {
-                    // A product with variants: the variant must be picked (it sets the price).
-                    const vs = variants.rows.filter((v) => v.product_id === i.product_id && (v.active || v.id === i.variant_id));
-                    if (!i.product_id || !vs.length) return null;
-                    return (
-                      <Select
-                        value={i.variant_id || ""}
-                        onChange={(e) => pickVariant(i, vs.find((v) => v.id === e.target.value))}
-                        className={cn("mt-1 h-8 text-[13px]", !i.variant_id && "border-red-500 text-red-700 dark:text-red-300")}
-                        aria-label="Variant"
-                      >
-                        <option value="">Pick a variant (required)…</option>
-                        {vs.map((v) => (
-                          <option key={v.id} value={v.id}>
-                            {v.name} · {money(Number(v.price))}
-                          </option>
-                        ))}
-                      </Select>
-                    );
-                  })()}
-                  <div className="mt-1 flex flex-wrap items-center gap-1">
-                    <select value={i.kind} onChange={(e) => update(i, { kind: e.target.value as OppItem["kind"], billing_interval: e.target.value === "subscription" ? i.billing_interval || "monthly" : null })} className="rounded bg-transparent text-[11px] text-fg-3" aria-label="Type">
-                      <option value="one_time">One-time</option>
-                      <option value="subscription">Recurring</option>
-                    </select>
-                    {i.kind === "subscription" && (
-                      <select value={i.billing_interval || "monthly"} onChange={(e) => update(i, { billing_interval: e.target.value as OppItem["billing_interval"] })} className="rounded bg-transparent text-[11px] text-fg-3" aria-label="Billed">
-                        {INTERVALS.map((x) => (
-                          <option key={x.v} value={x.v}>
-                            {x.label}
-                          </option>
-                        ))}
+          {lines.map((i) => {
+            const p = catalog.find((x) => x.id === i.product_id);
+            const selectedVar = i.variant_id ? variants.rows.find((v) => v.id === i.variant_id) : undefined;
+            const ov = vDiscounts.byVariantId(i.variant_id);
+            const tiers = resolveDiscountTiers(p, selectedVar, ov);
+            const cap = p ? discountCap(p, level, selectedVar, ov) : 0;
+
+            return (
+              <li key={i.id} {...sort.rowProps(i.id)} className={cn("flex items-start gap-1.5 py-2 pl-1.5 pr-3", sortRow)}>
+                <SortHandle {...sort.handle(i.id)} className="mt-1.5" />
+                <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_56px_104px] items-start gap-2 sm:grid-cols-[minmax(0,1fr)_64px_116px]">
+                  <div className="min-w-0">
+                    <Input key={`${i.id}-${i.name}`} defaultValue={i.name} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== i.name && update(i, { name: e.target.value.trim() })} className="h-8 text-[13px]" aria-label="Name" />
+                    {(() => {
+                      // A product with variants: the variant must be picked (it sets the price and discounts).
+                      const vs = variants.rows.filter((v) => v.product_id === i.product_id && (v.active || v.id === i.variant_id));
+                      if (!i.product_id || !vs.length) return null;
+                      return (
+                        <Select
+                          value={i.variant_id || ""}
+                          onChange={(e) => pickVariant(i, vs.find((v) => v.id === e.target.value))}
+                          className={cn("mt-1 h-8 text-[13px]", !i.variant_id && "border-red-500 text-red-700 dark:text-red-300")}
+                          aria-label="Variant"
+                        >
+                          <option value="">Pick a variant (required)…</option>
+                          {vs.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.name} · {money(Number(v.price))}
+                            </option>
+                          ))}
+                        </Select>
+                      );
+                    })()}
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <select value={i.kind} onChange={(e) => update(i, { kind: e.target.value as OppItem["kind"], billing_interval: e.target.value === "subscription" ? i.billing_interval || "monthly" : null })} className="rounded bg-transparent text-[11px] text-fg-3" aria-label="Type">
+                        <option value="one_time">One-time</option>
+                        <option value="subscription">Recurring</option>
                       </select>
-                    )}
+                      {i.kind === "subscription" && (
+                        <select value={i.billing_interval || "monthly"} onChange={(e) => update(i, { billing_interval: e.target.value as OppItem["billing_interval"] })} className="rounded bg-transparent text-[11px] text-fg-3" aria-label="Billed">
+                          {INTERVALS.map((x) => (
+                            <option key={x.v} value={x.v}>
+                              {x.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {p && tiers.overall > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setViewTab("discounts")}
+                          className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-fg-3 hover:text-fg"
+                          title="Click to open Available discounts breakdown"
+                        >
+                          Rep {money(tiers.repCap, { cents: false })} · Mgr {money(tiers.managerCap, { cents: false })} · CRO {money(tiers.croCap, { cents: false })}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <Input key={`${i.id}-q${i.quantity}`} type="number" min={0} step="1" defaultValue={Number(i.quantity)} onBlur={(e) => Number(e.target.value) !== Number(i.quantity) && update(i, { quantity: Number(e.target.value) || 0 })} className="h-8 text-[13px]" aria-label="Quantity" />
-                <div>
-                  <Input key={`${i.id}-p${i.unit_price}`} type="number" min={0} step="0.01" prefix="$" defaultValue={Number(i.unit_price)} onBlur={(e) => Number(e.target.value) !== Number(i.unit_price) && update(i, { unit_price: Number(e.target.value) || 0 })} className="h-8 text-[13px]" aria-label="Price" />
-                  {(() => {
-                    const p = catalog.find((x) => x.id === i.product_id);
-                    const cap = p ? discountCap(p, level) : 0;
-                    if (!p || (!cap && !Number(i.discount))) return null;
-                    return (
+                  <Input key={`${i.id}-q${i.quantity}`} type="number" min={0} step="1" defaultValue={Number(i.quantity)} onBlur={(e) => Number(e.target.value) !== Number(i.quantity) && update(i, { quantity: Number(e.target.value) || 0 })} className="h-8 text-[13px]" aria-label="Quantity" />
+                  <div>
+                    <Input key={`${i.id}-p${i.unit_price}`} type="number" min={0} step="0.01" prefix="$" defaultValue={Number(i.unit_price)} onBlur={(e) => Number(e.target.value) !== Number(i.unit_price) && update(i, { unit_price: Number(e.target.value) || 0 })} className="h-8 text-[13px]" aria-label="Price" />
+                    {p && (cap > 0 || Number(i.discount) > 0) && (
                       <Input
-                        key={`${i.id}-d${i.discount}`}
+                        key={`${i.id}-d${i.discount}-${i.variant_id || ""}`}
                         type="number"
                         min={0}
                         max={cap}
@@ -469,61 +625,61 @@ function Products({ o, lines }: { o: Opportunity; lines: OppItem[] }) {
                         prefix="−$"
                         defaultValue={Number(i.discount) || ""}
                         placeholder={`up to ${cap}`}
-                        title={`Discount: you can give up to ${money(cap)} (${SALES_LEVELS.find((x) => x.v === level)?.label})`}
+                        title={`Discount: you can give up to ${money(cap)} (${SALES_LEVELS.find((x) => x.v === level)?.label}) · Rep: ${money(tiers.repCap)} · Manager: ${money(tiers.managerCap)} · CRO/Overall: ${money(tiers.overall)}`}
                         onBlur={(e) => {
                           const v = Number(e.target.value) || 0;
                           if (v === Number(i.discount)) return;
-                          if (v > cap) return toast.error(`The most you can discount ${p.name} is ${money(cap)}`), (e.target.value = String(Number(i.discount) || ""));
+                          if (v > cap) return toast.error(`The most you can discount ${i.variant_name ? `${p.name} (${i.variant_name})` : p.name} is ${money(cap)}`), (e.target.value = String(Number(i.discount) || ""));
                           update(i, { discount: v });
                         }}
                         className="mt-1 h-8 text-[13px]"
                         aria-label="Discount"
                       />
-                    );
-                  })()}
-                  <div className="tnum mt-1 text-right text-[12px] font-medium text-fg">
-                    {money(itemTotal(i), { cents: false })}
-                    {i.kind === "subscription" && <span className="font-normal text-fg-4">{intervalPer(i.billing_interval)}</span>}
+                    )}
+                    <div className="tnum mt-1 text-right text-[12px] font-medium text-fg">
+                      {money(itemTotal(i), { cents: false })}
+                      {i.kind === "subscription" && <span className="font-normal text-fg-4">{intervalPer(i.billing_interval)}</span>}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <Popover
-                align="end"
-                width={200}
-                trigger={({ toggle, ref }) => (
-                  <button ref={ref} type="button" onClick={toggle} className="mt-1 rounded p-1 text-fg-4 hover:bg-surface-2 hover:text-fg" aria-label="Line actions">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </button>
-                )}
-              >
-                {(close) => (
-                  <>
-                    <MenuItem icon={Copy} onClick={() => (close(), duplicate(i))}>
-                      Duplicate
-                    </MenuItem>
-                    {!i.product_id && (
-                      <MenuItem
-                        icon={PackagePlus}
-                        onClick={() => (
-                          close(),
-                          setProductModal({
-                            line: i,
-                            initial: { name: i.name, service: i.service, kind: i.kind, price: Number(i.unit_price), billing_interval: i.billing_interval },
-                          })
-                        )}
-                      >
-                        Save to products
+                <Popover
+                  align="end"
+                  width={200}
+                  trigger={({ toggle, ref }) => (
+                    <button ref={ref} type="button" onClick={toggle} className="mt-1 rounded p-1 text-fg-4 hover:bg-surface-2 hover:text-fg" aria-label="Line actions">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                  )}
+                >
+                  {(close) => (
+                    <>
+                      <MenuItem icon={Copy} onClick={() => (close(), duplicate(i))}>
+                        Duplicate
                       </MenuItem>
-                    )}
-                    <MenuSep />
-                    <MenuItem icon={Trash2} danger onClick={() => (close(), remove(i))}>
-                      Remove
-                    </MenuItem>
-                  </>
-                )}
-              </Popover>
-            </li>
-          ))}
+                      {!i.product_id && (
+                        <MenuItem
+                          icon={PackagePlus}
+                          onClick={() => (
+                            close(),
+                            setProductModal({
+                              line: i,
+                              initial: { name: i.name, service: i.service, kind: i.kind, price: Number(i.unit_price), billing_interval: i.billing_interval },
+                            })
+                          )}
+                        >
+                          Save to products
+                        </MenuItem>
+                      )}
+                      <MenuSep />
+                      <MenuItem icon={Trash2} danger onClick={() => (close(), remove(i))}>
+                        Remove
+                      </MenuItem>
+                    </>
+                  )}
+                </Popover>
+              </li>
+            );
+          })}
         </ul>
       )}
       <ProductModal
@@ -536,6 +692,106 @@ function Products({ o, lines }: { o: Opportunity; lines: OppItem[] }) {
         onSaved={(p) => (productModal?.line ? update(productModal.line, { product_id: p.id }) : addProduct(p))}
       />
     </Card>
+  );
+}
+
+/** Tab showing available discounts per line and overall for Rep, Manager, CRO, and Overall. */
+function AvailableDiscountsTab({
+  lines,
+  catalog,
+  variants,
+  vDiscounts,
+  level,
+}: {
+  lines: OppItem[];
+  catalog: Product[];
+  variants: ProductVariant[];
+  vDiscounts: ReturnType<typeof useVariantDiscounts>;
+  level: SalesLevel;
+}) {
+  const rows = lines.map((i) => {
+    const p = catalog.find((x) => x.id === i.product_id);
+    const v = i.variant_id ? variants.find((x) => x.id === i.variant_id) : undefined;
+    const ov = vDiscounts.byVariantId(i.variant_id);
+    const tiers = resolveDiscountTiers(p, v, ov);
+    const applied = Number(i.discount) || 0;
+    return { item: i, tiers, applied };
+  });
+
+  const totals = rows.reduce(
+    (acc, r) => ({
+      rep: acc.rep + r.tiers.repCap,
+      manager: acc.manager + r.tiers.managerCap,
+      cro: acc.cro + r.tiers.croCap,
+      overall: acc.overall + r.tiers.overall,
+      applied: acc.applied + r.applied,
+    }),
+    { rep: 0, manager: 0, cro: 0, overall: 0, applied: 0 },
+  );
+
+  const levelLabel = SALES_LEVELS.find((x) => x.v === level)?.label ?? "Rep";
+  const myTotalCap = level === "cro" ? totals.cro : level === "manager" ? totals.manager : totals.rep;
+
+  return (
+    <div className="p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-2/60 px-3 py-2 text-xs text-fg-2">
+        <span>
+          Your role level: <b className="text-fg">{levelLabel}</b> (up to <b className="text-fg">{money(myTotalCap)}</b> across this quote)
+        </span>
+        <span>
+          Overall max discount: <b className="text-fg">{money(totals.overall)}</b>
+        </span>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-line">
+        <table className="w-full min-w-[480px] text-[12px]">
+          <thead className="bg-surface-2/60 text-left text-[11px] uppercase tracking-wider text-fg-3">
+            <tr>
+              <th className="px-3 py-2 font-semibold">Product / Variant</th>
+              <th className="px-2 py-2 text-right font-semibold">Rep</th>
+              <th className="px-2 py-2 text-right font-semibold">Manager</th>
+              <th className="px-2 py-2 text-right font-semibold">CRO</th>
+              <th className="px-2 py-2 text-right font-semibold">Overall</th>
+              <th className="px-3 py-2 text-right font-semibold">Applied</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {rows.map(({ item, tiers, applied }) => (
+              <tr key={item.id}>
+                <td className="px-3 py-2">
+                  <div className="font-medium text-fg">{item.name}</div>
+                  {item.variant_name && <div className="text-[11px] text-fg-3">{item.variant_name}</div>}
+                </td>
+                <td className="tnum px-2 py-2 text-right text-fg-2">{money(tiers.repCap)}</td>
+                <td className="tnum px-2 py-2 text-right text-fg-2">
+                  {money(tiers.managerCap)}
+                  {tiers.manager > 0 && <div className="text-[10px] text-fg-4">(+{money(tiers.manager, { cents: false })})</div>}
+                </td>
+                <td className="tnum px-2 py-2 text-right text-fg-2">
+                  {money(tiers.croCap)}
+                  {tiers.cro > 0 && <div className="text-[10px] text-fg-4">(+{money(tiers.cro, { cents: false })})</div>}
+                </td>
+                <td className="tnum px-2 py-2 text-right font-semibold text-fg">{money(tiers.overall)}</td>
+                <td className="tnum px-3 py-2 text-right font-medium text-emerald-700 dark:text-emerald-400">
+                  {applied > 0 ? `−${money(applied)}` : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="border-t border-line bg-surface-2/50 font-semibold text-fg">
+            <tr>
+              <td className="px-3 py-2">Overall total</td>
+              <td className="tnum px-2 py-2 text-right">{money(totals.rep)}</td>
+              <td className="tnum px-2 py-2 text-right">{money(totals.manager)}</td>
+              <td className="tnum px-2 py-2 text-right">{money(totals.cro)}</td>
+              <td className="tnum px-2 py-2 text-right">{money(totals.overall)}</td>
+              <td className="tnum px-3 py-2 text-right text-emerald-700 dark:text-emerald-400">
+                {totals.applied > 0 ? `−${money(totals.applied)}` : "—"}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
   );
 }
 
