@@ -55,7 +55,7 @@ export function FieldBuilder({
       h: t.h,
       role,
       label: t.label,
-      required: tool !== "checkbox",
+      required: tool !== "checkbox" && tool !== "middle_name",
       auto: t.auto ?? null,
       validation: t.validation ?? null,
       options: tool === "dropdown" || tool === "radio" ? ["Option 1", "Option 2"] : undefined,
@@ -127,7 +127,7 @@ export function FieldBuilder({
               </option>
             ))}
           </Select>
-          <div className="scrollbar-bold grid max-h-[260px] grid-cols-2 gap-1.5 overflow-y-auto pr-1">
+          <div className="scrollbar-bold grid max-h-[340px] grid-cols-2 gap-1.5 overflow-y-auto pr-1">
             {FIELD_TYPES.map((t) => {
               const I = ICON[t.v];
               return (

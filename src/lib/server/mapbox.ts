@@ -247,14 +247,50 @@ export async function suggestPlaces(q: string): Promise<string[]> {
     const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return [];
     const data = await res.json();
-    type Ctx = { place?: { name?: string }; region?: { region_code?: string; name?: string } };
+    type Ctx = { place?: { name?: string }; region?: { region_code?: string; name?: string }; postcode?: { name?: string } };
     const feats: { properties?: { name?: string; feature_type?: string; context?: Ctx } }[] = data?.features || [];
+    const zipByCity = new Map<string, string>();
+    for (const f of feats) {
+      const p = f.properties;
+      const st = p?.context?.region?.region_code || p?.context?.region?.name || "";
+      if (p?.feature_type === "postcode" && p.context?.place?.name && p.name) {
+        const ck = `${p.context.place.name.toLowerCase()}|${st.toLowerCase()}`;
+        if (!zipByCity.has(ck)) zipByCity.set(ck, p.name);
+      }
+    }
+    // If the user searched a city/state and Mapbox didn't include a postcode feature yet, look up the primary postcode.
+    if (zipByCity.size === 0 && feats.length > 0 && !/\b\d{5}\b/.test(text)) {
+      const top = feats[0]?.properties;
+      const topSt = top?.context?.region?.region_code || top?.context?.region?.name || "";
+      if (top?.name && topSt) {
+        try {
+          const zUrl = `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(`${top.name}, ${topSt}`)}&country=us,ca,mx&types=postcode&limit=3&access_token=${TOKEN}`;
+          const zRes = await fetch(zUrl, { signal: AbortSignal.timeout(3500) });
+          if (zRes.ok) {
+            const zData = await zRes.json();
+            for (const zf of (zData?.features || []) as typeof feats) {
+              const zp = zf.properties;
+              const zSt = zp?.context?.region?.region_code || zp?.context?.region?.name || "";
+              const zCity = zp?.context?.place?.name || top.name;
+              if (zp?.name && /^\d{5}/.test(zp.name)) {
+                const ck = `${zCity.toLowerCase()}|${zSt.toLowerCase()}`;
+                if (!zipByCity.has(ck)) zipByCity.set(ck, zp.name);
+              }
+            }
+          }
+        } catch {
+          /* ignore optional postcode lookup failure */
+        }
+      }
+    }
     const out: string[] = [];
     for (const f of feats) {
       const p = f.properties;
       const st = p?.context?.region?.region_code || p?.context?.region?.name || "";
-      const label =
-        p?.feature_type === "postcode" ? [p.context?.place?.name, [st, p.name].filter(Boolean).join(" ")].filter(Boolean).join(", ") : [p?.name, st].filter(Boolean).join(", ");
+      const ck = `${(p?.name || "").toLowerCase()}|${st.toLowerCase()}`;
+      const zip = p?.feature_type === "postcode" ? p.name : p?.context?.postcode?.name || zipByCity.get(ck) || "";
+      const city = p?.feature_type === "postcode" ? p?.context?.place?.name : p?.name;
+      const label = [city, [st, zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
       if (label && !out.includes(label)) out.push(label);
     }
     if (suggestCache.size > 1000) suggestCache.clear();

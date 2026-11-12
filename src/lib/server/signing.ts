@@ -164,7 +164,7 @@ async function buildSignedPdf(req: SignRequest, recipients: SignRecipient[], ori
       } catch {}
       write(page, `Attached: ${name}`, x, y, w, h);
     } else {
-      write(page, f.type === "date" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? usDate(v) : v, x, y, w, h);
+      write(page, (f.type === "date" || f.type === "fillable_date") && /^\d{4}-\d{2}-\d{2}$/.test(v) ? usDate(v) : v, x, y, w, h);
     }
   }
 

@@ -66,7 +66,7 @@ export function PdfPages({
           key={i}
           data-pdf-page={i}
           className="relative mx-auto mb-4 w-full overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-line"
-          style={{ aspectRatio: `${size.w} / ${size.h}` }}
+          style={{ aspectRatio: `${size.w} / ${size.h}`, containerType: "inline-size" }}
           onClick={(e) => {
             if (!onPageClick || e.target !== e.currentTarget.querySelector("[data-page-bg]")) return;
             const r = e.currentTarget.getBoundingClientRect();

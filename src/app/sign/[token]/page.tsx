@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Download, FileText, Loader2, Lock, Paperclip, ShieldCheck, XCircle } from "lucide-react";
+import { CheckCircle2, Download, FileText, Loader2, Lock, Paperclip, RotateCcw, ShieldCheck, XCircle, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Input, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -62,6 +62,7 @@ export default function SignPage({ params }: { params: Promise<{ token: string }
   const [reason, setReason] = useState("");
   const [done, setDone] = useState<"" | "signed" | "completed" | "declined">("");
   const [uploading, setUploading] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(100);
   const headers = useCallback((extra: Record<string, string> = {}) => ({ ...extra, ...(code ? { "x-sign-code": code } : {}) }), [code]);
 
   const load = useCallback(() => {
@@ -182,36 +183,73 @@ export default function SignPage({ params }: { params: Promise<{ token: string }
         </a>
       )}
 
-      <div className="scrollbar-bold overflow-x-auto">
-        <PdfPages
-          src={view.fileUrl}
-          pages={view.pages}
-          className="min-w-[340px] pb-44"
-        overlay={(page) =>
-          view.signedCopy ? null : (
-            <div className="absolute inset-0">
-              {view.fields
-                .filter((f) => f.page === page && isShown(f, view.fields, all))
-                .map((f) => {
-                  const own = !!canAct && isSigner && f.role === view.me.role;
-                  return (
-                    <FieldBox
-                      key={f.id}
-                      f={f}
-                      v={all[f.id] || ""}
-                      own={own && !f.readOnly && !f.formula}
-                      missing={own && !!fieldProblem(f, all[f.id])}
-                      busy={uploading === f.id}
-                      onChange={(x) => set(f.id, x)}
-                      onFile={(file) => attach(f, file)}
-                      onPad={() => (adopted[f.type as "signature" | "initials"] ? set(f.id, adopted[f.type as "signature" | "initials"]!) : setPad(f))}
-                    />
-                  );
-                })}
-            </div>
-          )
-        }
-      />
+      <div className="mb-2 flex items-center justify-between gap-2 text-xs text-fg-3">
+        <span>{view.pages.length} page{view.pages.length === 1 ? "" : "s"}</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setZoom((z) => Math.max(75, z - 20))}
+            className="rounded border border-line bg-surface p-1 text-fg-2 hover:text-fg"
+            title="Zoom out"
+            aria-label="Zoom out"
+          >
+            <ZoomOut className="h-3.5 w-3.5" />
+          </button>
+          <span className="tnum min-w-[42px] text-center font-medium text-fg-2">{zoom}%</span>
+          <button
+            type="button"
+            onClick={() => setZoom((z) => Math.min(220, z + 20))}
+            className="rounded border border-line bg-surface p-1 text-fg-2 hover:text-fg"
+            title="Zoom in"
+            aria-label="Zoom in"
+          >
+            <ZoomIn className="h-3.5 w-3.5" />
+          </button>
+          {zoom !== 100 && (
+            <button
+              type="button"
+              onClick={() => setZoom(100)}
+              className="rounded border border-line bg-surface p-1 text-fg-3 hover:text-fg"
+              title="Reset zoom"
+              aria-label="Reset zoom"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="scrollbar-bold overflow-x-auto pb-44">
+        <div style={{ width: `${zoom}%` }} className="mx-auto">
+          <PdfPages
+            src={view.fileUrl}
+            pages={view.pages}
+            overlay={(page) =>
+              view.signedCopy ? null : (
+                <div className="absolute inset-0">
+                  {view.fields
+                    .filter((f) => f.page === page && isShown(f, view.fields, all))
+                    .map((f) => {
+                      const own = !!canAct && isSigner && f.role === view.me.role;
+                      return (
+                        <FieldBox
+                          key={f.id}
+                          f={f}
+                          v={all[f.id] || ""}
+                          own={own && !f.readOnly && !f.formula}
+                          missing={own && !!fieldProblem(f, all[f.id])}
+                          busy={uploading === f.id}
+                          onChange={(x) => set(f.id, x)}
+                          onFile={(file) => attach(f, file)}
+                          onPad={() => (adopted[f.type as "signature" | "initials"] ? set(f.id, adopted[f.type as "signature" | "initials"]!) : setPad(f))}
+                        />
+                      );
+                    })}
+                </div>
+              )
+            }
+          />
+        </div>
       </div>
 
       {canAct && (
@@ -363,25 +401,33 @@ function FieldBox({
   onFile: (file: File) => void;
   onPad: () => void;
 }) {
-  const style = { left: `${f.x * 100}%`, top: `${f.y * 100}%`, width: `${f.w * 100}%`, height: `${f.h * 100}%` };
-  const ring = own ? (missing ? "bg-amber-300/30 ring-2 ring-amber-500" : "bg-sky-300/15 ring-1 ring-sky-500") : "";
-  const text = "text-[min(1.6vw,12px)] text-[#0d0d33]";
+  const fontCqw = Math.min(1.55, Math.max(0.85, f.h * 70)).toFixed(2);
+  const style: React.CSSProperties = {
+    left: `${f.x * 100}%`,
+    top: `${f.y * 100}%`,
+    width: `${f.w * 100}%`,
+    height: `${f.h * 100}%`,
+    fontSize: `clamp(5.5px, ${fontCqw}cqw, 12px)`,
+    lineHeight: 1.05,
+  };
+  const ring = own ? (missing ? "bg-amber-300/30 ring-1 sm:ring-2 ring-amber-500" : "bg-sky-300/15 ring-1 ring-sky-500") : "";
+  const text = "pdf-field text-[#0d0d33]";
   if (f.type === "signature" || f.type === "initials") {
     return (
-      <button id={`f-${f.id}`} type="button" disabled={!own} onClick={onPad} className={cn("absolute flex items-center justify-center overflow-hidden rounded-[3px]", ring)} style={style} title={f.label}>
+      <button id={`f-${f.id}`} type="button" disabled={!own} onClick={onPad} className={cn("pdf-field absolute flex items-center justify-center overflow-hidden rounded-[2px]", ring)} style={style} title={f.label}>
         {v.startsWith("data:image") ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={v} alt={f.label} className="max-h-full max-w-full object-contain" />
         ) : own ? (
-          <span className="text-[10px] font-semibold text-sky-800 sm:text-xs">{f.type === "signature" ? "Sign here" : "Initial"}</span>
+          <span className="truncate px-0.5 font-semibold text-sky-800" style={{ fontSize: "clamp(5.5px, 1.35cqw, 11px)" }}>{f.type === "signature" ? "Sign here" : "Initial"}</span>
         ) : null}
       </button>
     );
   }
   if (f.type === "checkbox") {
     return (
-      <button id={`f-${f.id}`} type="button" disabled={!own} onClick={() => onChange(v === "true" ? "" : "true")} className={cn("absolute flex items-center justify-center rounded-[2px] border border-zinc-500 bg-white/70 text-zinc-900", ring)} style={style} title={f.label} aria-pressed={v === "true"}>
-        {v === "true" && <span className="text-[min(2.2vw,14px)] font-bold leading-none">✕</span>}
+      <button id={`f-${f.id}`} type="button" disabled={!own} onClick={() => onChange(v === "true" ? "" : "true")} className={cn("pdf-field absolute flex items-center justify-center rounded-[2px] border border-zinc-500 bg-white/70 text-zinc-900", ring)} style={style} title={f.label} aria-pressed={v === "true"}>
+        {v === "true" && <span className="font-bold leading-none" style={{ fontSize: "clamp(6px, 1.8cqw, 14px)" }}>✕</span>}
       </button>
     );
   }
@@ -391,8 +437,8 @@ function FieldBox({
       name = v ? (JSON.parse(v) as { name: string }).name : "";
     } catch {}
     return (
-      <label id={`f-${f.id}`} className={cn("absolute flex cursor-pointer items-center gap-1 overflow-hidden rounded-[3px] px-1", text, ring, !own && "pointer-events-none")} style={style} title={f.label}>
-        {busy ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" /> : <Paperclip className="h-3 w-3 shrink-0" />}
+      <label id={`f-${f.id}`} className={cn(" absolute flex cursor-pointer items-center gap-0.5 overflow-hidden rounded-[2px] px-0.5", text, ring, !own && "pointer-events-none")} style={style} title={f.label}>
+        {busy ? <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin" /> : <Paperclip className="h-2.5 w-2.5 shrink-0" />}
         <span className="truncate">{name || (own ? `Attach: ${f.label}` : "")}</span>
         {own && <input type="file" className="hidden" onChange={(e) => (e.target.files?.[0] && onFile(e.target.files[0]), (e.target.value = ""))} />}
       </label>
@@ -400,7 +446,7 @@ function FieldBox({
   }
   if (f.type === "dropdown" && own) {
     return (
-      <select id={`f-${f.id}`} value={v} onChange={(e) => onChange(e.target.value)} className={cn("absolute rounded-[2px] border-0 bg-white/70 px-0.5 outline-none", text, ring)} style={style} aria-label={f.label}>
+      <select id={`f-${f.id}`} value={v} onChange={(e) => onChange(e.target.value)} className={cn("absolute rounded-[2px] border-0 bg-white/70 px-0.5 py-0 outline-none", text, ring)} style={style} aria-label={f.label}>
         <option value="">{f.label}…</option>
         {(f.options || []).map((o) => (
           <option key={o} value={o}>
@@ -412,25 +458,27 @@ function FieldBox({
   }
   if (f.type === "radio" && own) {
     return (
-      <div id={`f-${f.id}`} role="radiogroup" aria-label={f.label} className={cn("absolute flex flex-col justify-center gap-0.5 overflow-hidden rounded-[3px] bg-white/70 px-1", text, ring)} style={style}>
+      <div id={`f-${f.id}`} role="radiogroup" aria-label={f.label} className={cn("absolute flex flex-col justify-center gap-0.5 overflow-hidden rounded-[2px] bg-white/70 px-0.5", text, ring)} style={style}>
         {(f.options || []).map((o) => (
-          <label key={o} className="flex cursor-pointer items-center gap-1 leading-tight">
-            <input type="radio" name={f.id} checked={v === o} onChange={() => onChange(o)} className="h-3 w-3 accent-[#f28c38]" />
+          <label key={o} className="flex cursor-pointer items-center gap-0.5 leading-tight">
+            <input type="radio" name={f.id} checked={v === o} onChange={() => onChange(o)} className="shrink-0 accent-[#f28c38]" style={{ width: "clamp(7px, 1.3cqw, 12px)", height: "clamp(7px, 1.3cqw, 12px)" }} />
             <span className="truncate">{o}</span>
           </label>
         ))}
       </div>
     );
   }
-  const shown = f.type === "date" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? usDate(v) : v;
+  const isDate = f.type === "date" || f.type === "fillable_date";
+  const shown = isDate && /^\d{4}-\d{2}-\d{2}$/.test(v) ? usDate(v) : v;
+  const placeholder = f.type === "fillable_date" && f.label === "Fillable date" ? "MM/DD/YYYY" : f.label;
   return own ? (
     <input
       id={`f-${f.id}`}
       value={shown}
       onChange={(e) => onChange(e.target.value)}
-      placeholder={f.label}
-      inputMode={f.type === "number" ? "decimal" : f.type === "email" ? "email" : undefined}
-      className={cn("absolute rounded-[2px] border-0 bg-transparent px-0.5 outline-none placeholder:text-sky-700/60", text, ring)}
+      placeholder={placeholder}
+      inputMode={f.type === "number" ? "decimal" : f.type === "email" ? "email" : f.type === "phone" ? "tel" : undefined}
+      className={cn("absolute rounded-[2px] border-0 bg-transparent px-0.5 py-0 outline-none placeholder:text-sky-700/60", text, ring)}
       style={style}
       aria-label={f.label}
     />

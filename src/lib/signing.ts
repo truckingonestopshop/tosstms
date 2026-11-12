@@ -6,8 +6,14 @@ export type FieldType =
   | "signature"
   | "initials"
   | "date"
+  | "fillable_date"
   | "text"
   | "name"
+  | "first_name"
+  | "middle_name"
+  | "last_name"
+  | "phone"
+  | "cdl"
   | "email"
   | "company"
   | "title"
@@ -163,7 +169,13 @@ export const FIELD_TYPES: { v: FieldType; label: string; w: number; h: number; a
   { v: "signature", label: "Signature", w: 0.26, h: 0.055 },
   { v: "initials", label: "Initials", w: 0.09, h: 0.045 },
   { v: "date", label: "Date signed", w: 0.17, h: 0.03, auto: "today" },
+  { v: "fillable_date", label: "Fillable date", w: 0.17, h: 0.03 },
   { v: "name", label: "Full name", w: 0.26, h: 0.03, auto: "recipient.name" },
+  { v: "first_name", label: "First name", w: 0.18, h: 0.03, auto: "recipient.first_name" },
+  { v: "middle_name", label: "Middle name", w: 0.15, h: 0.03, auto: "recipient.middle_name" },
+  { v: "last_name", label: "Last name", w: 0.18, h: 0.03, auto: "recipient.last_name" },
+  { v: "phone", label: "Phone #", w: 0.2, h: 0.03, auto: "recipient.phone", validation: "phone" },
+  { v: "cdl", label: "CDL #", w: 0.2, h: 0.03, auto: "driver.license" },
   { v: "email", label: "Email", w: 0.26, h: 0.03, auto: "recipient.email", validation: "email" },
   { v: "company", label: "Company", w: 0.3, h: 0.03, auto: "company.name" },
   { v: "title", label: "Title", w: 0.2, h: 0.03 },
@@ -175,7 +187,23 @@ export const FIELD_TYPES: { v: FieldType; label: string; w: number; h: number; a
   { v: "attachment", label: "Attachment", w: 0.22, h: 0.035 },
 ];
 /** Typed fields (a value written on the PDF). */
-export const TEXTLIKE: FieldType[] = ["text", "name", "email", "company", "title", "number", "date", "dropdown", "radio"];
+export const TEXTLIKE: FieldType[] = [
+  "text",
+  "name",
+  "first_name",
+  "middle_name",
+  "last_name",
+  "phone",
+  "cdl",
+  "email",
+  "company",
+  "title",
+  "number",
+  "date",
+  "fillable_date",
+  "dropdown",
+  "radio",
+];
 export const VALIDATIONS: { v: Validation; label: string; hint: string; re: RegExp }[] = [
   { v: "email", label: "Email", hint: "name@company.com", re: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ },
   { v: "phone", label: "Phone", hint: "(305) 555-0100", re: /^\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$/ },
@@ -215,7 +243,7 @@ export function fieldProblem(f: SignField, v: string | undefined): string {
   const val = (v || "").trim();
   if (f.required && isEmpty(f, val)) return `Fill in "${f.label}"`;
   if (!val || f.type === "checkbox" || f.type === "signature" || f.type === "initials" || f.type === "attachment") return "";
-  const rule = VALIDATIONS.find((x) => x.v === (f.validation || (f.type === "email" ? "email" : f.type === "number" ? "number" : null)));
+  const rule = VALIDATIONS.find((x) => x.v === (f.validation || (f.type === "email" ? "email" : f.type === "phone" ? "phone" : f.type === "number" ? "number" : null)));
   if (rule && !rule.re.test(rule.v === "number" ? val.replace(/[$,]/g, "") : val)) return `"${f.label}" should look like ${rule.hint}`;
   if ((f.type === "dropdown" || f.type === "radio") && f.options?.length && !f.options.includes(val)) return `Pick one of the choices for "${f.label}"`;
   return "";
@@ -263,10 +291,16 @@ export type AutoKey =
   | "company.email"
   | "company.owner"
   | "recipient.name"
+  | "recipient.first_name"
+  | "recipient.middle_name"
+  | "recipient.last_name"
   | "recipient.email"
   | "recipient.phone"
   | "recipient.title"
   | "driver.name"
+  | "driver.first_name"
+  | "driver.middle_name"
+  | "driver.last_name"
   | "driver.phone"
   | "driver.email"
   | "driver.license"
@@ -295,14 +329,20 @@ export const AUTO: { v: AutoKey; label: string }[] = [
   { v: "company.phone", label: "Company: phone" },
   { v: "company.email", label: "Company: email" },
   { v: "company.owner", label: "Company: owner / main contact" },
-  { v: "recipient.name", label: "Signer: name" },
+  { v: "recipient.name", label: "Signer: full name" },
+  { v: "recipient.first_name", label: "Signer: first name" },
+  { v: "recipient.middle_name", label: "Signer: middle name" },
+  { v: "recipient.last_name", label: "Signer: last name" },
   { v: "recipient.email", label: "Signer: email" },
   { v: "recipient.phone", label: "Signer: phone" },
   { v: "recipient.title", label: "Signer: title / role" },
-  { v: "driver.name", label: "Driver: name" },
+  { v: "driver.name", label: "Driver: full name" },
+  { v: "driver.first_name", label: "Driver: first name" },
+  { v: "driver.middle_name", label: "Driver: middle name" },
+  { v: "driver.last_name", label: "Driver: last name" },
   { v: "driver.phone", label: "Driver: phone" },
   { v: "driver.email", label: "Driver: email" },
-  { v: "driver.license", label: "Driver: license number" },
+  { v: "driver.license", label: "Driver: CDL / license number" },
   { v: "driver.license_state", label: "Driver: license state" },
   { v: "driver.license_type", label: "Driver: license type (CDL / DL)" },
   { v: "driver.license_expiry", label: "Driver: license expires" },
@@ -334,6 +374,8 @@ export interface AutoSource {
   } | null;
   driver?: {
     name?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
     phone?: string | null;
     email?: string | null;
     cdl_number?: string | null;
@@ -364,6 +406,16 @@ export interface AutoSource {
   date?: string;
 }
 
+/** Splits a full name into first, middle and last name parts. */
+export function splitName(fullName?: string | null, firstHint?: string | null, lastHint?: string | null): { first: string; middle: string; last: string } {
+  const full = (fullName || [firstHint, lastHint].filter(Boolean).join(" ") || "").trim();
+  const parts = full.split(/\s+/).filter(Boolean);
+  if (!parts.length) return { first: (firstHint || "").trim(), middle: "", last: (lastHint || "").trim() };
+  if (parts.length === 1) return { first: parts[0], middle: "", last: (lastHint || "").trim() };
+  if (parts.length === 2) return { first: parts[0], middle: "", last: parts[1] };
+  return { first: parts[0], middle: parts.slice(1, -1).join(" "), last: parts[parts.length - 1] };
+}
+
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th"}`;
 export const usDate = (iso: string) => {
   const [y, m, d] = iso.slice(0, 10).split("-");
@@ -379,6 +431,10 @@ export function autoValue(key: AutoKey, s: AutoSource): string {
   const c = s.company || {};
   const p = s.person || {};
   const personName = [p.first_name, p.last_name].filter(Boolean).join(" ");
+  const recFull = s.recipient?.name || personName || s.driver?.name || "";
+  const recParts = splitName(recFull, p.first_name || s.driver?.first_name, p.last_name || s.driver?.last_name);
+  const drvFull = s.driver?.name || personName || s.recipient?.name || "";
+  const drvParts = splitName(drvFull, s.driver?.first_name || p.first_name, s.driver?.last_name || p.last_name);
   const date = s.date || localToday();
   const [y, m, d] = date.split("-").map(Number);
   switch (key) {
@@ -409,7 +465,13 @@ export function autoValue(key: AutoKey, s: AutoSource): string {
     case "company.owner":
       return [c.contact_first_name, c.contact_last_name].filter(Boolean).join(" ") || (p.is_owner ? personName : "");
     case "recipient.name":
-      return s.recipient?.name || personName || s.driver?.name || "";
+      return recFull;
+    case "recipient.first_name":
+      return recParts.first;
+    case "recipient.middle_name":
+      return recParts.middle;
+    case "recipient.last_name":
+      return recParts.last;
     case "recipient.email":
       return s.recipient?.email || p.email || s.driver?.email || "";
     case "recipient.phone":
@@ -417,7 +479,13 @@ export function autoValue(key: AutoKey, s: AutoSource): string {
     case "recipient.title":
       return s.recipient?.title || p.title || (p.is_owner ? "Owner" : p.is_der ? "DER" : s.driver ? "Driver" : "");
     case "driver.name":
-      return s.driver?.name || personName || s.recipient?.name || "";
+      return drvFull;
+    case "driver.first_name":
+      return drvParts.first;
+    case "driver.middle_name":
+      return drvParts.middle;
+    case "driver.last_name":
+      return drvParts.last;
     case "driver.phone":
       return s.driver?.phone || p.phone || s.recipient?.phone || "";
     case "driver.email":
@@ -453,6 +521,7 @@ export function autoValue(key: AutoKey, s: AutoSource): string {
 
 /** Matches a field's label or type to a database auto-fill key when one wasn't explicitly picked. */
 export function inferAutoKey(label: string, type?: FieldType): AutoKey | null {
+  if (type === "fillable_date") return null;
   const l = (label || "").trim().toLowerCase();
   if (/\b(dob|date of birth|birth\s*date)\b/.test(l)) return "driver.dob";
   if (/\b(hire\s*date|date\s*hired)\b/.test(l)) return "driver.hire_date";
@@ -471,6 +540,9 @@ export function inferAutoKey(label: string, type?: FieldType): AutoKey | null {
   if (/\b(city)\b/.test(l)) return "company.city";
   if (/\b(zip|postal)\b/.test(l)) return "company.zip";
   if (/\b(owner)\b/.test(l)) return "company.owner";
+  if (/\b(first\s*name|given\s*name|primer\s*nombre)\b/.test(l)) return "recipient.first_name";
+  if (/\b(middle\s*name|middle\s*initial|segundo\s*nombre)\b/.test(l)) return "recipient.middle_name";
+  if (/\b(last\s*name|surname|family\s*name|apellido)\b/.test(l)) return "recipient.last_name";
   if (/\b(driver\s*name|applicant(\s*name)?)\b/.test(l)) return "driver.name";
   if (/\b(driver\s*phone)\b/.test(l)) return "driver.phone";
   if (/\b(driver\s*email)\b/.test(l)) return "driver.email";
@@ -482,6 +554,11 @@ export function inferAutoKey(label: string, type?: FieldType): AutoKey | null {
   if (/\b(title|position|role)\b/.test(l)) return "recipient.title";
   if (/\b(date\s*signed|today'?s?\s*date|signing\s*date)\b/.test(l)) return "today";
   if (type === "name") return "recipient.name";
+  if (type === "first_name") return "recipient.first_name";
+  if (type === "middle_name") return "recipient.middle_name";
+  if (type === "last_name") return "recipient.last_name";
+  if (type === "phone") return "recipient.phone";
+  if (type === "cdl") return "driver.license";
   if (type === "email") return "recipient.email";
   if (type === "company") return "company.name";
   if (type === "title") return "recipient.title";

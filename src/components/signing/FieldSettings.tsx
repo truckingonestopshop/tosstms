@@ -79,10 +79,10 @@ export function FieldSettings({ field: f, fields, who, onChange }: { field: Sign
       )}
 
       {typed && (
-        <Field label="Fills itself with (database)" hint={f.role === "toss" ? "Filled in when sending; can still be changed." : "Auto-fills when you pick the person / company."}>
+        <Field label="Fills itself with (database)" hint={f.role === "toss" ? "Filled in when sending; can still be changed." : f.type === "fillable_date" ? "Leave as Nothing so the signer enters the date manually." : "Auto-fills when you pick the person / company."}>
           <Select value={f.auto || ""} onChange={(e) => onChange({ auto: (e.target.value || null) as AutoKey | null })}>
-            <option value="">Nothing (fixed / typed text)</option>
-            {AUTO.filter((a) => (f.type === "date" ? a.v === "today" || a.v === "driver.dob" || a.v === "driver.license_expiry" || a.v === "driver.medical_expiry" || a.v === "driver.hire_date" : true)).map((a) => (
+            <option value="">{f.type === "fillable_date" ? "Nothing (manual date entered by signer)" : "Nothing (fixed / typed text)"}</option>
+            {AUTO.filter((a) => (f.type === "date" || f.type === "fillable_date" ? a.v === "today" || a.v === "driver.dob" || a.v === "driver.license_expiry" || a.v === "driver.medical_expiry" || a.v === "driver.hire_date" : true)).map((a) => (
               <option key={a.v} value={a.v}>
                 {a.label}
               </option>
@@ -91,7 +91,7 @@ export function FieldSettings({ field: f, fields, who, onChange }: { field: Sign
         </Field>
       )}
 
-      {typed && f.type !== "date" && (
+      {typed && f.type !== "date" && f.type !== "fillable_date" && (
         <Field label="Format check">
           <Select value={f.validation || ""} onChange={(e) => onChange({ validation: (e.target.value || null) as Validation | null })}>
             <option value="">None</option>

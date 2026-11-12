@@ -181,11 +181,11 @@
   }
 }
 
-/* Phones: 16px form fields so iOS Safari does not zoom on focus. */
+/* Phones: 16px form fields so iOS Safari does not zoom on focus (except PDF overlay fields). */
 @media (max-width: 639px) {
-  input:not([type="checkbox"]):not([type="radio"]),
-  select,
-  textarea {
+  input:not([type="checkbox"]):not([type="radio"]):not(.pdf-field),
+  select:not(.pdf-field),
+  textarea:not(.pdf-field) {
     font-size: 16px !important;
   }
 }

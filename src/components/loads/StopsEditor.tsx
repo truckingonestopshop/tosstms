@@ -80,7 +80,7 @@ export function StopsEditor({
                   <option value="pickup">Pickup</option>
                   <option value="delivery">Delivery</option>
                 </Select>
-                <span className="min-w-0 flex-1 truncate text-xs text-fg-3">{[s.facility_name, [s.city, s.state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}</span>
+                <span className="min-w-0 flex-1 truncate text-xs text-fg-3">{[s.facility_name, [[s.city, s.state].filter(Boolean).join(", "), s.zip].filter(Boolean).join(" ")].filter(Boolean).join(" · ")}</span>
                 <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="rounded p-1 text-fg-4 hover:text-fg disabled:opacity-30" aria-label="Move up">
                   <ArrowUp className="h-3.5 w-3.5" />
                 </button>

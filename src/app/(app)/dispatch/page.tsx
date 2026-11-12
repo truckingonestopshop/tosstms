@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { DispatchFrame, DispatchGate } from "@/components/fleet/CompanyNav";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, Building2, CalendarClock, ChevronDown, FileWarning, Plus, Truck as TruckIcon, XCircle } from "lucide-react";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader, Empty, Page, Pill, Stat } from "@/components/ui/Bits";
@@ -97,21 +97,62 @@ function Dashboard() {
     };
   }, [L, month, grossBy]);
 
-  // Today's stops
+  // Today's stops (with ZIP code; resolves missing ZIP codes automatically when a stop only has City, ST)
+  const [resolvedZips, setResolvedZips] = useState<Record<string, string>>({});
   const todayStops = useMemo(() => {
-    const out: { load: Load; i: number; type: "pickup" | "delivery"; time: string; place: string }[] = [];
+    const out: { load: Load; i: number; type: "pickup" | "delivery"; time: string; place: string; cityState: string; hasZip: boolean }[] = [];
+    const formatStopPlace = (city?: string | null, state?: string | null, zip?: string | null, address?: string | null) => {
+      const c = (city || "").trim();
+      const st = (state || "").trim();
+      const cityState = [c, st].filter(Boolean).join(", ");
+      const z = (zip || "").trim() || (/\b(\d{5}(?:-\d{4})?)\b/.exec(address || "")?.[1] ?? "") || (cityState ? resolvedZips[cityState.toLowerCase()] || "" : "");
+      return {
+        place: [cityState, z].filter(Boolean).join(" ") || address || "—",
+        cityState,
+        hasZip: !!z,
+      };
+    };
     for (const l of L) {
       if (isCanceled(l.status)) continue;
       l.stops.forEach((s, i) => {
-        if (s.date === t && s.status !== "completed") out.push({ load: l, i, type: s.type, time: s.time || s.appointment || "", place: `${s.city}, ${s.state}` });
+        if (s.date === t && s.status !== "completed") {
+          const p = formatStopPlace(s.city, s.state, s.zip, s.address);
+          out.push({ load: l, i, type: s.type, time: s.time || s.appointment || "", ...p });
+        }
       });
       if (!l.stops.length) {
-        if (l.pickup_date === t) out.push({ load: l, i: 0, type: "pickup", time: "", place: `${l.origin_city}, ${l.origin_state}` });
-        if (l.delivery_date === t) out.push({ load: l, i: 1, type: "delivery", time: "", place: `${l.destination_city}, ${l.destination_state}` });
+        if (l.pickup_date === t) {
+          const p = formatStopPlace(l.origin_city, l.origin_state);
+          out.push({ load: l, i: 0, type: "pickup", time: "", ...p });
+        }
+        if (l.delivery_date === t) {
+          const p = formatStopPlace(l.destination_city, l.destination_state);
+          out.push({ load: l, i: 1, type: "delivery", time: "", ...p });
+        }
       }
     }
     return out.sort((a, b) => a.time.localeCompare(b.time));
-  }, [L, t]);
+  }, [L, t, resolvedZips]);
+
+  useEffect(() => {
+    const missing = [...new Set(todayStops.filter((s) => !s.hasZip && s.cityState).map((s) => s.cityState))];
+    if (!missing.length) return;
+    let alive = true;
+    for (const cs of missing) {
+      fetch(`/api/places?q=${encodeURIComponent(cs)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { places?: string[] } | null) => {
+          if (!alive || !data?.places?.length) return;
+          const match = data.places.find((p) => /\b\d{5}(?:-\d{4})?\b/.test(p));
+          const zip = match ? /\b(\d{5}(?:-\d{4})?)\b/.exec(match)?.[1] : null;
+          if (zip) setResolvedZips((prev) => (prev[cs.toLowerCase()] ? prev : { ...prev, [cs.toLowerCase()]: zip }));
+        })
+        .catch(() => {});
+    }
+    return () => {
+      alive = false;
+    };
+  }, [todayStops]);
 
   // Fleet board
   const board = useMemo(() => {

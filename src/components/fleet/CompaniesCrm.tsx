@@ -9,9 +9,10 @@ import { Input, Segmented, Select } from "@/components/ui/Field";
 import { driverAlert } from "@/components/fleet/Drivers";
 import { useStore } from "@/lib/store";
 import { useLiveTable } from "@/lib/live";
+import { monthly, runningSub, type Charge } from "@/lib/billing";
 import { isOpen, type Opportunity } from "@/lib/sales";
 import { toast } from "@/lib/toast";
-import { ACTIVE_STATUSES, daysUntil, fmtDay, money, today } from "@/lib/format";
+import { ACTIVE_STATUSES, daysUntil, fmtDay, isCanceled, money, today } from "@/lib/format";
 import { SERVICES, activeServices, hasService } from "@/lib/services";
 import type { Company, ServiceKey } from "@/lib/types";
 
@@ -53,7 +54,7 @@ function haystack(c: Company) {
 const phones = (c: Company) => [c.contact_phone, c.secondary_phone].map(digits).join(" ");
 
 export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
-  const { companies, trucks, drivers, loads, documents, updateCompany } = useStore();
+  const { companies, trucks, drivers, loads, documents, invoices, updateCompany } = useStore();
   const router = useRouter();
   const open = (id: string) => router.push(`/fleet?company=${id}`);
   const [stage, setStage] = useState<Stage>("all");
@@ -63,7 +64,9 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
   const [sort, setSort] = useState<Sort>("name");
   const [layout, setLayout] = useState<"cards" | "table">("cards");
   // Open opportunities per company (Sales), shown on leads and in the table.
-  const opps = useLiveTable<Opportunity>("tms_opportunities").rows.filter(isOpen);
+  const allOpps = useLiveTable<Opportunity>("tms_opportunities").rows;
+  const opps = allOpps.filter(isOpen);
+  const charges = useLiveTable<Charge>("tms_charges").rows;
   const pipe = new Map<string, { n: number; value: number }>();
   for (const o of opps) {
     const r = pipe.get(o.company_id) || { n: 0, value: 0 };
@@ -258,8 +261,31 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
             const d = drivers.filter((x) => x.company_id === c.id);
             const l = loads.filter((x) => x.company_id === c.id);
             const active = l.filter((x) => ACTIVE_STATUSES.includes(x.status)).length;
-            const month = today().slice(0, 7);
-            const gross = l.filter((x) => (x.delivery_date || x.pickup_date || "").startsWith(month)).reduce((s, x) => s + x.gross_amount, 0);
+            const tDay = today();
+            const month = tDay.slice(0, 7);
+            // Total amount TOSS charged the client this month across all services (dispatch fees,
+            // active subscriptions, one-time charges, invoices, and won sales).
+            const coCharges = charges.filter((x) => x.company_id === c.id);
+            const subTotal = coCharges.filter((x) => runningSub(x, tDay)).reduce((s, x) => s + monthly(x), 0);
+            const oneTimeTotal = coCharges
+              .filter((x) => x.kind === "one_time" && x.status !== "void" && (x.charge_date || "").startsWith(month))
+              .reduce((s, x) => s + (Number(x.amount) || 0), 0);
+            const coInvoices = invoices.filter((x) => x.company_id === c.id && x.status !== "void" && x.status !== "draft" && (x.issue_date || "").startsWith(month));
+            const billedLoadIds = new Set(coInvoices.flatMap((i) => i.lines.map((ln) => ln.load_id).filter(Boolean)));
+            const invoiceTotal = coInvoices.reduce((s, i) => s + (Number(i.total_due) || 0), 0);
+            const unbilledDispatchFee = l
+              .filter((x) => !isCanceled(x.status) && !billedLoadIds.has(x.id) && (x.delivery_date || x.pickup_date || "").startsWith(month))
+              .reduce((s, x) => s + (Number(x.dispatcher_cut) || 0), 0);
+            const wonSalesTotal = allOpps
+              .filter(
+                (o) =>
+                  o.company_id === c.id &&
+                  o.status === "won" &&
+                  (o.closed_at || o.updated_at || "").startsWith(month) &&
+                  !coCharges.some((ch) => ch.notes?.includes(`OPP-${o.number}`)),
+              )
+              .reduce((s, o) => s + (Number(o.value) || 0), 0);
+            const charged = subTotal + oneTimeTotal + invoiceTotal + unbilledDispatchFee + wonSalesTotal;
             const alerts = d.filter(driverAlert).length + documents.filter((x) => x.company_id === c.id && (daysUntil(x.expires_on) ?? 99) <= 30).length;
             const lead = c.stage === "lead";
             return (
@@ -305,12 +331,12 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
                 ) : (
                   <div className="mt-4 grid grid-cols-4 gap-2 border-t border-line pt-3">
                     {[
-                      ["Trucks", t.length],
-                      ["Drivers", d.length],
-                      ["Active", active],
-                      ["This month", money(gross, { cents: false })],
-                    ].map(([k, v]) => (
-                      <div key={k as string} className="min-w-0">
+                      ["Trucks", t.length, undefined],
+                      ["Drivers", d.length, undefined],
+                      ["Active", active, undefined],
+                      ["This month", money(charged, { cents: false }), "Total amount charged to client this month (all services, subscriptions, charges & dispatch fees)"],
+                    ].map(([k, v, hint]) => (
+                      <div key={k as string} className="min-w-0" title={hint as string | undefined}>
                         <div className="tnum truncate text-sm font-semibold text-fg">{v}</div>
                         <div className="truncate text-[11px] text-fg-4">{k}</div>
                       </div>
