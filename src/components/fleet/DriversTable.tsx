@@ -49,11 +49,11 @@ export function DriversTable({ drivers, onOpen }: { drivers: Driver[]; onOpen: (
             );
             return (
               <tr key={d.id} onClick={() => onOpen(d.id)} className={cn("cursor-pointer hover:bg-surface-2/50", isTerminated(d) && "text-fg-3")}>
-                <td className="px-3 py-2.5 font-medium text-fg">{d.first_name || d.name}</td>
-                <td className="px-3 py-2.5 font-medium text-fg">{d.last_name || ""}</td>
+                <td className="px-3 py-2.5 font-medium text-fg">{(d.first_name || d.name) ? <Copyable text={d.first_name || d.name} /> : <Dash />}</td>
+                <td className="px-3 py-2.5 font-medium text-fg">{d.last_name ? <Copyable text={d.last_name} /> : <Dash />}</td>
                 <td className="tnum whitespace-nowrap px-3 py-2.5">{d.dob ? <Copyable text={fmtDay(d.dob)} /> : <Dash />}</td>
                 <td className="tnum px-3 py-2.5">{d.cdl_number ? <Copyable text={d.cdl_number} /> : <Dash />}</td>
-                <td className="px-3 py-2.5">{d.cdl_state ? licenseRegionLabel(d.cdl_state) : <Dash />}</td>
+                <td className="px-3 py-2.5">{d.cdl_state ? <Copyable text={licenseRegionLabel(d.cdl_state)} /> : <Dash />}</td>
                 <td className="tnum whitespace-nowrap px-3 py-2.5">{d.phone ? <Copyable text={d.phone} /> : <Dash />}</td>
                 <td className="max-w-[220px] px-3 py-2.5">{d.email ? <Copyable text={d.email} /> : <Dash />}</td>
                 <td className="whitespace-nowrap px-3 py-2.5">{d.hire_date ? <Copyable text={fmtDay(d.hire_date)} /> : <Dash />}</td>
@@ -74,12 +74,12 @@ export function DriversTable({ drivers, onOpen }: { drivers: Driver[]; onOpen: (
 
 const Dash = () => <span className="text-fg-4">—</span>;
 
-/** A value with a copy button that shows on hover (clicking it doesn't open the driver). */
+/** A value with a copy button (clicking it doesn't open the driver). */
 function Copyable({ text }: { text: string }) {
   return (
-    <span className="group/copy inline-flex max-w-full items-center gap-1">
+    <span className="inline-flex max-w-full items-center gap-1">
       <span className="truncate">{text}</span>
-      <span onClick={(e) => e.stopPropagation()} className="opacity-0 transition-opacity group-hover/copy:opacity-100 focus-within:opacity-100">
+      <span onClick={(e) => e.stopPropagation()}>
         <CopyButton text={text} />
       </span>
     </span>

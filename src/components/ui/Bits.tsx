@@ -193,12 +193,36 @@ export function Skeleton({ className }: { className?: string }) {
   return <div className={cn("animate-pulse rounded-lg bg-surface-2", className)} />;
 }
 
-/** Label/value row used in detail panels. */
-export function KV({ label, children, className }: { label: React.ReactNode; children: React.ReactNode; className?: string }) {
+/** Label/value row used in detail panels, with a copy button when the value is text. */
+export function KV({
+  label,
+  children,
+  className,
+  copy,
+}: {
+  label: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  copy?: string | null | false;
+}) {
+  const autoCopy =
+    copy === false
+      ? null
+      : typeof copy === "string"
+        ? copy.trim()
+        : typeof children === "string"
+          ? children.trim()
+          : typeof children === "number"
+            ? String(children)
+            : null;
+  const copyText = autoCopy && autoCopy !== "—" ? autoCopy : null;
   return (
     <div className={cn("min-w-0", className)}>
       <div className="text-[11px] font-medium uppercase tracking-wider text-fg-4">{label}</div>
-      <div className="mt-0.5 truncate text-sm text-fg">{children || <span className="text-fg-4">—</span>}</div>
+      <div className="mt-0.5 flex items-center gap-1 text-sm text-fg">
+        <span className="min-w-0 truncate">{children || <span className="text-fg-4">—</span>}</span>
+        {copyText && <CopyButton text={copyText} />}
+      </div>
     </div>
   );
 }

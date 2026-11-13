@@ -40,6 +40,12 @@ const noOne: Who = { name: "", email: "", phone: "" };
 type Other = Who & { kind: Exclude<RecipientKind, "signer"> };
 /** A short access code that is easy to read out (no 0/O, 1/I). */
 const newCode = () => Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
+/** Default expiration: 30 days from today (YYYY-MM-DD). */
+const defaultExpires30 = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 type Source = { template: SignTemplate | null; title: string; path: string; name: string; pages: PageSize[]; roles: SignRole[]; fields: SignField[]; docType: string };
 interface Sent {
   name: string;
@@ -100,17 +106,38 @@ export function SendDialog({
   const [url, setUrl] = useState<string | null>(null);
   const [who, setWho] = useState<Record<string, Who>>({});
   const [cc, setCc] = useState<Other[]>([]);
-  const [remind, setRemind] = useState("");
+  const [remind, setRemind] = useState("1");
   const [values, setValues] = useState<Record<string, string>>({});
   const [inOrder, setInOrder] = useState(false);
   const [message, setMessage] = useState("");
-  const [expires, setExpires] = useState("");
+  const [expires, setExpires] = useState(defaultExpires30);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState<{ list: Sent[]; emailReady: boolean } | null>(null);
   const [copied, setCopied] = useState("");
   const [was, setWas] = useState(false);
   const [show, setShow] = useState<TemplateCategory | "all">(category || "all");
   const fileAs = useFileAs(category || "company");
+  const [ccSeededFor, setCcSeededFor] = useState<string | null>(null);
+
+  const defaultDerCc = useMemo<Other[]>(() => {
+    const fromPeople = people.rows
+      .filter((p) => p.is_der)
+      .map((p) => ({
+        name: [p.first_name, p.last_name].filter(Boolean).join(" ").trim(),
+        email: p.email || "",
+        phone: p.phone || "",
+        kind: "cc" as const,
+      }))
+      .filter((c) => c.name || c.email || c.phone);
+    if (fromPeople.length > 0) return fromPeople;
+    if (company?.secondary_title?.toLowerCase().includes("der")) {
+      const secName = [company.secondary_first_name, company.secondary_last_name].filter(Boolean).join(" ").trim();
+      if (secName || company.secondary_email || company.secondary_phone) {
+        return [{ name: secName, email: company.secondary_email || "", phone: company.secondary_phone || "", kind: "cc" as const }];
+      }
+    }
+    return [];
+  }, [people.rows, company]);
 
   if (open !== was) {
     setWas(open);
@@ -119,19 +146,27 @@ export function SendDialog({
       setSrc(null);
       setUrl(null);
       setWho({});
-      setCc([]);
-      setRemind("");
+      setCc(defaultDerCc);
+      setCcSeededFor(people.loaded ? companyId : null);
+      setRemind("1");
       setValues({});
       setInOrder(false);
       setMessage("");
-      setExpires("");
+      setExpires(defaultExpires30());
       setSent(null);
       setShow(category || "all");
       setDrvId(driverId || "");
       setPerId(personId || "");
       setPickedContactId(driverId ? `d:${driverId}` : personId ? `p:${personId}` : "");
       setSaveAsTemplate(true);
+    } else {
+      setCcSeededFor(null);
     }
+  }
+
+  if (open && people.loaded && ccSeededFor !== companyId) {
+    setCcSeededFor(companyId);
+    if (cc.length === 0 && defaultDerCc.length > 0) setCc(defaultDerCc);
   }
 
   // Everyone in the database for this company: owners, DERs, contacts, drivers, and main/secondary profile contacts.

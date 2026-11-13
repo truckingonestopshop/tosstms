@@ -38,7 +38,7 @@ import { roleColor } from "./FieldBuilder";
 import { FieldSettings } from "./FieldSettings";
 import { FIELD_ICON as ICON } from "./icons";
 import { PdfPages } from "./PdfPages";
-import { LETTERHEAD, ORANGE, PAGE, WDOC_CSS, autoLabel, extraOf, fieldToken, fieldTokenLabel, fieldsFromBody, mergeToken, newWrittenField, renderWritten } from "./written";
+import { LETTERHEAD, ORANGE, PAGE, WDOC_CSS, autoLabel, cleanWrittenHtml, extraOf, fieldToken, fieldTokenLabel, fieldsFromBody, mergeToken, newWrittenField, renderWritten } from "./written";
 
 
 const GROUPS: { label: string; prefix: string }[] = [
@@ -134,13 +134,16 @@ export function WrittenEditor({
   const first = useRef(body);
   useEffect(() => {
     if (!ed.current) return;
-    ed.current.innerHTML = first.current || "<p><br></p>";
+    const cleaned = cleanWrittenHtml(first.current);
+    ed.current.innerHTML = cleaned || "<p><br></p>";
+    if (cleaned && cleaned !== first.current) onBody(cleaned);
     const h = Math.max(PAGE.h, Math.ceil((ed.current.scrollHeight + PAGE.m * 2) / PAGE.h) * PAGE.h);
     requestAnimationFrame(() => setHeight(h));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const changed = () => {
     if (!ed.current) return;
-    onBody(ed.current.innerHTML);
+    onBody(cleanWrittenHtml(ed.current.innerHTML));
     measure();
   };
   // Remember where the cursor is, so buttons in the side panel insert there.
@@ -380,10 +383,24 @@ export function WrittenEditor({
               style={{ padding: PAGE.m, paddingTop: letterhead ? LETTERHEAD.top : PAGE.m, paddingBottom: letterhead ? LETTERHEAD.bottom : PAGE.m, minHeight: height }}
               contentEditable
               suppressContentEditableWarning
-              spellCheck
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+              data-gramm="false"
+              data-gramm_editor="false"
+              data-enable-grammarly="false"
+              data-ms-editor="false"
+              data-lt-active="false"
               onInput={changed}
               onClick={onClick}
               onBlur={changed}
+              onPaste={(e) => {
+                const html = e.clipboardData?.getData("text/html");
+                if (html) {
+                  e.preventDefault();
+                  insert(cleanWrittenHtml(html));
+                }
+              }}
             />
           </div>
         </div>

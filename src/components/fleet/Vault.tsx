@@ -184,7 +184,7 @@ export function Vault({ companyId }: { companyId: string | null }) {
               </div>
               <div className="mt-3 space-y-1.5 text-[13px]">
                 {v.url && (
-                  <Row label="URL">
+                  <Row label="URL" copy={v.url}>
                     <a href={v.url.startsWith("http") ? v.url : `https://${v.url}`} target="_blank" rel="noreferrer" className="inline-flex min-w-0 items-center gap-1 truncate text-fg hover:underline">
                       <span className="truncate">{v.url.replace(/^https?:\/\//, "")}</span>
                       <ExternalLink className="h-3 w-3 shrink-0" />
@@ -213,7 +213,7 @@ export function Vault({ companyId }: { companyId: string | null }) {
                     {v.account_number}
                   </Row>
                 )}
-                {v.contact_name && <Row label="Name">{[v.contact_name, v.role_title].filter(Boolean).join(" · ")}</Row>}
+                {v.contact_name && <Row label="Name" copy={v.contact_name}>{[v.contact_name, v.role_title].filter(Boolean).join(" · ")}</Row>}
                 {v.contact_phone && (
                   <Row label="Phone" copy={v.contact_phone}>
                     <a href={`tel:${v.contact_phone}`} className="hover:underline">

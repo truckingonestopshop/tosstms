@@ -12,6 +12,7 @@ import { openDocument, errMsg } from "@/lib/db";
 import { cn, US_STATES } from "@/lib/format";
 import { docsOf } from "@/lib/docs";
 import { AUTHORITY_STATUSES, SERVICES, SOURCES } from "@/lib/services";
+import { splitCompanyAddress } from "./CompanyProfile";
 import type { AuthorityStatus, Company, CompanyStage, ServiceInfo, ServiceKey, ServiceSource, Services } from "@/lib/types";
 
 /** Service details as typed (numbers stay text until saved). */
@@ -57,7 +58,7 @@ const firstWord = (s?: string | null) => (s || "").trim().split(/\s+/)[0] || "";
 const restWords = (s?: string | null) => (s || "").trim().split(/\s+/).slice(1).join(" ");
 
 export const toDraft = (c?: Company | null): CompanyDraft => {
-  const hasParts = !!(c?.street || c?.city || c?.state || c?.zip);
+  const addr = splitCompanyAddress(c);
   const services: CompanyDraft["services"] = {};
   for (const [k, v] of Object.entries(c?.services ?? {})) {
     services[k as ServiceKey] = {
@@ -76,12 +77,11 @@ export const toDraft = (c?: Company | null): CompanyDraft => {
     mc_status: c?.mc_status ?? "",
     status: c?.status ?? "active",
     stage: c?.stage ?? "client",
-    // Carriers from before the address parts: the old one-line address goes in Street.
-    street: c?.street ?? (hasParts ? "" : (c?.address ?? "").replace(/\n/g, ", ")),
-    city: c?.city ?? "",
+    street: addr.street ?? "",
+    city: addr.city ?? "",
     county: c?.county ?? "",
-    state: c?.state ?? "",
-    zip: c?.zip ?? "",
+    state: addr.state ?? "",
+    zip: addr.zip ?? "",
     contact_first_name: c?.contact_first_name ?? firstWord(c?.contact_name),
     contact_last_name: c?.contact_last_name ?? restWords(c?.contact_name),
     contact_phone: c?.contact_phone ?? "",

@@ -193,9 +193,44 @@ function MarkClient({ company }: { company: Company }) {
   );
 }
 
+/** Splits a company's address into street, city, state and zip (falling back to parsing `address` when older rows only stored one string). */
+export function splitCompanyAddress(c?: Pick<Company, "street" | "city" | "state" | "zip" | "address"> | null) {
+  let street = (c?.street || "").trim();
+  let city = (c?.city || "").trim();
+  let state = (c?.state || "").trim();
+  let zip = (c?.zip || "").trim();
+  if (!street && !city && !state && !zip && c?.address) {
+    const raw = c.address.trim();
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const tail = lines.length > 1 ? lines[lines.length - 1] : raw;
+    const m = tail.match(/^(.*?),\s*([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+    if (m) {
+      if (lines.length > 1) {
+        street = lines.slice(0, -1).join(", ");
+        city = m[1].trim();
+      } else {
+        const parts = m[1].split(",").map((p) => p.trim()).filter(Boolean);
+        street = parts.slice(0, -1).join(", ") || parts[0] || "";
+        city = parts.length > 1 ? parts[parts.length - 1] : "";
+      }
+      state = m[2].toUpperCase();
+      zip = m[3];
+    } else if (lines.length > 1) {
+      street = lines[0];
+      city = lines.slice(1).join(", ");
+    } else {
+      street = raw;
+    }
+  }
+  return { street: street || null, city: city || null, state: state || null, zip: zip || null };
+}
+
 /** Everything about the carrier on one page, read-only (Edit opens the form). */
 export function CompanyOverview({ company, onServices }: { company: Company; onServices: () => void }) {
   const second = [company.secondary_first_name, company.secondary_last_name].filter(Boolean).join(" ");
+  const addr = splitCompanyAddress(company);
+  const firstName = company.contact_first_name || (company.contact_name ? company.contact_name.trim().split(/\s+/)[0] : null);
+  const lastName = company.contact_last_name || (company.contact_name ? company.contact_name.trim().split(/\s+/).slice(1).join(" ") : null);
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <Section title="Company" className="lg:col-span-2">
@@ -205,7 +240,7 @@ export function CompanyOverview({ company, onServices }: { company: Company; onS
           </KV>
           <KV label="DBA">{company.dba_name}</KV>
           <KV label="EIN">{company.ein}</KV>
-          <KV label="Stage">
+          <KV label="Stage" copy={false}>
             <span className="inline-flex flex-wrap items-center gap-2">
               <StagePill c={company} />
               <span className="text-xs text-fg-3">
@@ -215,12 +250,12 @@ export function CompanyOverview({ company, onServices }: { company: Company; onS
             </span>
           </KV>
           <KV label="USDOT">{company.dot_number}</KV>
-          <KV label="DOT status">
+          <KV label="DOT status" copy={false}>
             <AuthorityPill v={company.dot_status} />
           </KV>
           <div className="hidden sm:block" />
           <KV label="MC">{company.mc_number}</KV>
-          <KV label="MC status">
+          <KV label="MC status" copy={false}>
             <AuthorityPill v={company.mc_status} />
           </KV>
         </div>
@@ -229,20 +264,34 @@ export function CompanyOverview({ company, onServices }: { company: Company; onS
       <ServicesAtGlance company={company} onServices={onServices} />
 
       <Section title="Address">
-        <div className="whitespace-pre-line text-sm text-fg">{company.address || <span className="text-fg-4">—</span>}</div>
-        {company.county && <div className="mt-1 text-xs text-fg-3">{company.county} County</div>}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <KV label="Street" className="col-span-2">
+            {addr.street}
+          </KV>
+          <KV label="City" className="col-span-2">
+            {addr.city}
+          </KV>
+          <KV label="State">{addr.state}</KV>
+          <KV label="ZIP code">{addr.zip}</KV>
+          {company.county && (
+            <KV label="County" className="col-span-2">
+              {company.county}
+            </KV>
+          )}
+        </div>
       </Section>
 
       <Section title="Owner / main contact" className="lg:col-span-2">
         <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-          <KV label="First name">{company.contact_first_name}</KV>
-          <KV label="Last name">{company.contact_last_name}</KV>
+          <KV label="First name">{firstName}</KV>
+          <KV label="Last name">{lastName}</KV>
           <KV label="Phone">{company.contact_phone}</KV>
           <KV label="Email">{company.contact_email}</KV>
         </div>
         {second && (
-          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-4 sm:grid-cols-4">
-            <KV label="Secondary contact">{second}</KV>
+          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-4 sm:grid-cols-5">
+            <KV label="First name">{company.secondary_first_name}</KV>
+            <KV label="Last name">{company.secondary_last_name}</KV>
             <KV label="Role">{company.secondary_title}</KV>
             <KV label="Phone">{company.secondary_phone}</KV>
             <KV label="Email">{company.secondary_email}</KV>

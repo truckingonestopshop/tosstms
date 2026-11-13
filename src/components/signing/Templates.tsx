@@ -103,54 +103,68 @@ export function TemplatesList() {
           <Empty icon={FileSignature} title={templates.rows.length ? "No template matches" : "No templates yet"} body={templates.rows.length ? undefined : "Write one, upload a PDF, or start from the library (dispatch agreement, driver application, policies, Clearinghouse consent, DER)."} />
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {list.map((t) => {
-            const ready = t.fields.some((f) => f.role !== "toss");
-            return (
-              <div key={t.id} className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-surface transition-colors hover:border-line-strong">
-                <Link href={`/signing/templates/${t.id}`} className="relative block h-28 overflow-hidden bg-gradient-to-br from-surface-2 to-surface">
-                  {/* A small paper preview: lines and the fields' colours */}
-                  <div className="absolute left-1/2 top-4 h-32 w-24 -translate-x-1/2 rounded-sm bg-white shadow-md ring-1 ring-black/5 transition-transform group-hover:-translate-y-1">
-                    <div className="space-y-1.5 p-2.5">
-                      <div className="h-1.5 w-12 rounded bg-zinc-300" />
-                      {[16, 14, 18, 12, 15].map((w, i) => (
-                        <div key={i} className="h-1 rounded bg-zinc-200" style={{ width: `${w * 4}px` }} />
-                      ))}
-                      <div className="mt-2 h-3 w-14 rounded-sm border border-dashed border-sky-500 bg-sky-500/10" />
-                    </div>
-                  </div>
-                  <span className="absolute left-3 top-3">
-                    <Pill className={neutralPill}>{t.kind === "written" ? "Written" : "PDF"}</Pill>
-                  </span>
-                </Link>
-                <div className="flex flex-1 flex-col p-3.5">
-                  <Link href={`/signing/templates/${t.id}`} className="truncate text-[14px] font-semibold text-fg hover:underline">
-                    {t.name}
-                  </Link>
-                  <div className="mt-0.5 line-clamp-2 min-h-[2rem] text-xs text-fg-3">{t.description || `${t.roles.map((r) => r.label).join(", ")} · ${t.fields.length} field${t.fields.length === 1 ? "" : "s"}`}</div>
-                  <div className="mt-2 flex items-center gap-1.5 text-[11px] text-fg-4">
-                    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-fg-3">{CATEGORIES.find((c) => c.v === t.category)?.label}</span>
-                    <span>edited {relTime(t.updated_at)}</span>
-                  </div>
-                  <div className="mt-3 flex items-center gap-1 border-t border-line pt-2.5">
-                    <Button size="xs" variant="secondary" onClick={() => (ready ? setSending(t) : toast.error("Add a field for a signer first"))}>
-                      <Send className="h-3.5 w-3.5" /> Send
-                    </Button>
-                    <button onClick={() => (ready ? setLinking(t) : toast.error("Add a field for a signer first"))} className="rounded p-1.5 text-fg-4 hover:bg-surface-2 hover:text-fg" title="Public link (anyone fills and signs)" aria-label={`Public links of ${t.name}`}>
-                      <Link2 className="h-4 w-4" />
-                    </button>
-                    <button onClick={() => duplicate(t)} className="rounded p-1.5 text-fg-4 hover:bg-surface-2 hover:text-fg" title="Duplicate" aria-label={`Copy ${t.name}`}>
-                      <Copy className="h-4 w-4" />
-                    </button>
-                    <button onClick={() => remove(t)} className="ml-auto rounded p-1.5 text-fg-4 hover:bg-surface-2 hover:text-red-600" title="Delete" aria-label={`Delete ${t.name}`}>
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[680px] text-left text-[13px]">
+              <thead className="border-b border-line text-[11px] uppercase tracking-wider text-fg-4">
+                <tr>
+                  <th className="px-4 py-2.5 font-medium sm:px-5">Template</th>
+                  <th className="w-28 px-3 py-2.5 font-medium">Type</th>
+                  <th className="w-28 px-3 py-2.5 font-medium">Category</th>
+                  <th className="w-40 px-3 py-2.5 font-medium">Signers & fields</th>
+                  <th className="w-28 px-3 py-2.5 font-medium">Updated</th>
+                  <th className="w-44 px-4 py-2.5 text-right font-medium sm:px-5">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {list.map((t) => {
+                  const ready = t.fields.some((f) => f.role !== "toss");
+                  return (
+                    <tr key={t.id} className="group transition-colors hover:bg-surface-2/50">
+                      <td className="px-4 py-3 sm:px-5">
+                        <Link href={`/signing/templates/${t.id}`} className="block font-semibold text-fg hover:underline">
+                          {t.name}
+                        </Link>
+                        {t.description && <div className="mt-0.5 line-clamp-1 text-xs text-fg-3">{t.description}</div>}
+                      </td>
+                      <td className="px-3 py-3">
+                        <Pill className={neutralPill}>{t.kind === "written" ? "Written" : "PDF"}</Pill>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-fg-3">{CATEGORIES.find((c) => c.v === t.category)?.label}</span>
+                      </td>
+                      <td className="px-3 py-3 text-xs text-fg-3">
+                        {t.roles.map((r) => r.label).join(", ")} · {t.fields.length} field{t.fields.length === 1 ? "" : "s"}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 text-xs text-fg-4">edited {relTime(t.updated_at)}</td>
+                      <td className="px-4 py-3 sm:px-5">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button size="xs" variant="secondary" onClick={() => (ready ? setSending(t) : toast.error("Add a field for a signer first"))}>
+                            <Send className="h-3.5 w-3.5" /> Send
+                          </Button>
+                          <button
+                            onClick={() => (ready ? setLinking(t) : toast.error("Add a field for a signer first"))}
+                            className="rounded p-1.5 text-fg-4 hover:bg-surface-2 hover:text-fg"
+                            title="Public link (anyone fills and signs)"
+                            aria-label={`Public links of ${t.name}`}
+                          >
+                            <Link2 className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => duplicate(t)} className="rounded p-1.5 text-fg-4 hover:bg-surface-2 hover:text-fg" title="Duplicate" aria-label={`Copy ${t.name}`}>
+                            <Copy className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => remove(t)} className="rounded p-1.5 text-fg-4 hover:bg-surface-2 hover:text-red-600" title="Delete" aria-label={`Delete ${t.name}`}>
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
       <PublicLinks template={linking} onClose={() => setLinking(null)} />
       <SendTemplate template={sending} onClose={() => setSending(null)} />

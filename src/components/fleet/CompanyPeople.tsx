@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { Paperclip, Pencil, Plus, Send, Trash2, UserRound, X } from "lucide-react";
 import { SendDialog } from "@/components/signing/SendDialog";
 import { Button } from "@/components/ui/Button";
-import { Card, CardHeader, Empty, KV, Pill, neutralPill } from "@/components/ui/Bits";
+import { Card, CardHeader, CopyButton, Empty, KV, Pill, neutralPill } from "@/components/ui/Bits";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { confirmDialog } from "@/components/ui/Confirm";
@@ -94,6 +94,7 @@ function PersonRow({ p, onEdit }: { p: CompanyPerson; onEdit: () => void }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[13px] font-semibold text-fg">{fullName(p)}</span>
+            <CopyButton text={fullName(p) !== "—" ? fullName(p) : null} />
             {p.title && <span className="text-xs text-fg-3">{p.title}</span>}
             {ROLES.filter((r) => p[r.k]).map((r) => (
               <Pill key={r.k} className={neutralPill}>
@@ -107,11 +108,13 @@ function PersonRow({ p, onEdit }: { p: CompanyPerson; onEdit: () => void }) {
             )}
           </div>
           <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-            <KV label="Phone">{p.phone ? <a href={`tel:${p.phone}`} className="hover:underline">{p.phone}</a> : null}</KV>
-            <KV label="Email">{p.email ? <a href={`mailto:${p.email}`} className="break-all hover:underline">{p.email}</a> : null}</KV>
+            <KV label="First name">{p.first_name}</KV>
+            <KV label="Last name">{p.last_name}</KV>
+            <KV label="Phone" copy={p.phone}>{p.phone ? <a href={`tel:${p.phone}`} className="hover:underline">{p.phone}</a> : null}</KV>
+            <KV label="Email" copy={p.email}>{p.email ? <a href={`mailto:${p.email}`} className="break-all hover:underline">{p.email}</a> : null}</KV>
             {p.is_owner && license && (
               <>
-                <KV label="License">{[p.license_type, p.license_number, p.license_state].filter(Boolean).join(" · ")}</KV>
+                <KV label="License" copy={p.license_number}>{[p.license_type, p.license_number, p.license_state].filter(Boolean).join(" · ")}</KV>
                 <KV label="Expires">{p.license_expiry ? fmtDay(p.license_expiry) : null}</KV>
               </>
             )}

@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Check, FilePlus2, Mail, Pencil, Phone, Trash2, User, X } from "lucide-react";
-import { SheetFiles } from "./SheetFiles";
+import { FilePlus2, Mail, Pencil, Phone, Trash2, User, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Drawer, Modal } from "@/components/ui/Modal";
-import { CopyButton, Eyebrow, KV, Pill, neutralPill } from "@/components/ui/Bits";
+import { Eyebrow, KV, Pill, neutralPill } from "@/components/ui/Bits";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { SigningRequests } from "@/components/signing/Requests";
@@ -393,12 +392,10 @@ function PendingFiles({ files, onChange, medicalExpiry }: { files: PendingFile[]
   );
 }
 
-/** A driver at a glance (read only). Edit shows the truck picker, photos and document uploads. */
+/** A driver's full details, truck assignment, license photos and paperwork in one view. */
 export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null; onClose: () => void; onEdit: (d: Driver) => void }) {
-  const { trucks, loads, deleteDriver, documents, isOwner } = useStore();
-  const [manageId, setManageId] = useState<string | null>(null);
+  const { trucks, loads, deleteDriver, isOwner } = useStore();
   if (!driver) return null;
-  const manage = manageId === driver.id;
   const truck = trucks.find((t) => t.assigned_driver_id === driver.id);
   const recent = loads
     .filter((l) => l.driver_id === driver.id)
@@ -412,20 +409,9 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
       subtitle={truck ? `Unit ${truck.unit_number}` : "No truck assigned"}
       actions={
         <>
-          {manage ? (
-            <>
-              <Button size="sm" variant="ghost" onClick={() => onEdit(driver)}>
-                <Pencil className="h-3.5 w-3.5" /> Edit details
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => setManageId(null)}>
-                <Check className="h-3.5 w-3.5" /> Done
-              </Button>
-            </>
-          ) : (
-            <Button size="sm" variant="ghost" onClick={() => setManageId(driver.id)}>
-              <Pencil className="h-3.5 w-3.5" /> Edit
-            </Button>
-          )}
+          <Button size="sm" variant="ghost" onClick={() => onEdit(driver)}>
+            <Pencil className="h-3.5 w-3.5" /> Edit details
+          </Button>
           {isOwner && (
             <Button
               size="icon-sm"
@@ -459,29 +445,25 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
           <ExpiryPill label="Medical" date={driver.medical_card_expiry} />
           {driver.status === "inactive" && <Pill className={neutralPill}>Inactive</Pill>}
         </div>
-        <DriverRig driver={driver} readOnly={!manage} />
+        <DriverRig driver={driver} />
         <div className="grid grid-cols-2 gap-4">
-          <KV label="Phone">
+          <KV label="Phone" copy={driver.phone}>
             {driver.phone ? (
-              <span className="flex items-center gap-1">
-                <a href={`tel:${driver.phone}`} className="hover:underline">
-                  {driver.phone}
-                </a>
-                <CopyButton text={driver.phone} />
-              </span>
+              <a href={`tel:${driver.phone}`} className="hover:underline">
+                {driver.phone}
+              </a>
             ) : null}
           </KV>
-          <KV label="Email">
+          <KV label="Email" copy={driver.email}>
             {driver.email ? (
-              <span className="flex items-center gap-1">
-                <a href={`mailto:${driver.email}`} className="truncate hover:underline">
-                  {driver.email}
-                </a>
-                <CopyButton text={driver.email} />
-              </span>
+              <a href={`mailto:${driver.email}`} className="truncate hover:underline">
+                {driver.email}
+              </a>
             ) : null}
           </KV>
-          <KV label={driver.license_type || "Driving license"}>{[driver.cdl_number, licenseRegionLabel(driver.cdl_state)].filter(Boolean).join(" · ")}</KV>
+          <KV label={driver.license_type || "Driving license"} copy={driver.cdl_number}>
+            {[driver.cdl_number, licenseRegionLabel(driver.cdl_state)].filter(Boolean).join(" · ")}
+          </KV>
           <KV label="License expires">{driver.cdl_expiry ? fmtDay(driver.cdl_expiry, true) : null}</KV>
           <KV label="Medical card">{driver.medical_card_expiry ? fmtDay(driver.medical_card_expiry, true) : null}</KV>
           <KV label="Truck">{truck ? `Unit ${truck.unit_number}` : null}</KV>
@@ -509,24 +491,18 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
           )}
         </section>
 
-        {manage ? (
-          <>
-            <section>
-              <DriverPhotos driverId={driver.id} companyId={driver.company_id} compact />
-            </section>
+        <section>
+          <DriverPhotos driverId={driver.id} companyId={driver.company_id} compact />
+        </section>
 
-            <section>
-              <Eyebrow className="mb-2">Driver documents</Eyebrow>
-              <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId: driver.company_id, licenseExpiry: driver.cdl_expiry, waived: driver.waived_docs }} compact emptyText="No driver files yet." />
-            </section>
+        <section>
+          <Eyebrow className="mb-2">Driver documents</Eyebrow>
+          <DocumentsPanel target={{ scope: "driver", id: driver.id, companyId: driver.company_id, licenseExpiry: driver.cdl_expiry, waived: driver.waived_docs }} compact emptyText="No driver files yet." />
+        </section>
 
-            <section>
-              <SigningRequests companyId={driver.company_id} driverId={driver.id} category="driver" title="Sent to sign" />
-            </section>
-          </>
-        ) : (
-          <SheetFiles title="Files" docs={documents.filter((x) => x.driver_id === driver.id)} empty="No driver files yet. Click Edit to add them." />
-        )}
+        <section>
+          <SigningRequests companyId={driver.company_id} driverId={driver.id} category="driver" title="Sent to sign" />
+        </section>
       </div>
     </Drawer>
   );

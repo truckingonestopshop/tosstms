@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Pencil, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, FileText, Pencil, Plus, Trash2 } from "lucide-react";
 import { BillingFrame } from "@/components/fleet/CompanyNav";
-import { Button } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader, Empty, Page, PageHeader, Pill, Stat, neutralPill } from "@/components/ui/Bits";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -90,6 +90,12 @@ export default function BillingPage() {
         title="Billing"
         actions={
           <>
+            <ButtonLink href="/invoices" variant="outline">
+              <FileText className="h-4 w-4" /> Invoices
+            </ButtonLink>
+            <ButtonLink href={company ? `/invoices/new?company=${company.id}` : "/invoices/new"} variant="outline">
+              <Plus className="h-4 w-4" /> Custom invoice
+            </ButtonLink>
             <Button variant="secondary" onClick={() => setEdit({ kind: "one_time" })} disabled={!companies.length}>
               <Plus className="h-4 w-4" /> One-time charge
             </Button>

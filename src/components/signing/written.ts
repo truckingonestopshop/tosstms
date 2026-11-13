@@ -123,6 +123,7 @@ export const WDOC_CSS = `
 .wdoc .tk-field { background: #e0f2fe; color: #075985; border: 1px dashed #0284c7; }
 .wdoc .tk-field[data-role="toss"] { background: #f4f4f5; color: #3f3f46; border-color: #a1a1aa; }
 .wdoc .tk.tk-sel { outline: 2px solid #f28c38; outline-offset: 1px; }
+.wdoc .SpellE, .wdoc .GramE, .wdoc [data-gramm], .wdoc [data-lt-tmp-id], .wdoc [data-ms-editor] { border: 0 !important; background: transparent !important; text-decoration: none !important; box-shadow: none !important; }
 `;
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -191,6 +192,58 @@ export function mergesIn(html: string): AutoKey[] {
 }
 
 /**
+ * Strips Word / Google Docs / Grammarly / browser spellcheck & grammar-checker markup,
+ * inline underlines, borders, highlights and extension nodes while keeping document structure
+ * and TossSign merge/field tokens intact.
+ */
+export function cleanWrittenHtml(html: string): string {
+  if (typeof DOMParser === "undefined" || !html) return html;
+  const doc = new DOMParser().parseFromString(`<div id="__wroot">${html}</div>`, "text/html");
+  const container = doc.getElementById("__wroot");
+  if (!container) return html;
+  container
+    .querySelectorAll(
+      "style, script, meta, link, xml, grammarly-extension, grammarly-popups, pwa-container, lt-highlighter, lt-div, [data-gramm], [data-gramm_editor], [data-lt-tmp-id], [data-ms-editor]",
+    )
+    .forEach((el) => el.remove());
+  const unwrapTags = new Set(["SPAN", "MARK", "INS", "FONT", "A", "WBR"]);
+  const all = Array.from(container.querySelectorAll<HTMLElement>("*"));
+  for (const el of all) {
+    if (el.hasAttribute("data-merge") || el.hasAttribute("data-field")) continue;
+    const tag = el.tagName.toUpperCase();
+    const cls = (el.getAttribute("class") || "").toLowerCase();
+    const isExtensionOrWord =
+      tag.includes("-") ||
+      cls.includes("spelle") ||
+      cls.includes("grame") ||
+      cls.includes("gramm") ||
+      cls.includes("spell") ||
+      cls.includes("mso") ||
+      cls.includes("pwa-") ||
+      cls.includes("lt-");
+    if (unwrapTags.has(tag) || isExtensionOrWord) {
+      el.replaceWith(...Array.from(el.childNodes));
+      continue;
+    }
+    if (tag === "U" && el.attributes.length > 0) {
+      el.replaceWith(...Array.from(el.childNodes));
+      continue;
+    }
+    const align = el.style?.textAlign;
+    const isPageBreak = tag === "HR" && el.classList.contains("page-break");
+    for (const attr of Array.from(el.attributes)) {
+      if (attr.name === "src" || attr.name === "alt" || attr.name === "colspan" || attr.name === "rowspan") continue;
+      el.removeAttribute(attr.name);
+    }
+    if (isPageBreak) el.className = "page-break";
+    if (align && ["left", "center", "right", "justify"].includes(align)) {
+      el.style.textAlign = align;
+    }
+  }
+  return container.innerHTML;
+}
+
+/**
  * Lays out a written document on letter pages and makes the PDF. Merge values and TOSS's fields
  * are filled in as text; signer fields become empty boxes and come back with their place on the
  * page (shares of the page, like fields placed on an uploaded PDF).
@@ -203,11 +256,13 @@ export async function renderWritten(
   const TOP = opts.letterhead ? LETTERHEAD.top : PAGE.m;
   const CH = PAGE.h - TOP - (opts.letterhead ? LETTERHEAD.bottom : PAGE.m);
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas-pro"), import("jspdf")]);
+  window.getSelection?.()?.removeAllRanges?.();
   const host = document.createElement("div");
-  host.style.cssText = `position:fixed;left:-20000px;top:0;width:${CONTENT_W}px;background:#fff;`;
-  host.innerHTML = `<style>${WDOC_CSS}</style><div class="wdoc"></div>`;
+  host.spellcheck = false;
+  host.style.cssText = `position:fixed;left:-20000px;top:0;width:${CONTENT_W}px;background:#fff;user-select:none;`;
+  host.innerHTML = `<style>${WDOC_CSS}</style><div class="wdoc" spellcheck="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"></div>`;
   const root = host.querySelector<HTMLElement>(".wdoc")!;
-  root.innerHTML = body;
+  root.innerHTML = cleanWrittenHtml(body);
   document.body.appendChild(host);
   try {
     // Values in, fields as boxes.

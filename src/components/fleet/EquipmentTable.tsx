@@ -152,15 +152,15 @@ export function EquipmentTable({ trucks, trailers, showCompany, onOpen }: { truc
                 const it = items(r);
                 return (
                   <tr key={`${r.kind}-${r.id}`} onClick={() => onOpen(r.kind, r.id)} className={cn("cursor-pointer hover:bg-surface-2/50", r.status === "inactive" && "text-fg-3")}>
-                    <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-fg">{r.unit}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-fg">{r.unit ? <Copyable text={r.unit} /> : <Dash />}</td>
                     <td className="whitespace-nowrap px-3 py-2.5">{r.type}</td>
-                    <td className="tnum px-3 py-2.5">{r.year || <Dash />}</td>
-                    <td className="px-3 py-2.5">{r.make || <Dash />}</td>
-                    <td className="px-3 py-2.5">{r.model || <Dash />}</td>
-                    <td className="tnum whitespace-nowrap px-3 py-2.5">{r.gvwr ? num(r.gvwr) : <Dash />}</td>
+                    <td className="tnum px-3 py-2.5">{r.year ? <Copyable text={String(r.year)} /> : <Dash />}</td>
+                    <td className="px-3 py-2.5">{r.make ? <Copyable text={r.make} /> : <Dash />}</td>
+                    <td className="px-3 py-2.5">{r.model ? <Copyable text={r.model} /> : <Dash />}</td>
+                    <td className="tnum whitespace-nowrap px-3 py-2.5">{r.gvwr ? <Copyable text={num(r.gvwr)} /> : <Dash />}</td>
                     <td className="tnum whitespace-nowrap px-3 py-2.5">{r.vin ? <Copyable text={r.vin} /> : <Dash />}</td>
                     <td className="tnum whitespace-nowrap px-3 py-2.5">{r.plate ? <Copyable text={r.plate} /> : <Dash />}</td>
-                    <td className="px-3 py-2.5">{r.plateState || <Dash />}</td>
+                    <td className="px-3 py-2.5">{r.plateState ? <Copyable text={r.plateState} /> : <Dash />}</td>
                     <td className="px-3 py-2.5">
                       {r.ownership ? (
                         <span className={cn("rounded-md px-1.5 py-0.5 text-xs font-medium", r.ownership === "leased" ? "bg-sky-500/10 text-sky-700 dark:text-sky-300" : "bg-surface-2 text-fg-2")}>{ownLabel(r.ownership)}</span>
@@ -194,9 +194,9 @@ const Dash = () => <span className="text-fg-4">—</span>;
 
 function Copyable({ text }: { text: string }) {
   return (
-    <span className="group/copy inline-flex items-center gap-1">
+    <span className="inline-flex items-center gap-1">
       {text}
-      <span onClick={(e) => e.stopPropagation()} className="opacity-0 transition-opacity group-hover/copy:opacity-100">
+      <span onClick={(e) => e.stopPropagation()}>
         <CopyButton text={text} />
       </span>
     </span>

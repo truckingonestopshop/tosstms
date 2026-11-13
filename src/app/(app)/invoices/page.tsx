@@ -1,6 +1,6 @@
 "use client";
 
-import { DispatchFrame, DispatchGate } from "@/components/fleet/CompanyNav";
+import { BillingFrame, DispatchFrame } from "@/components/fleet/CompanyNav";
 import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -15,6 +15,7 @@ import { CompanyFilter } from "@/components/layout/CompanyFilter";
 import { AGING, PAY_META, aging, balance, payState, type PayState } from "@/lib/invoice";
 import { downloadCsv } from "@/lib/csv";
 import { cn, daysUntil, fmtDay, money, today } from "@/lib/format";
+import { hasService } from "@/lib/services";
 
 type Tab = "all" | PayState;
 const TABS: Tab[] = ["all", "draft", "open", "partial", "overdue", "paid", "void"];
@@ -22,17 +23,16 @@ const usd = (n: number) => money(n);
 
 export default function InvoicesPage() {
   return (
-    <DispatchGate>
-      <Suspense>
-        <Invoices />
-      </Suspense>
-    </DispatchGate>
+    <Suspense>
+      <Invoices />
+    </Suspense>
   );
 }
 
 function Invoices() {
   const router = useRouter();
-  const { invoices, payments, companies, inScope, scopedCompany, companyById } = useStore();
+  const { invoices, payments, companies, inScope, scopedCompany, companyById, view } = useStore();
+  const showDispatchFrame = view !== "office" && (!scopedCompany || hasService(scopedCompany, "dispatch"));
   const billable = useBillable();
   const [builder, setBuilder] = useState<{ open: boolean; companyId?: string | null }>({ open: false });
   const [tab, setTab] = useState<Tab>("all");
@@ -95,7 +95,7 @@ function Invoices() {
 
   return (
     <Page>
-      <DispatchFrame />
+      {showDispatchFrame ? <DispatchFrame /> : <BillingFrame />}
       <PageHeader
         eyebrow={<CompanyFilter />}
         title="Invoices"
