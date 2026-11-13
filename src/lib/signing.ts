@@ -521,26 +521,26 @@ export function autoValue(key: AutoKey, s: AutoSource): string {
 
 /** Matches a field's label or type to a database auto-fill key when one wasn't explicitly picked. */
 export function inferAutoKey(label: string, type?: FieldType): AutoKey | null {
-  if (type === "fillable_date") return null;
+  if (type === "fillable_date" || type === "dropdown" || type === "radio" || type === "checkbox" || type === "attachment" || type === "signature" || type === "initials") return null;
   const l = (label || "").trim().toLowerCase();
-  if (/\b(dob|date of birth|birth\s*date)\b/.test(l)) return "driver.dob";
+  if (/\b(dob|date of birth|birth\s*date|fecha de nacimiento)\b/.test(l)) return "driver.dob";
   if (/\b(hire\s*date|date\s*hired)\b/.test(l)) return "driver.hire_date";
   if (/\b(med(ical)?\s*(card)?\s*exp(ir(y|es|ation))?)\b/.test(l)) return "driver.medical_expiry";
-  if (/\b(cdl|licen[cs]e)\s*exp(ir(y|es|ation))?\b/.test(l) || l === "expires") return "driver.license_expiry";
-  if (/\b(cdl|licen[cs]e)\s*(state|st)\b/.test(l)) return "driver.license_state";
-  if (/\b(cdl|licen[cs]e)\s*(type|class)\b/.test(l)) return "driver.license_type";
-  if (/\b(cdl|driver'?s?\s*licen[cs]e|licen[cs]e\s*(#|no|num|number)?)\b/.test(l)) return "driver.license";
+  if (/\b(cdl|licen[cs]e)\s*exp(ir(y|es|ation))?\b/.test(l) || /\bvencimiento\b/.test(l) || l === "expires") return "driver.license_expiry";
+  if (/\b(cdl|licen[cs]e)\s*(state|st|estado)\b/.test(l)) return "driver.license_state";
+  if (/\b(cdl|licen[cs]e)\s*(type|class|tipo|clase)\b/.test(l)) return "driver.license_type";
+  if (/\b(cdl|driver'?s?\s*licen[cs]e|licen[cs]e\s*(#|no|num|number)?|licencia)\b/.test(l)) return "driver.license";
   if (/\b(usdot|dot\s*(#|no|num|number)?)\b/.test(l)) return "company.dot";
   if (/\b(mc\s*(#|no|num|number)?)\b/.test(l)) return "company.mc";
   if (/\b(ein|tax\s*id|fein)\b/.test(l)) return "company.ein";
   if (/\b(dba)\b/.test(l)) return "company.dba";
   if (/\b(company|carrier|motor\s*carrier|legal\s*name|employer)\b/.test(l)) return "company.name";
-  if (/\b(company\s*address|carrier\s*address|business\s*address|address)\b/.test(l)) return "company.address";
-  if (/\b(street)\b/.test(l)) return "company.street";
-  if (/\b(city)\b/.test(l)) return "company.city";
-  if (/\b(zip|postal)\b/.test(l)) return "company.zip";
+  if (/\b(company\s*address|carrier\s*address|business\s*address|address)\b/.test(l) && !/type\s*of\s*address/i.test(l)) return "company.address";
+  if (/\b(street|calle)\b/.test(l)) return "company.street";
+  if (/\b(city|ciudad)\b/.test(l)) return "company.city";
+  if (/\b(zip|postal|c[oó]digo\s*postal)\b/.test(l)) return "company.zip";
   if (/\b(owner)\b/.test(l)) return "company.owner";
-  if (/\b(first\s*name|given\s*name|primer\s*nombre)\b/.test(l)) return "recipient.first_name";
+  if (/\b(first\s*name|given\s*name|primer\s*nombre|nombre)\b/.test(l) && !/\bsegundo\s*nombre\b/.test(l)) return "recipient.first_name";
   if (/\b(middle\s*name|middle\s*initial|segundo\s*nombre)\b/.test(l)) return "recipient.middle_name";
   if (/\b(last\s*name|surname|family\s*name|apellido)\b/.test(l)) return "recipient.last_name";
   if (/\b(driver\s*name|applicant(\s*name)?)\b/.test(l)) return "driver.name";
@@ -548,11 +548,11 @@ export function inferAutoKey(label: string, type?: FieldType): AutoKey | null {
   if (/\b(driver\s*email)\b/.test(l)) return "driver.email";
   if (/\b(company\s*phone)\b/.test(l)) return "company.phone";
   if (/\b(company\s*email)\b/.test(l)) return "company.email";
-  if (/\b(phone|mobile|cell|telephone)\b/.test(l)) return "recipient.phone";
-  if (/\b(e-?mail)\b/.test(l)) return "recipient.email";
+  if (/\b(phone|mobile|cell|telephone|tel[eé]fono)\b/.test(l)) return "recipient.phone";
+  if (/\b(e-?mail|correo(\s*electr[oó]nico)?)\b/.test(l)) return "recipient.email";
   if (/\b(full\s*name|signer\s*name|printed\s*name|name)\b/.test(l)) return "recipient.name";
-  if (/\b(title|position|role)\b/.test(l)) return "recipient.title";
-  if (/\b(date\s*signed|today'?s?\s*date|signing\s*date)\b/.test(l)) return "today";
+  if (/\b(title|position|role|puesto)\b/.test(l)) return "recipient.title";
+  if (/\b(date\s*signed|today'?s?\s*date|signing\s*date|date\s*of\s*application|fecha\s*de\s*solicitud)\b/.test(l)) return "today";
   if (type === "name") return "recipient.name";
   if (type === "first_name") return "recipient.first_name";
   if (type === "middle_name") return "recipient.middle_name";

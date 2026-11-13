@@ -457,11 +457,19 @@ function FieldBox({
     );
   }
   if (f.type === "radio" && own) {
+    const optCount = Math.max(1, (f.options || []).length);
+    const radioFontCqw = Math.min(1.35, Math.max(0.75, (f.h / optCount) * 62)).toFixed(2);
     return (
-      <div id={`f-${f.id}`} role="radiogroup" aria-label={f.label} className={cn("absolute flex flex-col justify-center gap-0.5 overflow-hidden rounded-[2px] bg-white/70 px-0.5", text, ring)} style={style}>
+      <div
+        id={`f-${f.id}`}
+        role="radiogroup"
+        aria-label={f.label}
+        className={cn("absolute flex flex-col justify-evenly overflow-hidden rounded-[2px] bg-white/85 px-0.5 py-0.5", text, ring)}
+        style={{ ...style, fontSize: `clamp(5px, ${radioFontCqw}cqw, 10.5px)`, lineHeight: 1.05 }}
+      >
         {(f.options || []).map((o) => (
-          <label key={o} className="flex cursor-pointer items-center gap-0.5 leading-tight">
-            <input type="radio" name={f.id} checked={v === o} onChange={() => onChange(o)} className="shrink-0 accent-[#f28c38]" style={{ width: "clamp(7px, 1.3cqw, 12px)", height: "clamp(7px, 1.3cqw, 12px)" }} />
+          <label key={o} className="flex min-h-0 cursor-pointer items-center gap-0.5 leading-none">
+            <input type="radio" name={f.id} checked={v === o} onChange={() => onChange(o)} className="shrink-0 accent-[#f28c38]" style={{ width: "clamp(6px, 1.05cqw, 10px)", height: "clamp(6px, 1.05cqw, 10px)" }} />
             <span className="truncate">{o}</span>
           </label>
         ))}

@@ -163,6 +163,24 @@ async function buildSignedPdf(req: SignRequest, recipients: SignRecipient[], ori
         name = (JSON.parse(v) as { name: string }).name;
       } catch {}
       write(page, `Attached: ${name}`, x, y, w, h);
+    } else if (f.type === "radio" && f.options?.length) {
+      const opts = f.options;
+      const rowH = h / opts.length;
+      const size = Math.max(5.5, Math.min(9.5, rowH * 0.68));
+      opts.forEach((opt, idx) => {
+        const chosen = opt.trim().toLowerCase() === v.trim().toLowerCase();
+        const oy = y + h - (idx + 1) * rowH;
+        const r = Math.min(3.5, rowH * 0.28);
+        const cx = x + r + 2;
+        const cy = oy + rowH / 2;
+        page.drawCircle({ x: cx, y: cy, size: r, borderWidth: 0.9, borderColor: ink });
+        if (chosen) page.drawCircle({ x: cx, y: cy, size: r * 0.55, color: ink });
+        const label = latin(opt);
+        let fs = size;
+        const availW = Math.max(12, w - (r * 2 + 6));
+        while (fs > 4.5 && font.widthOfTextAtSize(label, fs) > availW) fs -= 0.4;
+        page.drawText(label, { x: cx + r + 3, y: cy - fs * 0.32, size: fs, font: chosen ? bold : font, color: ink });
+      });
     } else {
       write(page, (f.type === "date" || f.type === "fillable_date") && /^\d{4}-\d{2}-\d{2}$/.test(v) ? usDate(v) : v, x, y, w, h);
     }

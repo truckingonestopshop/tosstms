@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 type Link = {
   id: string;
   title: string;
+  template_id: string | null;
   company_id: string | null;
   doc_type: string | null;
   file_path: string;
@@ -65,10 +66,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     }
   }
   const db = adminClient();
+  const expires = new Date();
+  expires.setDate(expires.getDate() + 30);
   const { data: request, error } = await db
     .from("tms_sign_requests")
     .insert({
       title: `${link.title} · ${name}`,
+      template_id: link.template_id || null,
       company_id: link.company_id,
       doc_type: link.doc_type,
       file_path: link.file_path,
@@ -79,6 +83,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
       values,
       status: "sent",
       sent_at: new Date().toISOString(),
+      expires_at: expires.toISOString(),
+      remind_every_days: 1,
       link_id: link.id,
     })
     .select("id")

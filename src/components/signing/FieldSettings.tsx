@@ -9,7 +9,19 @@ import { AUTO, TEXTLIKE, VALIDATIONS, inferAutoKey, type AutoKey, type SignField
  * The settings of one field (both builders): label, who fills it, saved text/default value,
  * required, read-only, what it fills itself with, choices, format check, "only show when…", and a formula.
  */
-export function FieldSettings({ field: f, fields, who, onChange }: { field: SignField; fields: SignField[]; who: SignRole[]; onChange: (p: Partial<SignField>) => void }) {
+export function FieldSettings({
+  field: f,
+  fields,
+  who,
+  onChange,
+  written,
+}: {
+  field: SignField;
+  fields: SignField[];
+  who: SignRole[];
+  onChange: (p: Partial<SignField>) => void;
+  written?: boolean;
+}) {
   const others = fields.filter((x) => x.id !== f.id && (x.type === "checkbox" || x.type === "dropdown" || x.type === "radio"));
   const src = fields.find((x) => x.id === f.showIf?.field);
   const typed = TEXTLIKE.includes(f.type) && f.type !== "dropdown" && f.type !== "radio";
@@ -34,6 +46,58 @@ export function FieldSettings({ field: f, fields, who, onChange }: { field: Sign
           ))}
         </Select>
       </Field>
+      {written && f.role !== "toss" && f.type !== "checkbox" && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-fg-2">Box size (px)</span>
+            <div className="flex gap-1">
+              {[
+                { label: "Auto", w: 0, h: 0 },
+                { label: "Compact", w: 95, h: f.type === "radio" ? 32 : 20 },
+                { label: "Medium", w: 150, h: f.type === "radio" ? 38 : 22 },
+                { label: "Wide", w: 230, h: f.type === "radio" ? 44 : 24 },
+              ].map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => onChange({ w: p.w, h: p.h })}
+                  className="rounded border border-line bg-surface px-1.5 py-0.5 text-[10px] font-medium text-fg-2 hover:border-brand hover:text-fg"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Width (px)" hint="Default: auto / fits cell">
+              <Input
+                type="number"
+                min={32}
+                max={600}
+                value={f.w && f.w >= 20 ? String(Math.round(f.w)) : ""}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  onChange({ w: Number.isFinite(n) && n > 0 ? n : 0 });
+                }}
+                placeholder="Auto"
+              />
+            </Field>
+            <Field label="Height (px)" hint="Default: auto">
+              <Input
+                type="number"
+                min={16}
+                max={240}
+                value={f.h && f.h >= 12 ? String(Math.round(f.h)) : ""}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  onChange({ h: Number.isFinite(n) && n > 0 ? n : 0 });
+                }}
+                placeholder="Auto"
+              />
+            </Field>
+          </div>
+        </div>
+      )}
 
       {typed && (
         <Field label="Text / default value" hint="Saved on the template so you don't have to retype it next time.">

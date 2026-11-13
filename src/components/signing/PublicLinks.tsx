@@ -61,8 +61,18 @@ export function PublicLinks({ template, onClose }: { template: SignTemplate | nu
       let file = { path: template.file_path || "", name: template.file_name || `${template.name}.pdf`, pages: template.pages, fields: template.fields };
       const values: Record<string, string> = {};
       if (template.kind === "written") {
-        // The written document becomes its PDF now, with the carrier's values in it.
-        const out = await renderWritten(template.body || "", { merge: (k) => (k.startsWith("recipient.") ? "" : autoValue(k, src)), toss: {}, letterhead: template.letterhead ? { title: title.trim() || template.name } : null });
+        // The written document becomes its PDF now, with the carrier's values and TOSS's defaults in it.
+        const toss: Record<string, string> = {};
+        for (const f of template.fields) {
+          if (f.role === TOSS) {
+            const v = resolveFieldValue(f, src);
+            if (v) toss[f.id] = v;
+          } else if (!f.auto?.startsWith("recipient.")) {
+            const v = resolveFieldValue(f, src);
+            if (v && !(f.type === "date" && f.auto === "today")) values[f.id] = v;
+          }
+        }
+        const out = await renderWritten(template.body || "", { merge: (k) => (k.startsWith("recipient.") ? "" : autoValue(k, src)), toss, letterhead: template.letterhead ? { title: title.trim() || template.name } : null });
         const name = `${template.name.replace(/[\\/:*?"<>|]+/g, "_")}.pdf`;
         const path = signingPath("links", name);
         const up = await sb().storage.from(BUCKET).upload(path, new Blob([out.bytes.slice().buffer], { type: "application/pdf" }), { contentType: "application/pdf" });

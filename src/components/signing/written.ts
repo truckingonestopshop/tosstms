@@ -16,6 +16,7 @@ export const LETTERHEAD = { top: 138, bottom: 70 };
 export const ORANGE = "#F28C38";
 
 let logoP: Promise<HTMLImageElement | null> | null = null;
+let footerLogoP: Promise<HTMLImageElement | null> | null = null;
 /** The TOSS logo (same site, so it can be drawn on a canvas). */
 function loadLogo() {
   logoP ??= new Promise((resolve) => {
@@ -26,9 +27,26 @@ function loadLogo() {
   });
   return logoP;
 }
+function loadFooterLogo() {
+  footerLogoP ??= new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = "/brand/toss-footer-logo.png";
+  });
+  return footerLogoP;
+}
 
 /** The TOSS letterhead on one page: orange corners, logo, company and title, rule, footer. */
-function drawLetterhead(g: CanvasRenderingContext2D, s: number, page: number, pages: number, title: string, logo: HTMLImageElement | null) {
+function drawLetterhead(
+  g: CanvasRenderingContext2D,
+  s: number,
+  page: number,
+  pages: number,
+  title: string,
+  logo: HTMLImageElement | null,
+  footerLogo: HTMLImageElement | null,
+) {
   const W = PAGE.w * s;
   const H = PAGE.h * s;
   const m = PAGE.m * s;
@@ -67,14 +85,19 @@ function drawLetterhead(g: CanvasRenderingContext2D, s: number, page: number, pa
   // Rule under the header
   g.fillStyle = ORANGE;
   g.fillRect(m, 100 * s, W - 2 * m, 2.5 * s);
-  // Footer
-  g.fillRect(m, H - 46 * s, W - 2 * m, 1 * s);
+  // Footer: rule + centered TOSS footer logo ("All your trucking needs in one place | TOSS TRUCKING ONE STOP SHOP") + page number
+  g.fillRect(m, H - 56 * s, W - 2 * m, 1 * s);
+  if (footerLogo) {
+    const fh = 32 * s;
+    const fw = (footerLogo.naturalWidth / footerLogo.naturalHeight) * fh || 100 * s;
+    g.drawImage(footerLogo, (W - fw) / 2, H - 46 * s, fw, fh);
+  }
   g.fillStyle = "#6b7280";
   g.font = `400 ${9.5 * s}px Arial, Helvetica, sans-serif`;
   g.textAlign = "left";
-  g.fillText("Trucking One Stop Shop Corp · TossSign", m, H - 28 * s);
+  g.fillText("Trucking One Stop Shop Corp · TossSign", m, H - 26 * s);
   g.textAlign = "right";
-  g.fillText(`Page ${page} of ${pages}`, W - m, H - 28 * s);
+  g.fillText(`Page ${page} of ${pages}`, W - m, H - 26 * s);
   g.restore();
 }
 
@@ -103,22 +126,27 @@ export const FIELD_BOX: Record<FieldType, { w: number; h: number }> = {
 
 export const WDOC_CSS = `
 .wdoc { font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.5; color: #111; word-wrap: break-word; }
-.wdoc p { margin: 0 0 10px; min-height: 1.5em; }
+.wdoc p { margin: 0 0 8px; }
+.wdoc p:empty { margin: 0; display: none; }
 .wdoc h1 { font-size: 26px; font-weight: 700; margin: 0 0 12px; line-height: 1.25; }
-.wdoc h2 { font-size: 20px; font-weight: 700; margin: 14px 0 8px; line-height: 1.3; }
-.wdoc h3 { font-size: 16px; font-weight: 700; margin: 12px 0 6px; }
-.wdoc ul { list-style: disc; padding-left: 26px; margin: 0 0 10px; }
-.wdoc ol { list-style: decimal; padding-left: 26px; margin: 0 0 10px; }
+.wdoc h2 { font-size: 20px; font-weight: 700; margin: 12px 0 6px; line-height: 1.3; }
+.wdoc h3 { font-size: 16px; font-weight: 700; margin: 10px 0 4px; }
+.wdoc ul { list-style: disc; padding-left: 26px; margin: 0 0 8px; }
+.wdoc ol { list-style: decimal; padding-left: 26px; margin: 0 0 8px; }
 .wdoc li { margin: 2px 0; }
 .wdoc table { border-collapse: collapse; width: 100%; margin: 0 0 12px; }
-.wdoc td, .wdoc th { border: 1px solid #c8c8cc; padding: 6px 8px; vertical-align: top; }
+.wdoc td, .wdoc th { border: 1px solid #c8c8cc; padding: 5px 7px; vertical-align: top; }
+.wdoc td p, .wdoc th p { margin: 0; }
+.wdoc td h1, .wdoc td h2, .wdoc td h3, .wdoc td h4, .wdoc th h1, .wdoc th h2, .wdoc th h3, .wdoc th h4 { font-size: 10px; font-weight: 700; line-height: 1.25; margin: 0 0 2px; }
 .wdoc th { background: #f4f4f5; font-weight: 700; text-align: left; }
 .wdoc img { max-width: 100%; height: auto; display: inline-block; }
 .wdoc hr { border: 0; border-top: 1px solid #d4d4d8; margin: 12px 0; }
 .wdoc hr.page-break { border-top: 2px dashed #f28c38; margin: 18px 0; }
 .wdoc a { color: #1d4ed8; text-decoration: underline; }
-.wdoc blockquote { border-left: 3px solid #d4d4d8; margin: 0 0 10px; padding-left: 12px; color: #444; }
-.wdoc .tk { display: inline-flex; align-items: center; vertical-align: middle; border-radius: 4px; padding: 0 6px; font-size: 12px; line-height: 1.6; font-weight: 600; white-space: nowrap; cursor: pointer; user-select: none; }
+.wdoc blockquote { border: 0; margin: 0 0 8px 28px; padding: 0; color: inherit; }
+.wdoc .tk { display: inline-flex; align-items: center; vertical-align: middle; border-radius: 4px; padding: 0 6px; font-size: 12px; line-height: 1.6; font-weight: 600; white-space: nowrap; cursor: pointer; user-select: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; }
+.wdoc .tk-field:not([data-role="toss"]) { resize: horizontal; }
+.wdoc td .tk, .wdoc th .tk { min-width: 0 !important; max-width: 100%; font-size: 11px; padding: 0 4px; }
 .wdoc .tk-merge { background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; }
 .wdoc .tk-field { background: #e0f2fe; color: #075985; border: 1px dashed #0284c7; }
 .wdoc .tk-field[data-role="toss"] { background: #f4f4f5; color: #3f3f46; border-color: #a1a1aa; }
@@ -136,8 +164,8 @@ export function mergeToken(key: AutoKey) {
 export function fieldTokenLabel(f: Pick<SignField, "label" | "type">, roleLabel: string) {
   return `${f.label || FIELD_TYPES.find((t) => t.v === f.type)?.label} · ${roleLabel}`;
 }
-/** A field's other settings (saved value, choices, format check, read-only, condition, formula) on its chip. */
-export type FieldExtra = Pick<SignField, "value" | "options" | "validation" | "readOnly" | "showIf" | "formula">;
+/** A field's other settings (saved value, choices, format check, read-only, condition, formula, custom box size) on its chip. */
+export type FieldExtra = Pick<SignField, "value" | "options" | "validation" | "readOnly" | "showIf" | "formula"> & { w?: number; h?: number };
 export const extraOf = (el: HTMLElement): FieldExtra => {
   try {
     return JSON.parse(el.dataset.extra || "{}") as FieldExtra;
@@ -145,10 +173,12 @@ export const extraOf = (el: HTMLElement): FieldExtra => {
     return {};
   }
 };
-export function fieldToken(f: Omit<SignField, "x" | "y" | "w" | "h" | "page">, roleLabel: string) {
+export function fieldToken(f: Omit<SignField, "x" | "y" | "w" | "h" | "page"> & { w?: number; h?: number }, roleLabel: string) {
   const box = FIELD_BOX[f.type];
-  const extra: FieldExtra = { value: f.value, options: f.options, validation: f.validation, readOnly: f.readOnly, showIf: f.showIf, formula: f.formula };
-  return `<span class="tk tk-field" data-field="${f.id}" data-type="${f.type}" data-role="${esc(f.role)}" data-label="${esc(f.label)}" data-required="${f.required ? "1" : ""}" data-auto="${f.auto || ""}" data-extra="${esc(JSON.stringify(extra))}" contenteditable="false" style="min-width:${Math.min(box.w, 160)}px">${esc(fieldTokenLabel(f, roleLabel))}</span>&nbsp;`;
+  const extra: FieldExtra = { value: f.value, options: f.options, validation: f.validation, readOnly: f.readOnly, showIf: f.showIf, formula: f.formula, w: f.w, h: f.h };
+  const customW = f.w && f.w >= 20 ? `${Math.round(f.w)}px` : "";
+  const styleStr = customW ? `width:${customW};max-width:100%` : `min-width:${Math.min(box.w, 160)}px;max-width:100%`;
+  return `<span class="tk tk-field" data-field="${f.id}" data-type="${f.type}" data-role="${esc(f.role)}" data-label="${esc(f.label)}" data-required="${f.required ? "1" : ""}" data-auto="${f.auto || ""}" data-extra="${esc(JSON.stringify(extra))}" contenteditable="false" style="${styleStr}">${esc(fieldTokenLabel(f, roleLabel))}</span>&nbsp;`;
 }
 export const newWrittenField = (type: FieldType, role: string): Omit<SignField, "x" | "y" | "w" | "h" | "page"> => {
   const t = FIELD_TYPES.find((x) => x.v === type)!;
@@ -164,20 +194,23 @@ export const newWrittenField = (type: FieldType, role: string): Omit<SignField, 
   };
 };
 
-const fieldOf = (el: HTMLElement): SignField => ({
-  id: el.dataset.field!,
-  type: el.dataset.type as FieldType,
-  role: el.dataset.role || TOSS,
-  label: el.dataset.label || "",
-  required: el.dataset.required === "1",
-  auto: (el.dataset.auto || null) as AutoKey | null,
-  ...extraOf(el),
-  page: 0,
-  x: 0,
-  y: 0,
-  w: 0,
-  h: 0,
-});
+const fieldOf = (el: HTMLElement): SignField => {
+  const ex = extraOf(el);
+  return {
+    id: el.dataset.field!,
+    type: el.dataset.type as FieldType,
+    role: el.dataset.role || TOSS,
+    label: el.dataset.label || "",
+    required: el.dataset.required === "1",
+    auto: (el.dataset.auto || null) as AutoKey | null,
+    ...ex,
+    page: 0,
+    x: 0,
+    y: 0,
+    w: ex.w || 0,
+    h: ex.h || 0,
+  };
+};
 
 /** The fields typed into a written document, in order (no positions yet). */
 export function fieldsFromBody(html: string): SignField[] {
@@ -191,10 +224,302 @@ export function mergesIn(html: string): AutoKey[] {
   return [...new Set(Array.from(doc.querySelectorAll<HTMLElement>("[data-merge]")).map((e) => e.dataset.merge as AutoKey))];
 }
 
+function parseIndentPx(val: string | null | undefined): number {
+  if (!val) return 0;
+  const m = val.trim().match(/^(-?\d+(?:\.\d+)?)\s*(px|pt|in|em|rem)?$/i);
+  if (!m) return 0;
+  const n = parseFloat(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const unit = (m[2] || "px").toLowerCase();
+  if (unit === "pt") return n * (96 / 72);
+  if (unit === "in") return n * 96;
+  if (unit === "em" || unit === "rem") return n * 14;
+  return n;
+}
+
+const hasVisibleContent = (el: Element): boolean => {
+  const txt = (el.textContent || "").replace(/\u00a0/g, " ").trim();
+  if (txt.length > 0) return true;
+  return !!el.querySelector("img, [data-field], [data-merge], table, hr");
+};
+
 /**
- * Strips Word / Google Docs / Grammarly / browser spellcheck & grammar-checker markup,
- * inline underlines, borders, highlights and extension nodes while keeping document structure
- * and TossSign merge/field tokens intact.
+ * Restores templates (such as `Employment Application`) whose custom inline `style` attributes or
+ * heading structure were stripped, ensuring disclosure paragraphs, dark section header bars, and
+ * compact table cell labels render cleanly.
+ */
+function repairStrippedTemplateHtml(container: HTMLElement, doc: Document) {
+  const BLOCK_TAGS = new Set(["P", "DIV", "SECTION", "ARTICLE", "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "TABLE", "BLOCKQUOTE", "HR"]);
+
+  // 1. Unwrap any block elements (tables, paragraphs, divs) accidentally nested inside <h1>..<h6>.
+  let headingFixed = true;
+  let hGuard = 0;
+  while (headingFixed && hGuard++ < 100) {
+    headingFixed = false;
+    for (const h of Array.from(container.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"))) {
+      const hasBlock = Array.from(h.children).some((c) => BLOCK_TAGS.has(c.tagName.toUpperCase()));
+      if (!hasBlock) continue;
+      const align = h.style?.textAlign || "";
+      let inlineRun: Node[] = [];
+      const flushInline = (before: Node | null) => {
+        if (!inlineRun.length) return;
+        const hasTxt = inlineRun.some((n) => (n.nodeType === Node.TEXT_NODE ? !!(n.textContent || "").trim() : n.nodeType === Node.ELEMENT_NODE && (n as Element).tagName !== "BR"));
+        if (hasTxt) {
+          const cloneH = doc.createElement(h.tagName.toLowerCase());
+          if (h.getAttribute("style")) cloneH.setAttribute("style", h.getAttribute("style")!);
+          cloneH.append(...inlineRun);
+          h.insertBefore(cloneH, before);
+        } else {
+          inlineRun.forEach((n) => n.parentNode?.removeChild(n));
+        }
+        inlineRun = [];
+      };
+      for (const ch of Array.from(h.childNodes)) {
+        if (ch.nodeType === Node.ELEMENT_NODE && BLOCK_TAGS.has((ch as Element).tagName.toUpperCase())) {
+          flushInline(ch);
+          if (align && !(ch as HTMLElement).style?.textAlign && (ch as Element).tagName !== "TABLE") {
+            (ch as HTMLElement).style.textAlign = align;
+          }
+        } else {
+          inlineRun.push(ch);
+        }
+      }
+      flushInline(null);
+      h.replaceWith(...Array.from(h.childNodes));
+      headingFixed = true;
+    }
+  }
+
+  // 2. Inside table cells (`<td>`, `<th>`), convert oversized `<h1>`..`<h4>` labels into compact 10px bold labels.
+  for (const h of Array.from(container.querySelectorAll<HTMLElement>("td h1, td h2, td h3, td h4, th h1, th h2, th h3, th h4"))) {
+    const div = doc.createElement("div");
+    div.style.cssText = "font-size: 10px; font-weight: 700; line-height: 1.25; margin: 0 0 2px;";
+    if (h.style?.textAlign) div.style.textAlign = h.style.textAlign;
+    if (h.style?.color) div.style.color = h.style.color;
+    div.append(...Array.from(h.childNodes));
+    h.replaceWith(div);
+  }
+
+  // 3. Repair top-level headings in Employment Application / bilingual forms that lost their inline styles.
+  for (const h of Array.from(container.querySelectorAll<HTMLElement>("h1, h2, h3"))) {
+    if (h.closest("td, th")) continue;
+    const rawText = (h.textContent || "").replace(/\s+/g, " ").trim();
+    if (!rawText) {
+      h.remove();
+      continue;
+    }
+    const hasCustomStyle = !!(h.style?.fontSize || h.style?.backgroundColor || h.style?.background);
+    if (hasCustomStyle) continue;
+
+    const upper = rawText.toUpperCase();
+    const isCentered = h.style?.textAlign === "center";
+
+    if (/^APPLICATION DISCLOSURE$/i.test(rawText)) {
+      h.style.cssText = "text-align: center; font-size: 12.5px; font-weight: 700; margin: 0 0 4px; line-height: 1.3;";
+      continue;
+    }
+    if (upper.startsWith("DRIVER EMPLOYMENT APPLICATION")) {
+      h.style.cssText = "text-align: center; font-size: 14px; font-weight: 700; margin: 8px 0 4px; line-height: 1.3;";
+      continue;
+    }
+    if (upper.startsWith("PREVIOUSLY HELD LICENSES")) {
+      h.style.cssText = "text-align: center; font-size: 10.5px; font-weight: 700; margin: 6px 0 3px; line-height: 1.3;";
+      continue;
+    }
+    // Merge token line under DRIVER EMPLOYMENT APPLICATION (Company: legal name · Company: address · Company: phone · Company: email):
+    const hasMerge = !!h.querySelector("[data-merge]");
+    if (hasMerge && rawText.includes("Company:")) {
+      const p = doc.createElement("p");
+      p.style.cssText = "text-align: center; font-size: 11.5px; font-weight: 700; line-height: 1.4; margin: 2px 0 4px;";
+      p.append(...Array.from(h.childNodes));
+      h.replaceWith(p);
+      continue;
+    }
+    // Long disclosure or instruction sentences that were turned into 20px bold headings:
+    if (
+      rawText.length > 95 ||
+      /^Trucking One Stop Shop/i.test(rawText) ||
+      /^COMPLETE IN FULL/i.test(rawText) ||
+      /^Attach additional/i.test(rawText) ||
+      /^No person operating/i.test(rawText) ||
+      /^Do you have the legal right/i.test(rawText)
+    ) {
+      const p = doc.createElement("p");
+      const small = /^COMPLETE IN FULL/i.test(rawText) || /^Attach additional/i.test(rawText) || /^No person operating/i.test(rawText);
+      const isQuestion = /^Do you have the legal right/i.test(rawText);
+      p.style.cssText = `${isCentered && !isQuestion ? "text-align: center; " : ""}font-size: ${small ? "9.5px" : "10.5px"}; font-weight: 400; line-height: 1.35; margin: 0 0 5px;`;
+      p.append(...Array.from(h.childNodes));
+      h.replaceWith(p);
+      continue;
+    }
+    // Uppercase bilingual section headers (e.g. "APPLICANT INFORMATION / INFORMACIÓN DEL SOLICITANTE")
+    const letters = rawText.replace(/[^A-Za-zÁÉÍÓÚÑÜáéíóúñü]/g, "");
+    const upperLetters = letters.replace(/[^A-ZÁÉÍÓÚÑÜ]/g, "");
+    const isAllCapsHeader = letters.length >= 6 && upperLetters.length / letters.length > 0.85;
+    if (
+      isAllCapsHeader &&
+      (rawText.includes(" / ") ||
+        /^(APPLICANT INFORMATION|PREVIOUS THREE YEARS|LICENSE INFORMATION|DRIVING EXPERIENCE|ACCIDENT RECORD|TRAFFIC CONVICTIONS|EMPLOYMENT RECORD|EDUCATION|REFERENCES|TO BE READ AND SIGNED)/i.test(rawText))
+    ) {
+      h.style.cssText =
+        "background-color: #111827; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 4px 8px; margin: 8px 0 4px; line-height: 1.3;";
+    }
+  }
+
+  // 4. Also check centered <p> disclosure / instruction paragraphs and table cell spacing that lost their compact font size.
+  for (const p of Array.from(container.querySelectorAll<HTMLElement>("p"))) {
+    if (p.closest("td, th")) continue;
+    if (p.style?.fontSize) continue;
+    const rawText = (p.textContent || "").replace(/\s+/g, " ").trim();
+    if (/^Trucking One Stop Shop CORP\.\s*d\/b\/a\s*TOSS/i.test(rawText)) {
+      p.style.fontSize = "10.5px";
+      p.style.lineHeight = "1.35";
+      p.style.margin = "0 0 5px";
+    } else if (/^COMPLETE IN FULL/i.test(rawText) || /^Attach additional sheet/i.test(rawText) || /^No person operating a commercial/i.test(rawText)) {
+      p.style.fontSize = "9.5px";
+      p.style.lineHeight = "1.3";
+      p.style.margin = "0 0 4px";
+    } else if (/^Do you have the legal right/i.test(rawText)) {
+      p.style.fontSize = "10.5px";
+      p.style.lineHeight = "1.35";
+      p.style.margin = "4px 0 6px";
+    } else if (/^Primary references:/i.test(rawText)) {
+      p.style.textAlign = "center";
+      p.style.fontSize = "11px";
+      p.style.lineHeight = "1.35";
+      p.style.margin = "10px 0 4px";
+    } else if (p.querySelector("[data-merge]") && rawText.includes("Company:")) {
+      p.style.textAlign = "center";
+      p.style.fontSize = "11.5px";
+      p.style.fontWeight = "700";
+      p.style.margin = "2px 0 4px";
+    }
+  }
+
+  // 4b. Also ensure any <p> starting with "Primary references:" is centered & 11px even if it already had partial inline styles.
+  for (const p of Array.from(container.querySelectorAll<HTMLElement>("p"))) {
+    if (p.closest("td, th")) continue;
+    const rawText = (p.textContent || "").replace(/\s+/g, " ").trim();
+    if (/^Primary references:/i.test(rawText)) {
+      p.style.textAlign = "center";
+      p.style.fontSize = "11px";
+      p.style.lineHeight = "1.35";
+      p.style.margin = "10px 0 4px";
+    }
+  }
+
+  // 5. Merge consecutive split <table> elements (e.g., 4 single-row tables for Driver Name, CDL / LFC No., Driver Signature, Date)
+  //    into a single connected <table> when separated only by whitespace or empty <p>/<br> nodes.
+  const colCountOf = (tbl: HTMLTableElement): number => {
+    const firstRow = tbl.querySelector("tr");
+    return firstRow ? firstRow.querySelectorAll(":scope > td, :scope > th").length : 0;
+  };
+  for (const tbl of Array.from(container.querySelectorAll<HTMLTableElement>("table"))) {
+    if (!tbl.isConnected) continue;
+    const cols = colCountOf(tbl);
+    if (cols < 1 || cols > 2) continue;
+    let next: Node | null = tbl.nextSibling;
+    while (next) {
+      const between: Node[] = [];
+      while (next) {
+        if (next.nodeType === Node.TEXT_NODE && !(next.textContent || "").replace(/\u00a0/g, " ").trim()) {
+          between.push(next);
+          next = next.nextSibling;
+          continue;
+        }
+        if (next.nodeType === Node.ELEMENT_NODE) {
+          const el = next as HTMLElement;
+          if ((el.tagName === "P" || el.tagName === "BR") && !hasVisibleContent(el)) {
+            between.push(el);
+            next = next.nextSibling;
+            continue;
+          }
+        }
+        break;
+      }
+      if (next && next.nodeType === Node.ELEMENT_NODE && (next as Element).tagName === "TABLE") {
+        const nextTbl = next as HTMLTableElement;
+        if (colCountOf(nextTbl) === cols) {
+          between.forEach((n) => n.parentNode?.removeChild(n));
+          const targetBody = tbl.querySelector("tbody") || tbl;
+          for (const tr of Array.from(nextTbl.querySelectorAll("tr"))) {
+            targetBody.appendChild(tr);
+          }
+          next = nextTbl.nextSibling;
+          nextTbl.remove();
+          continue;
+        }
+      }
+      break;
+    }
+  }
+
+  // 6. Format Policy / Acknowledgment signature tables (e.g. Driver Name / Driver Printed Name, CDL / LFC No., Driver Signature, Date)
+  //    into a single unified black-bordered box with aligned columns and no inner vertical divider line.
+  const SIG_ROW_RE = /^(driver\s*(printed\s*)?name|employee\s*(printed\s*)?name|printed\s*name|print\s*name|cdl\s*\/?\s*lfc(\s*no\.?)?|cdl\s*(number|no\.?)|license\s*(number|no\.?)|driver\s*signature|employee\s*signature|client\s*signature|authorized\s*signature|signature|date(\s*signed)?|title|company\s*name)\s*:?$/i;
+  for (const tbl of Array.from(container.querySelectorAll<HTMLTableElement>("table"))) {
+    const rows = Array.from(tbl.querySelectorAll("tr"));
+    if (rows.length < 1 || rows.length > 6) continue;
+    const isOneOrTwoCol = rows.every((r) => {
+      const c = r.querySelectorAll(":scope > td, :scope > th").length;
+      return c === 1 || c === 2;
+    });
+    if (!isOneOrTwoCol) continue;
+    const matchCount = rows.filter((r) => {
+      const firstCell = r.querySelector<HTMLElement>(":scope > td, :scope > th");
+      if (!firstCell) return false;
+      const clone = firstCell.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll("[data-field], [data-merge]").forEach((t) => t.remove());
+      const lbl = (clone.textContent || "").replace(/\s+/g, " ").trim();
+      return SIG_ROW_RE.test(lbl);
+    }).length;
+    if (matchCount === 0) continue;
+
+    tbl.style.cssText = "border-collapse: collapse; width: 100%; border: 1px solid #111111; margin: 10px 0 12px;";
+    for (const tr of rows) {
+      const cells = Array.from(tr.querySelectorAll<HTMLElement>(":scope > td, :scope > th"));
+      for (const cell of cells) {
+        // Strip leading/trailing <br> and empty <p> tags inside policy signature cells so rows don't have extra top blank space.
+        for (const p of Array.from(cell.querySelectorAll<HTMLElement>("p"))) {
+          if (!hasVisibleContent(p)) {
+            p.remove();
+          } else {
+            p.style.margin = "0";
+            p.style.lineHeight = "1.35";
+          }
+        }
+        for (const br of Array.from(cell.querySelectorAll("br"))) {
+          br.remove();
+        }
+      }
+      if (cells.length === 2) {
+        cells[0].style.cssText =
+          "border-top: 1px solid #111111; border-bottom: 1px solid #111111; border-left: 1px solid #111111; border-right: 0; padding: 10px 12px; vertical-align: middle; width: 28%; font-size: 13px;";
+        cells[1].style.cssText =
+          "border-top: 1px solid #111111; border-bottom: 1px solid #111111; border-left: 0; border-right: 1px solid #111111; padding: 10px 12px; vertical-align: middle; width: 72%; font-size: 13px;";
+      } else if (cells.length === 1) {
+        cells[0].style.cssText =
+          "border: 1px solid #111111; padding: 10px 12px; vertical-align: middle; width: 100%; font-size: 13px;";
+      }
+    }
+  }
+
+  // 7. Collapse duplicate empty `<p><br></p>` spacer lines inside `<td>`/`<th>` so table rows stay compact.
+  for (const td of Array.from(container.querySelectorAll<HTMLElement>("td, th"))) {
+    const emptyPs = Array.from(td.querySelectorAll<HTMLElement>("p")).filter((p) => !hasVisibleContent(p));
+    const hasChipOrText = Array.from(td.children).some((c) => c.tagName !== "DIV" && hasVisibleContent(c));
+    if (hasChipOrText) {
+      emptyPs.forEach((p) => p.remove());
+    } else if (emptyPs.length > 1) {
+      emptyPs.slice(1).forEach((p) => p.remove());
+    }
+  }
+}
+
+/**
+ * Strips browser spellcheck & grammar-checker extension nodes (Grammarly, LanguageTool, Microsoft Editor,
+ * Word `.SpellE`/`.GramE`) and unwraps `<blockquote>` indent wrappers into clean `margin-left` paragraphs,
+ * while preserving all legitimate document formatting, inline styles, tables, spans, and TossSign tokens.
  */
 export function cleanWrittenHtml(html: string): string {
   if (typeof DOMParser === "undefined" || !html) return html;
@@ -203,25 +528,66 @@ export function cleanWrittenHtml(html: string): string {
   if (!container) return html;
   container
     .querySelectorAll(
-      "style, script, meta, link, xml, grammarly-extension, grammarly-popups, pwa-container, lt-highlighter, lt-div, [data-gramm], [data-gramm_editor], [data-lt-tmp-id], [data-ms-editor]",
+      "script, meta, link, xml, grammarly-extension, grammarly-popups, pwa-container, lt-highlighter, lt-div, [data-gramm], [data-gramm_editor], [data-lt-tmp-id], [data-ms-editor]",
     )
     .forEach((el) => el.remove());
 
   const BLOCK_TAGS = new Set(["P", "DIV", "SECTION", "ARTICLE", "MAIN", "HEADER", "FOOTER", "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "LI", "TABLE", "THEAD", "TBODY", "TFOOT", "TR", "TD", "TH", "BLOCKQUOTE", "HR"]);
-  // Unwrap nested layout <div>/<section>/<article> containers that wrap block elements so the document
-  // never has a giant multi-paragraph wrapper block.
+  // Unwrap <blockquote> (browser execCommand indent) and nested <p> inside <p> into clean paragraph margin-left.
   let unwrapped = true;
-  while (unwrapped) {
+  let guard = 0;
+  while (unwrapped && guard++ < 500) {
     unwrapped = false;
-    for (const el of Array.from(container.querySelectorAll<HTMLElement>("div, section, article, main, header, footer"))) {
+    for (const el of Array.from(container.querySelectorAll<HTMLElement>("blockquote, p"))) {
       if (el.hasAttribute("data-merge") || el.hasAttribute("data-field")) continue;
+      if (el.closest("td, th")) continue;
+      const tag = el.tagName.toUpperCase();
       const hasBlockChild = Array.from(el.children).some((c) => BLOCK_TAGS.has(c.tagName.toUpperCase()));
+      if (tag === "P" && !hasBlockChild) continue;
+
+      const ownIndent =
+        (tag === "BLOCKQUOTE" ? Math.max(28, parseIndentPx(el.style?.marginLeft) + parseIndentPx(el.style?.paddingLeft)) : parseIndentPx(el.style?.marginLeft) + parseIndentPx(el.style?.paddingLeft)) || 0;
+      const ownAlign = el.style?.textAlign || "";
+
       if (hasBlockChild) {
+        let run: Node[] = [];
+        const flushInlineRun = (before: Node | null) => {
+          if (!run.length) return;
+          const nonEmpty = run.some((n) => (n.nodeType === Node.TEXT_NODE ? !!(n.textContent || "").replace(/\u00a0/g, " ").trim() : n.nodeType === Node.ELEMENT_NODE && (n as Element).tagName !== "BR"));
+          if (nonEmpty) {
+            const p = doc.createElement("p");
+            p.append(...run);
+            el.insertBefore(p, before);
+          } else {
+            run.forEach((n) => n.parentNode?.removeChild(n));
+          }
+          run = [];
+        };
+        for (const ch of Array.from(el.childNodes)) {
+          if (ch.nodeType === Node.ELEMENT_NODE && BLOCK_TAGS.has((ch as Element).tagName.toUpperCase())) {
+            flushInlineRun(ch);
+          } else {
+            run.push(ch);
+          }
+        }
+        flushInlineRun(null);
+
+        for (const ch of Array.from(el.children) as HTMLElement[]) {
+          if (ownIndent > 0) {
+            const cur = parseIndentPx(ch.style?.marginLeft) + parseIndentPx(ch.style?.paddingLeft);
+            ch.style.marginLeft = `${Math.min(168, Math.round(cur + ownIndent))}px`;
+          }
+          if (ownAlign && !ch.style?.textAlign) {
+            ch.style.textAlign = ownAlign;
+          }
+        }
         el.replaceWith(...Array.from(el.childNodes));
         unwrapped = true;
       } else {
         const p = doc.createElement("p");
-        if (el.style?.textAlign) p.style.textAlign = el.style.textAlign;
+        if (el.getAttribute("style")) p.setAttribute("style", el.getAttribute("style")!);
+        if (ownAlign) p.style.textAlign = ownAlign;
+        if (ownIndent > 0) p.style.marginLeft = `${Math.min(168, Math.round(ownIndent))}px`;
         p.append(...Array.from(el.childNodes));
         el.replaceWith(p);
         unwrapped = true;
@@ -235,55 +601,75 @@ export function cleanWrittenHtml(html: string): string {
     if (el.hasAttribute("data-merge") || el.hasAttribute("data-field")) continue;
     const tag = el.tagName.toUpperCase();
     const cls = (el.getAttribute("class") || "").toLowerCase();
-    const isExtensionOrWord =
+    const isExtensionOrSpell =
       tag.includes("-") ||
       cls.includes("spelle") ||
       cls.includes("grame") ||
       cls.includes("gramm") ||
-      cls.includes("spell") ||
-      cls.includes("mso") ||
       cls.includes("pwa-") ||
       cls.includes("lt-");
-    if (unwrapTags.has(tag) || isExtensionOrWord) {
+    if (unwrapTags.has(tag) || isExtensionOrSpell) {
       el.replaceWith(...Array.from(el.childNodes));
       continue;
     }
-    if (tag === "SPAN" || tag === "FONT") {
-      const color = el.style?.color || el.getAttribute("color") || "";
-      const hasUnderlineOrBorder =
-        (el.style?.textDecoration || "").includes("underline") ||
-        (el.style?.textDecorationLine || "").includes("underline") ||
-        !!el.style?.borderBottom ||
-        !!el.style?.background ||
-        !!el.style?.backgroundColor;
-      if (color && !hasUnderlineOrBorder && color !== "rgb(17, 17, 17)" && color !== "#111" && color !== "#111111" && color !== "black" && color !== "windowtext") {
-        const span = doc.createElement("span");
-        span.style.color = color;
-        span.append(...Array.from(el.childNodes));
-        el.replaceWith(span);
-      } else {
-        el.replaceWith(...Array.from(el.childNodes));
+    // Strip wavy/dotted spellcheck underlines injected by browsers or extensions without removing normal formatting.
+    if (el.style) {
+      const tdStyle = (el.style.textDecorationStyle || "").toLowerCase();
+      if (tdStyle === "wavy" || tdStyle === "dotted" || tdStyle === "dashed") {
+        el.style.textDecoration = "none";
+        el.style.textDecorationLine = "none";
+        el.style.textDecorationStyle = "";
       }
-      continue;
-    }
-    if (tag === "U" && el.attributes.length > 0) {
-      el.replaceWith(...Array.from(el.childNodes));
-      continue;
-    }
-    const align = el.style?.textAlign;
-    const href = tag === "A" ? el.getAttribute("href") : null;
-    const isPageBreak = tag === "HR" && el.classList.contains("page-break");
-    for (const attr of Array.from(el.attributes)) {
-      if (attr.name === "src" || attr.name === "alt" || attr.name === "colspan" || attr.name === "rowspan") continue;
-      el.removeAttribute(attr.name);
-    }
-    if (href && /^https?:\/\/|^mailto:|^tel:/i.test(href)) el.setAttribute("href", href);
-    if (isPageBreak) el.className = "page-break";
-    if (align && ["left", "center", "right", "justify"].includes(align)) {
-      el.style.textAlign = align;
     }
   }
+
+  repairStrippedTemplateHtml(container, doc);
+
   return container.innerHTML;
+}
+
+/**
+ * Tidies the live editor DOM in place after paste or indent/outdent: unwraps any `<blockquote>` or
+ * nested `<p>` containers into clean `<p>` blocks with `margin-left` and removes empty `<p></p>` artifacts.
+ */
+export function tidyWrittenDom(root: HTMLElement) {
+  const BLOCK_TAGS = new Set(["P", "DIV", "SECTION", "ARTICLE", "MAIN", "HEADER", "FOOTER", "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "LI", "TABLE", "BLOCKQUOTE", "HR"]);
+  let changed = true;
+  let guard = 0;
+  while (changed && guard++ < 200) {
+    changed = false;
+    for (const el of Array.from(root.querySelectorAll<HTMLElement>("blockquote, p"))) {
+      if (el.hasAttribute("data-merge") || el.hasAttribute("data-field")) continue;
+      if (el.closest("td, th")) continue;
+      const tag = el.tagName.toUpperCase();
+      const hasBlockChild = Array.from(el.children).some((c) => BLOCK_TAGS.has(c.tagName.toUpperCase()));
+      if (tag === "P" && !hasBlockChild) continue;
+      const addIndent = tag === "BLOCKQUOTE" ? 28 : parseIndentPx(el.style?.marginLeft);
+      if (hasBlockChild) {
+        for (const ch of Array.from(el.children) as HTMLElement[]) {
+          if (addIndent > 0) {
+            const cur = parseIndentPx(ch.style?.marginLeft);
+            ch.style.marginLeft = `${Math.min(168, Math.round(cur + addIndent))}px`;
+          }
+        }
+        el.replaceWith(...Array.from(el.childNodes));
+        changed = true;
+      } else {
+        const p = document.createElement("p");
+        if (el.getAttribute("style")) p.setAttribute("style", el.getAttribute("style")!);
+        if (el.style?.textAlign) p.style.textAlign = el.style.textAlign;
+        const cur = parseIndentPx(el.style?.marginLeft) + (tag === "BLOCKQUOTE" ? 28 : 0);
+        if (cur > 0) p.style.marginLeft = `${Math.min(168, Math.round(cur))}px`;
+        p.append(...Array.from(el.childNodes));
+        el.replaceWith(p);
+        changed = true;
+      }
+    }
+  }
+  for (const p of Array.from(root.querySelectorAll<HTMLElement>("p"))) {
+    if (p.closest("td, th")) continue;
+    if (p.childNodes.length === 0) p.remove();
+  }
 }
 
 /**
@@ -293,6 +679,7 @@ export function cleanWrittenHtml(html: string): string {
  *    so a giant `<br>`-separated block is never pushed as a single unit to the next page.
  */
 function normalizeWrittenDom(root: HTMLElement) {
+  tidyWrittenDom(root);
   const BLOCK = new Set(["P", "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "TABLE", "BLOCKQUOTE", "HR"]);
   // 1. Wrap any bare top-level text/inline nodes into <p> elements.
   let run: Node[] = [];
@@ -331,7 +718,6 @@ function normalizeWrittenDom(root: HTMLElement) {
     if (p.closest("td, th, li")) continue;
     let br = p.querySelector("br");
     while (br) {
-      // A trailing <br> at the very end of a paragraph is just a line filler; leave or remove it.
       let afterNode: Node | null = br.nextSibling;
       let hasAfter = false;
       let cur: Node | null = br;
@@ -353,7 +739,6 @@ function normalizeWrittenDom(root: HTMLElement) {
       const frag = r.extractContents();
       const beforeP = p.cloneNode(false) as HTMLElement;
       beforeP.appendChild(frag);
-      // Check if this was a double <br><br> (paragraph gap) or single <br> (tight line break)
       afterNode = br.nextSibling;
       while (afterNode && afterNode.nodeType === Node.TEXT_NODE && !(afterNode.textContent || "").trim()) {
         const toRem = afterNode;
@@ -366,10 +751,18 @@ function normalizeWrittenDom(root: HTMLElement) {
         beforeP.style.marginBottom = "2px";
       }
       br.parentNode?.removeChild(br);
-      if ((beforeP.textContent || "").trim() || beforeP.querySelector("img, [data-field]")) {
+      if (hasVisibleContent(beforeP)) {
         p.parentNode?.insertBefore(beforeP, p);
       }
       br = p.querySelector("br");
+    }
+  }
+
+  // 4. Remove any remaining empty spacer <p> elements so they never create blank gaps on the PDF.
+  for (const p of Array.from(root.querySelectorAll<HTMLElement>("p"))) {
+    if (p.closest("td, th")) continue;
+    if (!hasVisibleContent(p)) {
+      p.remove();
     }
   }
 }
@@ -520,10 +913,21 @@ export async function renderWritten(
         return;
       }
       const box = FIELD_BOX[f.type];
+      const inCell = !!el.closest("td, th");
+      const optCount = Math.max(2, f.options?.length || 2);
+      const defaultH = f.type === "radio" ? (inCell ? optCount * 14 + 4 : Math.max(box.h, optCount * 18 + 4)) : box.h;
+      const customW = f.w && f.w >= 20 ? Math.round(f.w) : null;
+      const customH = f.h && f.h >= 12 ? Math.round(f.h) : null;
+      const finalH = customH ?? defaultH;
+      const widthCss = customW ? `width:${customW}px;max-width:100%;` : inCell && f.type !== "checkbox" ? `width:100%;max-width:${box.w}px;` : `width:${box.w}px;max-width:100%;`;
+      // Remove any trailing `&nbsp;` right after a full-width cell field so it doesn't wrap onto an extra line
+      if (inCell && f.type !== "checkbox" && el.nextSibling?.nodeType === Node.TEXT_NODE && /^[\s\u00a0]+$/.test(el.nextSibling.textContent || "")) {
+        el.nextSibling.parentNode?.removeChild(el.nextSibling);
+      }
       el.removeAttribute("class");
       el.removeAttribute("contenteditable");
       el.textContent = "";
-      el.style.cssText = `display:inline-block;vertical-align:bottom;width:${box.w}px;height:${box.h}px;${f.type === "checkbox" ? "border:1px solid #555;" : "border-bottom:1px solid #333;"}`;
+      el.style.cssText = `display:${inCell && f.type !== "checkbox" && !customW ? "block" : "inline-block"};vertical-align:bottom;${widthCss}height:${finalH}px;box-sizing:border-box;${f.type === "checkbox" ? "border:1px solid #555;" : inCell ? "" : "border-bottom:1px solid #333;"}`;
     });
     root.querySelectorAll(".tk").forEach((el) => el.classList.remove("tk", "tk-sel"));
     normalizeWrittenDom(root);
@@ -534,7 +938,7 @@ export async function renderWritten(
     const collectBlocks = (parent: Element): HTMLElement[] =>
       Array.from(parent.children).flatMap((el) => {
         const tag = el.tagName.toUpperCase();
-        if (tag === "UL" || tag === "OL" || tag === "DIV" || tag === "SECTION" || tag === "ARTICLE") return collectBlocks(el);
+        if (tag === "UL" || tag === "OL" || tag === "DIV" || tag === "SECTION" || tag === "ARTICLE" || tag === "BLOCKQUOTE") return collectBlocks(el);
         if (tag === "TABLE") return Array.from(el.querySelectorAll<HTMLElement>("tr"));
         return [el as HTMLElement];
       });
@@ -590,7 +994,7 @@ export async function renderWritten(
     const scale = 2;
     root.style.height = `${count * CH}px`;
     const shot = await html2canvas(root, { scale, backgroundColor: "#ffffff", useCORS: true, width: CONTENT_W, height: count * CH, windowWidth: CONTENT_W });
-    const logo = opts.letterhead ? await loadLogo() : null;
+    const [logo, footerLogo] = opts.letterhead ? await Promise.all([loadLogo(), loadFooterLogo()]) : [null, null];
     const pdf = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait" });
     for (let p = 0; p < count; p++) {
       const c = document.createElement("canvas");
@@ -600,7 +1004,7 @@ export async function renderWritten(
       g.fillStyle = "#fff";
       g.fillRect(0, 0, c.width, c.height);
       g.drawImage(shot, 0, p * CH * scale, CONTENT_W * scale, CH * scale, PAGE.m * scale, TOP * scale, CONTENT_W * scale, CH * scale);
-      if (opts.letterhead) drawLetterhead(g, scale, p + 1, count, opts.letterhead.title, logo);
+      if (opts.letterhead) drawLetterhead(g, scale, p + 1, count, opts.letterhead.title, logo, footerLogo);
       if (p > 0) pdf.addPage("letter", "portrait");
       pdf.addImage(c.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 612, 792);
     }

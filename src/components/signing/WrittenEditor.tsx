@@ -38,7 +38,7 @@ import { roleColor } from "./FieldBuilder";
 import { FieldSettings } from "./FieldSettings";
 import { FIELD_ICON as ICON } from "./icons";
 import { PdfPages } from "./PdfPages";
-import { LETTERHEAD, ORANGE, PAGE, WDOC_CSS, autoLabel, cleanWrittenHtml, extraOf, fieldToken, fieldTokenLabel, fieldsFromBody, mergeToken, newWrittenField, renderWritten } from "./written";
+import { LETTERHEAD, ORANGE, PAGE, WDOC_CSS, autoLabel, cleanWrittenHtml, extraOf, fieldToken, fieldTokenLabel, fieldsFromBody, mergeToken, newWrittenField, renderWritten, tidyWrittenDom } from "./written";
 
 
 const GROUPS: { label: string; prefix: string }[] = [
@@ -48,32 +48,41 @@ const GROUPS: { label: string; prefix: string }[] = [
   { label: "Date", prefix: "today" },
 ];
 const SAMPLE = {
-  company: { name: "SAMPLE TRANSPORT LLC", dba_name: "Sample Trucking", dot_number: "1234567", mc_number: "987654", ein: "12-3456789", address: "100 Main St, Miami, FL 33101", contact_phone: "(305) 555-0100", contact_email: "owner@sample.com", contact_first_name: "Maria", contact_last_name: "Lopez" },
-  driver: { name: "John Driver", cdl_number: "D1234567", cdl_state: "FL", dob: "1985-04-12" },
-  recipient: { name: "Maria Lopez", email: "owner@sample.com", phone: "(305) 555-0100" },
+  company: { name: "SAMPLE TRANSPORT LLC", dba_name: "Sample Trucking", dot_number: "1234567", mc_number: "987654", ein: "12-3456789", address: "100 Main St, Miami, FL 33101", street: "100 Main St", city: "Miami", state: "FL", zip: "33101", contact_phone: "(305) 555-0100", contact_email: "owner@sample.com", contact_first_name: "Maria", contact_last_name: "Lopez" },
+  driver: { name: "John Michael Driver", first_name: "John", last_name: "Driver", phone: "(305) 555-0199", email: "john.driver@sample.com", cdl_number: "D1234567", cdl_state: "FL", license_type: "CDL A", cdl_expiry: "2028-04-12", medical_card_expiry: "2027-06-30", dob: "1985-04-12", hire_date: "2026-01-15" },
+  recipient: { name: "Maria Elena Lopez", email: "owner@sample.com", phone: "(305) 555-0100", title: "Owner" },
 };
 
-/** The TOSS letterhead at the top of the page while writing (the PDF draws it on every page). */
+/** The TOSS letterhead at the top and bottom of the page while writing (the PDF draws it on every page). */
 function LetterheadStrip({ title }: { title: string }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 select-none" style={{ height: LETTERHEAD.top }} aria-hidden>
-      <div className="absolute left-0 top-0 h-[62px] w-[62px]" style={{ background: ORANGE, clipPath: "polygon(0 0, 100% 0, 0 100%)" }} />
-      <div className="absolute right-0 top-0 h-[62px] w-[62px]" style={{ background: ORANGE, clipPath: "polygon(0 0, 100% 0, 100% 100%)" }} />
-      <div className="absolute flex items-center gap-3" style={{ left: PAGE.m, top: 42 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/toss-logo.svg" alt="" style={{ height: 40 }} />
-        <div className="text-[15px] font-bold leading-[19px] text-[#111]" style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>
-          TRUCKING ONE
-          <br />
-          STOP SHOP
+    <>
+      <div className="pointer-events-none absolute inset-x-0 top-0 select-none" style={{ height: LETTERHEAD.top }} aria-hidden>
+        <div className="absolute left-0 top-0 h-[62px] w-[62px]" style={{ background: ORANGE, clipPath: "polygon(0 0, 100% 0, 0 100%)" }} />
+        <div className="absolute right-0 top-0 h-[62px] w-[62px]" style={{ background: ORANGE, clipPath: "polygon(0 0, 100% 0, 100% 100%)" }} />
+        <div className="absolute flex items-center gap-3" style={{ left: PAGE.m, top: 42 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/toss-logo.svg" alt="" style={{ height: 40 }} />
+          <div className="text-[15px] font-bold leading-[19px] text-[#111]" style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>
+            TRUCKING ONE
+            <br />
+            STOP SHOP
+          </div>
+        </div>
+        <div className="absolute text-right text-[12.5px] font-bold leading-[18px] text-[#111]" style={{ right: PAGE.m, top: 45, fontFamily: "Arial, Helvetica, sans-serif", maxWidth: 330 }}>
+          TRUCKING ONE STOP SHOP CORP
+          <div className="truncate uppercase">{title}</div>
+        </div>
+        <div className="absolute" style={{ left: PAGE.m, right: PAGE.m, top: 100, height: 2.5, background: ORANGE }} />
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 select-none" style={{ height: LETTERHEAD.bottom }} aria-hidden>
+        <div className="absolute" style={{ left: PAGE.m, right: PAGE.m, bottom: 56, height: 1, background: ORANGE }} />
+        <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/toss-footer-logo.png" alt="" style={{ height: 32 }} />
         </div>
       </div>
-      <div className="absolute text-right text-[12.5px] font-bold leading-[18px] text-[#111]" style={{ right: PAGE.m, top: 45, fontFamily: "Arial, Helvetica, sans-serif", maxWidth: 330 }}>
-        TRUCKING ONE STOP SHOP CORP
-        <div className="truncate uppercase">{title}</div>
-      </div>
-      <div className="absolute" style={{ left: PAGE.m, right: PAGE.m, top: 100, height: 2.5, background: ORANGE }} />
-    </div>
+    </>
   );
 }
 
@@ -197,9 +206,42 @@ export function WrittenEditor({
   const cmd = (name: string, value?: string) => {
     restore();
     document.execCommand(name, false, value);
+    if (ed.current) tidyWrittenDom(ed.current);
     changed();
   };
-  /** Puts HTML exactly at the cursor (the browser's own insert pushes value / field chips out of the line). */
+  /** Indents or outdents selected paragraphs cleanly using `margin-left` (28px steps) without creating `<blockquote>` wrappers. */
+  const adjustIndent = (delta: 1 | -1) => {
+    restore();
+    const root = ed.current;
+    const s = window.getSelection();
+    if (!root || !s || !s.rangeCount) return;
+    tidyWrittenDom(root);
+    const r = s.getRangeAt(0);
+    const blocks = Array.from(root.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, h5, h6, ul, ol")).filter((b) =>
+      s.containsNode ? s.containsNode(b, true) : r.intersectsNode(b),
+    );
+    if (!blocks.length) {
+      let node: Node | null = r.startContainer;
+      while (node && node !== root && !(node instanceof HTMLElement && /^(P|H[1-6]|UL|OL)$/.test(node.tagName))) {
+        node = node.parentNode;
+      }
+      if (node && node !== root) {
+        blocks.push(node as HTMLElement);
+      } else if (root.children.length === 0) {
+        const p = document.createElement("p");
+        p.innerHTML = "<br>";
+        root.appendChild(p);
+        blocks.push(p);
+      }
+    }
+    for (const b of blocks) {
+      const cur = parseInt(b.style.marginLeft || "0", 10) || 0;
+      const next = Math.max(0, Math.min(168, cur + delta * 28));
+      b.style.marginLeft = next ? `${next}px` : "";
+    }
+    changed();
+  };
+  /** Puts inline HTML (such as a merge value or field chip) right at the cursor. */
   const insert = (html: string) => {
     restore();
     const s = window.getSelection();
@@ -216,6 +258,18 @@ export function WrittenEditor({
       s.removeAllRanges();
       s.addRange(after);
       range.current = after.cloneRange();
+    }
+    changed();
+  };
+  /** Inserts pasted block/inline HTML cleanly, splitting the current paragraph rather than nesting `<p>` inside `<p>`. */
+  const pasteHtml = (html: string) => {
+    restore();
+    if (!ed.current) return;
+    document.execCommand("insertHTML", false, html);
+    tidyWrittenDom(ed.current);
+    const s = window.getSelection();
+    if (s && s.rangeCount && ed.current.contains(s.anchorNode)) {
+      range.current = s.getRangeAt(0).cloneRange();
     }
     changed();
   };
@@ -262,20 +316,23 @@ export function WrittenEditor({
     setSel(t);
   };
   /** The selected field chip as a field. */
-  const chipField = (el: HTMLElement): SignField => ({
-    id: el.dataset.field || "",
-    type: (el.dataset.type || "text") as FieldType,
-    role: el.dataset.role || TOSS,
-    label: el.dataset.label || "",
-    required: el.dataset.required === "1",
-    auto: (el.dataset.auto || null) as AutoKey | null,
-    ...extraOf(el),
-    page: 0,
-    x: 0,
-    y: 0,
-    w: 0,
-    h: 0,
-  });
+  const chipField = (el: HTMLElement): SignField => {
+    const ex = extraOf(el);
+    return {
+      id: el.dataset.field || "",
+      type: (el.dataset.type || "text") as FieldType,
+      role: el.dataset.role || TOSS,
+      label: el.dataset.label || "",
+      required: el.dataset.required === "1",
+      auto: (el.dataset.auto || null) as AutoKey | null,
+      ...ex,
+      page: 0,
+      x: 0,
+      y: 0,
+      w: ex.w || 0,
+      h: ex.h || 0,
+    };
+  };
   /** Changes the selected field chip (its data attributes and its label). */
   const patchField = (p: Partial<SignField>) => {
     const el = selRef.current;
@@ -285,8 +342,16 @@ export function WrittenEditor({
     if (p.required !== undefined) el.dataset.required = p.required ? "1" : "";
     if (p.auto !== undefined) el.dataset.auto = p.auto || "";
     const extra = { ...extraOf(el) };
-    for (const k of ["value", "options", "validation", "readOnly", "showIf", "formula"] as const) if (k in p) (extra as Record<string, unknown>)[k] = p[k];
+    for (const k of ["value", "options", "validation", "readOnly", "showIf", "formula", "w", "h"] as const) if (k in p) (extra as Record<string, unknown>)[k] = p[k];
     el.dataset.extra = JSON.stringify(extra);
+    if ("w" in p) {
+      if (extra.w && extra.w >= 20) {
+        el.style.width = `${Math.round(extra.w)}px`;
+        el.style.minWidth = "0px";
+      } else {
+        el.style.width = "";
+      }
+    }
     el.textContent = fieldTokenLabel({ label: el.dataset.label || "", type: el.dataset.type as FieldType }, roleLabel(el.dataset.role || TOSS));
     changed();
     setSel(el);
@@ -344,7 +409,6 @@ export function WrittenEditor({
             <option value="H1">Title</option>
             <option value="H2">Heading</option>
             <option value="H3">Subheading</option>
-            <option value="BLOCKQUOTE">Quote</option>
           </select>
           <Sep />
           <T icon={Bold} label="Bold" on={() => cmd("bold")} />
@@ -363,8 +427,8 @@ export function WrittenEditor({
           <Sep />
           <T icon={List} label="Bullets" on={() => cmd("insertUnorderedList")} />
           <T icon={ListOrdered} label="Numbers" on={() => cmd("insertOrderedList")} />
-          <T icon={Outdent} label="Less indent" on={() => cmd("outdent")} />
-          <T icon={Indent} label="More indent" on={() => cmd("indent")} />
+          <T icon={Outdent} label="Less indent" on={() => adjustIndent(-1)} />
+          <T icon={Indent} label="More indent" on={() => adjustIndent(1)} />
           <Sep />
           <T icon={Link2} label="Link" on={addLink} />
           <T icon={ImagePlus} label="Image or logo" on={() => img.current?.click()} />
@@ -410,15 +474,28 @@ export function WrittenEditor({
                   document.execCommand("defaultParagraphSeparator", false, "p");
                 } catch {}
               }}
+              onKeyDown={(e) => {
+                if (e.key === "Tab") {
+                  e.preventDefault();
+                  adjustIndent(e.shiftKey ? -1 : 1);
+                }
+              }}
               onInput={changed}
               onClick={onClick}
               onBlur={changed}
               onPaste={(e) => {
+                e.preventDefault();
                 const html = e.clipboardData?.getData("text/html");
-                if (html) {
-                  e.preventDefault();
-                  insert(cleanWrittenHtml(html));
-                }
+                const text = e.clipboardData?.getData("text/plain") || "";
+                const cleaned = html
+                  ? cleanWrittenHtml(html)
+                  : text
+                      .split(/\r?\n+/)
+                      .map((line) => line.trim())
+                      .filter(Boolean)
+                      .map((line) => `<p>${line.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!)}</p>`)
+                      .join("");
+                if (cleaned) pasteHtml(cleaned);
               }}
             />
           </div>
@@ -535,7 +612,7 @@ export function WrittenEditor({
                 </Select>
               </Field>
             ) : (
-              selEl && <FieldSettings field={chipField(selEl)} fields={fields} who={who} onChange={patchField} />
+              selEl && <FieldSettings field={chipField(selEl)} fields={fields} who={who} onChange={patchField} written />
             )}
           </div>
         )}
