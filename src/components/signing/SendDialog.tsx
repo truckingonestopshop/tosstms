@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { BUCKET, errMsg, sb, signedUrl } from "@/lib/db";
-import { renderWritten } from "./written";
+import { fieldsFromBody, renderWritten } from "./written";
 import { useLiveTable } from "@/lib/live";
 import { useStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
@@ -383,7 +383,8 @@ export function SendDialog({
     setValues((prev) => fillValues(current, initialWho, nextDrv, nextPer, prev));
     setStep("details");
   };
-  const begin = async (s: Source) => {
+  const begin = async (raw: Source) => {
+    const s = raw.template?.kind === "written" ? { ...raw, fields: fieldsFromBody(raw.template.body || "") } : raw;
     const initialWho = Object.fromEntries(s.roles.map((r) => [r.key, guess(r)]));
     setSrc(s);
     setUrl(s.path ? await signedUrl(s.path).catch(() => null) : null);

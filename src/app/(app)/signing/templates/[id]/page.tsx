@@ -12,19 +12,20 @@ import { CATEGORIES, type SignTemplate, type TemplateCategory } from "@/lib/sign
 import { FieldBuilder } from "@/components/signing/FieldBuilder";
 import { useFileAs } from "@/components/signing/Templates";
 import { WrittenEditor } from "@/components/signing/WrittenEditor";
-import { fieldsFromBody } from "@/components/signing/written";
+import { cleanWrittenHtml, fieldsFromBody } from "@/components/signing/written";
 
 // One template: its PDF with the fields placed on it, who signs, and where it's sent from.
 
 function toPayload(t: SignTemplate) {
-  const fields = t.kind === "written" ? fieldsFromBody(t.body || "") : t.fields;
+  const cleanBody = t.kind === "written" ? cleanWrittenHtml(t.body || "") : t.body;
+  const fields = t.kind === "written" ? fieldsFromBody(cleanBody || "") : t.fields;
   return {
     name: t.name.trim() || "Untitled template",
     category: t.category,
     doc_type: t.doc_type,
     roles: t.roles,
     fields,
-    body: t.body,
+    body: cleanBody,
     letterhead: !!t.letterhead,
   };
 }

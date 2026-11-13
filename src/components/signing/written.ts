@@ -206,7 +206,30 @@ export function cleanWrittenHtml(html: string): string {
       "style, script, meta, link, xml, grammarly-extension, grammarly-popups, pwa-container, lt-highlighter, lt-div, [data-gramm], [data-gramm_editor], [data-lt-tmp-id], [data-ms-editor]",
     )
     .forEach((el) => el.remove());
-  const unwrapTags = new Set(["SPAN", "MARK", "INS", "FONT", "A", "WBR"]);
+
+  const BLOCK_TAGS = new Set(["P", "DIV", "SECTION", "ARTICLE", "MAIN", "HEADER", "FOOTER", "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "LI", "TABLE", "THEAD", "TBODY", "TFOOT", "TR", "TD", "TH", "BLOCKQUOTE", "HR"]);
+  // Unwrap nested layout <div>/<section>/<article> containers that wrap block elements so the document
+  // never has a giant multi-paragraph wrapper block.
+  let unwrapped = true;
+  while (unwrapped) {
+    unwrapped = false;
+    for (const el of Array.from(container.querySelectorAll<HTMLElement>("div, section, article, main, header, footer"))) {
+      if (el.hasAttribute("data-merge") || el.hasAttribute("data-field")) continue;
+      const hasBlockChild = Array.from(el.children).some((c) => BLOCK_TAGS.has(c.tagName.toUpperCase()));
+      if (hasBlockChild) {
+        el.replaceWith(...Array.from(el.childNodes));
+        unwrapped = true;
+      } else {
+        const p = doc.createElement("p");
+        if (el.style?.textAlign) p.style.textAlign = el.style.textAlign;
+        p.append(...Array.from(el.childNodes));
+        el.replaceWith(p);
+        unwrapped = true;
+      }
+    }
+  }
+
+  const unwrapTags = new Set(["MARK", "INS", "WBR"]);
   const all = Array.from(container.querySelectorAll<HTMLElement>("*"));
   for (const el of all) {
     if (el.hasAttribute("data-merge") || el.hasAttribute("data-field")) continue;
@@ -225,22 +248,241 @@ export function cleanWrittenHtml(html: string): string {
       el.replaceWith(...Array.from(el.childNodes));
       continue;
     }
+    if (tag === "SPAN" || tag === "FONT") {
+      const color = el.style?.color || el.getAttribute("color") || "";
+      const hasUnderlineOrBorder =
+        (el.style?.textDecoration || "").includes("underline") ||
+        (el.style?.textDecorationLine || "").includes("underline") ||
+        !!el.style?.borderBottom ||
+        !!el.style?.background ||
+        !!el.style?.backgroundColor;
+      if (color && !hasUnderlineOrBorder && color !== "rgb(17, 17, 17)" && color !== "#111" && color !== "#111111" && color !== "black" && color !== "windowtext") {
+        const span = doc.createElement("span");
+        span.style.color = color;
+        span.append(...Array.from(el.childNodes));
+        el.replaceWith(span);
+      } else {
+        el.replaceWith(...Array.from(el.childNodes));
+      }
+      continue;
+    }
     if (tag === "U" && el.attributes.length > 0) {
       el.replaceWith(...Array.from(el.childNodes));
       continue;
     }
     const align = el.style?.textAlign;
+    const href = tag === "A" ? el.getAttribute("href") : null;
     const isPageBreak = tag === "HR" && el.classList.contains("page-break");
     for (const attr of Array.from(el.attributes)) {
       if (attr.name === "src" || attr.name === "alt" || attr.name === "colspan" || attr.name === "rowspan") continue;
       el.removeAttribute(attr.name);
     }
+    if (href && /^https?:\/\/|^mailto:|^tel:/i.test(href)) el.setAttribute("href", href);
     if (isPageBreak) el.className = "page-break";
     if (align && ["left", "center", "right", "justify"].includes(align)) {
       el.style.textAlign = align;
     }
   }
   return container.innerHTML;
+}
+
+/**
+ * Normalizes the live `.wdoc` DOM tree before measuring & paginating so:
+ * 1. Stray top-level inline nodes are wrapped in `<p>`.
+ * 2. Any `<p>` or `<blockquote>` with internal `<br>` line breaks is split into individual `<p>` lines
+ *    so a giant `<br>`-separated block is never pushed as a single unit to the next page.
+ */
+function normalizeWrittenDom(root: HTMLElement) {
+  const BLOCK = new Set(["P", "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "TABLE", "BLOCKQUOTE", "HR"]);
+  // 1. Wrap any bare top-level text/inline nodes into <p> elements.
+  let run: Node[] = [];
+  const flushRun = (before: Node | null) => {
+    if (!run.length) return;
+    const hasContent = run.some((n) => (n.nodeType === Node.TEXT_NODE ? !!(n.textContent || "").trim() : true));
+    if (hasContent) {
+      const p = document.createElement("p");
+      p.append(...run);
+      root.insertBefore(p, before);
+    } else {
+      run.forEach((n) => n.parentNode?.removeChild(n));
+    }
+    run = [];
+  };
+  for (const child of Array.from(root.childNodes)) {
+    if (child.nodeType === Node.ELEMENT_NODE && BLOCK.has((child as Element).tagName.toUpperCase())) {
+      flushRun(child);
+    } else {
+      run.push(child);
+    }
+  }
+  flushRun(null);
+
+  // 2. Preserve explicit <ol> item numbers so if a long <li> is split across pages, numbering never shifts.
+  for (const ol of Array.from(root.querySelectorAll<HTMLOListElement>("ol"))) {
+    Array.from(ol.children).forEach((li, i) => {
+      if (li.tagName.toUpperCase() === "LI" && !li.hasAttribute("value")) {
+        (li as HTMLLIElement).value = i + 1;
+      }
+    });
+  }
+
+  // 3. Split any <p> that has internal <br> breaks into separate <p> elements so each line paginates naturally.
+  for (const p of Array.from(root.querySelectorAll<HTMLElement>("p"))) {
+    if (p.closest("td, th, li")) continue;
+    let br = p.querySelector("br");
+    while (br) {
+      // A trailing <br> at the very end of a paragraph is just a line filler; leave or remove it.
+      let afterNode: Node | null = br.nextSibling;
+      let hasAfter = false;
+      let cur: Node | null = br;
+      while (cur && cur !== p) {
+        let sib = cur.nextSibling;
+        while (sib) {
+          if (sib.nodeType === Node.TEXT_NODE && (sib.textContent || "").trim()) hasAfter = true;
+          else if (sib.nodeType === Node.ELEMENT_NODE && (sib as Element).tagName !== "BR") hasAfter = true;
+          else if (sib.nodeType === Node.ELEMENT_NODE && (sib as Element).tagName === "BR" && sib !== afterNode) hasAfter = true;
+          sib = sib.nextSibling;
+        }
+        cur = cur.parentNode;
+      }
+      if (!hasAfter) break;
+
+      const r = document.createRange();
+      r.setStart(p, 0);
+      r.setEndBefore(br);
+      const frag = r.extractContents();
+      const beforeP = p.cloneNode(false) as HTMLElement;
+      beforeP.appendChild(frag);
+      // Check if this was a double <br><br> (paragraph gap) or single <br> (tight line break)
+      afterNode = br.nextSibling;
+      while (afterNode && afterNode.nodeType === Node.TEXT_NODE && !(afterNode.textContent || "").trim()) {
+        const toRem = afterNode;
+        afterNode = afterNode.nextSibling;
+        toRem.parentNode?.removeChild(toRem);
+      }
+      if (afterNode && afterNode.nodeType === Node.ELEMENT_NODE && (afterNode as Element).tagName === "BR") {
+        afterNode.parentNode?.removeChild(afterNode);
+      } else {
+        beforeP.style.marginBottom = "2px";
+      }
+      br.parentNode?.removeChild(br);
+      if ((beforeP.textContent || "").trim() || beforeP.querySelector("img, [data-field]")) {
+        p.parentNode?.insertBefore(beforeP, p);
+      }
+      br = p.querySelector("br");
+    }
+  }
+}
+
+/** Pushes a block element or table row down so its top lands at `targetTop`, accounting for CSS margin collapse. */
+function pushElementTo(el: HTMLElement, targetTop: number, rootTop: number) {
+  const curTop = el.getBoundingClientRect().top - rootTop;
+  const by = targetTop - curTop;
+  if (by <= 0) return;
+  if (el.tagName.toUpperCase() === "TR") {
+    el.querySelectorAll<HTMLElement>("td,th").forEach((c) => {
+      c.style.paddingTop = `${parseFloat(getComputedStyle(c).paddingTop) + by}px`;
+    });
+    return;
+  }
+  el.style.marginTop = `${parseFloat(getComputedStyle(el).marginTop) + by}px`;
+  const afterTop = el.getBoundingClientRect().top - rootTop;
+  if (afterTop < targetTop - 0.5) {
+    el.style.marginTop = `${parseFloat(el.style.marginTop) + (targetTop - afterTop)}px`;
+  }
+}
+
+/**
+ * When a multi-line `<p>`, `<li>` or `<blockquote>` crosses a page boundary `next`, splits it at the exact
+ * word where the overflowing line begins so all lines that fit on the current page stay on the
+ * current page and only the remaining lines move to the top of the next page.
+ */
+function splitBlockAtPageBreak(el: HTMLElement, next: number, rootTop: number): boolean {
+  const tag = el.tagName.toUpperCase();
+  if (tag !== "P" && tag !== "LI" && tag !== "BLOCKQUOTE") return false;
+  // Don't split inside a block that has a tall signature/initials/radio box or nested list.
+  if (el.querySelector("ul, ol, table")) return false;
+  const hasTallBox = Array.from(el.querySelectorAll<HTMLElement>("[data-field]")).some((f) => f.getBoundingClientRect().height > 28);
+  if (hasTallBox) return false;
+
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (node.parentElement?.closest("[data-field]")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+
+  let splitNode: Node | null = null;
+  let splitOffset = 0;
+  const probe = document.createRange();
+
+  let n = walker.nextNode();
+  while (n) {
+    if (n.nodeType === Node.ELEMENT_NODE) {
+      const elem = n as HTMLElement;
+      if (elem.hasAttribute("data-field") || elem.tagName === "IMG") {
+        const rect = elem.getBoundingClientRect();
+        if (rect.bottom - rootTop > next + 0.5) {
+          const parent = elem.parentNode!;
+          splitNode = parent;
+          splitOffset = Array.from(parent.childNodes).indexOf(elem);
+          break;
+        }
+      }
+    } else if (n.nodeType === Node.TEXT_NODE) {
+      const txt = n.textContent || "";
+      if (txt.trim()) {
+        probe.selectNodeContents(n);
+        const fullRect = probe.getBoundingClientRect();
+        if (fullRect.bottom - rootTop > next + 0.5) {
+          const re = /\S+/g;
+          let m: RegExpExecArray | null;
+          while ((m = re.exec(txt)) !== null) {
+            probe.setStart(n, m.index);
+            probe.setEnd(n, m.index + m[0].length);
+            const wRect = probe.getBoundingClientRect();
+            if (wRect.bottom - rootTop > next + 0.5) {
+              splitNode = n;
+              splitOffset = m.index;
+              break;
+            }
+          }
+          if (splitNode) break;
+        }
+      }
+    }
+    n = walker.nextNode();
+  }
+
+  if (!splitNode) return false;
+
+  const headRange = document.createRange();
+  headRange.setStart(el, 0);
+  headRange.setEnd(splitNode, splitOffset);
+  const previewFrag = headRange.cloneContents();
+  const hasVisibleHead = !!(previewFrag.textContent || "").trim() || !!previewFrag.querySelector("img, [data-field]");
+  if (!hasVisibleHead) return false;
+
+  const headFrag = headRange.extractContents();
+  const headEl = el.cloneNode(false) as HTMLElement;
+  headEl.style.marginBottom = "0px";
+  headEl.appendChild(headFrag);
+
+  if (tag === "LI") {
+    el.style.listStyleType = "none";
+    el.removeAttribute("value");
+  }
+
+  // Trim leading whitespace on the first text node of the remainder (`el`) so the new page starts flush left.
+  const firstTxt = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+  if (firstTxt && firstTxt.textContent) {
+    firstTxt.textContent = firstTxt.textContent.replace(/^\s+/, "");
+  }
+
+  el.parentNode?.insertBefore(headEl, el);
+  el.style.marginTop = "0px";
+  pushElementTo(el, next, rootTop);
+  return true;
 }
 
 /**
@@ -270,7 +512,6 @@ export async function renderWritten(
       const v = opts.merge(el.dataset.merge as AutoKey);
       el.replaceWith(document.createTextNode(v || "____________"));
     });
-    const signerFields: HTMLElement[] = [];
     root.querySelectorAll<HTMLElement>("[data-field]").forEach((el) => {
       const f = fieldOf(el);
       if (f.role === TOSS) {
@@ -283,39 +524,62 @@ export async function renderWritten(
       el.removeAttribute("contenteditable");
       el.textContent = "";
       el.style.cssText = `display:inline-block;vertical-align:bottom;width:${box.w}px;height:${box.h}px;${f.type === "checkbox" ? "border:1px solid #555;" : "border-bottom:1px solid #333;"}`;
-      signerFields.push(el);
     });
     root.querySelectorAll(".tk").forEach((el) => el.classList.remove("tk", "tk-sel"));
+    normalizeWrittenDom(root);
     // Images must be loaded before measuring.
     await Promise.all(Array.from(root.querySelectorAll("img")).map((img) => (img.complete ? null : new Promise((r) => ((img.onload = r), (img.onerror = r))))));
 
-    // Pagination: nothing straddles a page edge; page breaks start a new page.
-    const topOf = (el: Element) => el.getBoundingClientRect().top - root.getBoundingClientRect().top;
-    const blocks = (parent: Element): Element[] =>
+    // Pagination: flow lines naturally across pages without pushing whole multi-line blocks or cutting lines in half.
+    const collectBlocks = (parent: Element): HTMLElement[] =>
       Array.from(parent.children).flatMap((el) => {
-        const tag = el.tagName;
-        if ((tag === "UL" || tag === "OL") && el.getBoundingClientRect().height > CH / 2) return Array.from(el.children);
-        if (tag === "TABLE" && el.getBoundingClientRect().height > CH / 2) return Array.from(el.querySelectorAll("tr"));
-        return [el];
+        const tag = el.tagName.toUpperCase();
+        if (tag === "UL" || tag === "OL" || tag === "DIV" || tag === "SECTION" || tag === "ARTICLE") return collectBlocks(el);
+        if (tag === "TABLE") return Array.from(el.querySelectorAll<HTMLElement>("tr"));
+        return [el as HTMLElement];
       });
-    for (const el of blocks(root)) {
-      const top = topOf(el);
-      const h = el.getBoundingClientRect().height;
-      const next = (Math.floor(top / CH) + 1) * CH;
-      const push = (by: number) => {
-        if (el.tagName === "TR") (el as HTMLElement).querySelectorAll<HTMLElement>("td,th").forEach((c) => (c.style.paddingTop = `${by + 6}px`));
-        else (el as HTMLElement).style.marginTop = `${parseFloat(getComputedStyle(el).marginTop) + by}px`;
-      };
-      if (el.tagName === "HR" && el.classList.contains("page-break")) {
-        (el as HTMLElement).style.cssText = `border:0;margin:0;height:${Math.max(0, next - top)}px;`;
+
+    const queue = collectBlocks(root);
+    let idx = 0;
+    let guard = 0;
+    while (idx < queue.length && guard++ < 2000) {
+      const el = queue[idx];
+      const rootTop = root.getBoundingClientRect().top;
+      const rect = el.getBoundingClientRect();
+      const top = rect.top - rootTop;
+      const h = rect.height;
+      const next = (Math.floor(Math.max(0, top) / CH) + 1) * CH;
+      const tag = el.tagName.toUpperCase();
+
+      if (tag === "HR" && el.classList.contains("page-break")) {
+        el.style.cssText = `border:0;margin:0;height:${Math.max(0, next - top)}px;`;
+        idx++;
         continue;
       }
-      if (top < next && top + h > next && h <= CH) push(next - top);
+
+      // Keep headings with at least one line of the following paragraph on the same page.
+      if ((tag === "H1" || tag === "H2" || tag === "H3") && top < next && next - (top + h) < 24) {
+        pushElementTo(el, next, rootTop);
+        idx++;
+        continue;
+      }
+
+      if (top < next && top + h > next + 0.5) {
+        if (splitBlockAtPageBreak(el, next, rootTop)) {
+          // `el` now starts at `next` and holds the remaining lines; re-check `el` in case it spans another page.
+          continue;
+        }
+        if (h <= CH) {
+          pushElementTo(el, next, rootTop);
+        }
+      }
+      idx++;
     }
 
     const total = Math.max(CH, root.scrollHeight);
     const count = Math.ceil(total / CH);
     const base = root.getBoundingClientRect();
+    const signerFields = Array.from(root.querySelectorAll<HTMLElement>("[data-field]"));
     const fields: SignField[] = signerFields.map((el) => {
       const r = el.getBoundingClientRect();
       const top = r.top - base.top;

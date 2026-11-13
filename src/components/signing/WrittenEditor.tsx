@@ -129,21 +129,34 @@ export function WrittenEditor({
   const who = [{ key: TOSS, label: "TOSS (before sending)" }, ...roles];
   const roleLabel = (k: string) => who.find((r) => r.key === k)?.label || k;
 
-  const measure = () => ed.current && setHeight(Math.max(PAGE.h, Math.ceil((ed.current.scrollHeight + PAGE.m * 2) / PAGE.h) * PAGE.h));
+  const topPad = letterhead ? LETTERHEAD.top : PAGE.m;
+  const bottomPad = letterhead ? LETTERHEAD.bottom : PAGE.m;
+  const contentH = PAGE.h - topPad - bottomPad;
+
+  const computeSheetHeight = (el: HTMLDivElement) => {
+    const innerH = Math.max(contentH, el.scrollHeight - topPad - bottomPad);
+    const pages = Math.max(1, Math.ceil(innerH / contentH));
+    return topPad + pages * contentH + bottomPad;
+  };
+
+  const measure = () => ed.current && setHeight(computeSheetHeight(ed.current));
   // The text is set once; after that the editor owns it and reports every change.
   const first = useRef(body);
   useEffect(() => {
     if (!ed.current) return;
+    try {
+      document.execCommand("defaultParagraphSeparator", false, "p");
+    } catch {}
     const cleaned = cleanWrittenHtml(first.current);
     ed.current.innerHTML = cleaned || "<p><br></p>";
     if (cleaned && cleaned !== first.current) onBody(cleaned);
-    const h = Math.max(PAGE.h, Math.ceil((ed.current.scrollHeight + PAGE.m * 2) / PAGE.h) * PAGE.h);
+    const h = computeSheetHeight(ed.current);
     requestAnimationFrame(() => setHeight(h));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const changed = () => {
     if (!ed.current) return;
-    onBody(cleanWrittenHtml(ed.current.innerHTML));
+    onBody(ed.current.innerHTML);
     measure();
   };
   // Remember where the cursor is, so buttons in the side panel insert there.
@@ -372,15 +385,16 @@ export function WrittenEditor({
             style={{
               width: PAGE.w,
               minHeight: height,
-              // A dashed line where each page ends (approximately: the PDF never splits a line).
-              backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${PAGE.h - 1}px, #f28c3866 ${PAGE.h - 1}px, #f28c3866 ${PAGE.h}px)`,
+              // A guide line at the exact content height (CH) where each PDF page ends.
+              backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${contentH - 1}px, #f28c3866 ${contentH - 1}px, #f28c3866 ${contentH}px)`,
+              backgroundPosition: `0 ${topPad}px`,
             }}
           >
             {letterhead && <LetterheadStrip title={letterhead.title} />}
             <div
               ref={ed}
               className="wdoc min-h-full outline-none"
-              style={{ padding: PAGE.m, paddingTop: letterhead ? LETTERHEAD.top : PAGE.m, paddingBottom: letterhead ? LETTERHEAD.bottom : PAGE.m, minHeight: height }}
+              style={{ padding: PAGE.m, paddingTop: topPad, paddingBottom: bottomPad, minHeight: height }}
               contentEditable
               suppressContentEditableWarning
               spellCheck={false}
@@ -391,6 +405,11 @@ export function WrittenEditor({
               data-enable-grammarly="false"
               data-ms-editor="false"
               data-lt-active="false"
+              onFocus={() => {
+                try {
+                  document.execCommand("defaultParagraphSeparator", false, "p");
+                } catch {}
+              }}
               onInput={changed}
               onClick={onClick}
               onBlur={changed}
