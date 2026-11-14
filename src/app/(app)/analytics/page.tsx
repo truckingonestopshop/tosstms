@@ -11,7 +11,7 @@ import { useStore } from "@/lib/store";
 import { CompanyFilter } from "@/components/layout/CompanyFilter";
 import { RANGE_LABEL, grainFor, groupBy, inWindow, rangeDates, series, type RangeKey, type Row } from "@/lib/analytics";
 import { downloadCsv } from "@/lib/csv";
-import { STATUS, STATUS_ORDER, money, moneyShort, num, today } from "@/lib/format";
+import { STATUS, STATUS_ORDER, TRAILER_TYPES, money, moneyShort, num, today } from "@/lib/format";
 import { balance, payState } from "@/lib/invoice";
 
 type Breakdown = "carrier" | "driver" | "truck" | "broker" | "lane" | "dispatcher";
@@ -25,18 +25,42 @@ export default function AnalyticsPage() {
 }
 
 function Analytics() {
-  const { loads, invoices, payments, inScope, scopedCompany, companyById, driverById, truckById, memberName } = useStore();
+  const { loads, invoices, payments, trailers, inScope, scopedCompany, companyById, driverById, truckById, trailerById, memberName } = useStore();
   const [range, setRange] = useState<RangeKey>("30d");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [by, setBy] = useState<Breakdown>(scopedCompany ? "driver" : "carrier");
   const [metric, setMetric] = useState<"gross" | "fee" | "loads">("gross");
+  const [equipment, setEquipment] = useState<string>("all");
 
   const win = rangeDates(range, from, to);
   const scoped = useMemo(() => loads.filter((l) => inScope(l.company_id)), [loads, inScope]);
   const inRange = useMemo(() => scoped.filter((l) => inWindow(l, win)), [scoped, win.from, win.to]); // eslint-disable-line react-hooks/exhaustive-deps
   const grain = grainFor(win, inRange);
   const pts = useMemo(() => series(inRange, win, grain), [inRange, grain, win.from, win.to]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const equipmentOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of scoped) {
+      if (l.equipment_type?.trim()) set.add(l.equipment_type.trim());
+    }
+    for (const tr of trailers) {
+      if (inScope(tr.company_id) && tr.trailer_type?.trim()) set.add(tr.trailer_type.trim());
+    }
+    for (const t of TRAILER_TYPES) set.add(t);
+    return Array.from(set);
+  }, [scoped, trailers, inScope]);
+
+  const rpmLoads = useMemo(() => {
+    if (equipment === "all") return inRange;
+    const eq = equipment.toLowerCase();
+    return inRange.filter((l) => {
+      const leq = (l.equipment_type || "").toLowerCase();
+      const teq = (trailerById(l.trailer_id)?.trailer_type || "").toLowerCase();
+      return leq === eq || leq.includes(eq) || teq === eq || teq.includes(eq);
+    });
+  }, [inRange, equipment, trailerById]);
+  const rpmPts = useMemo(() => series(rpmLoads, win, grain), [rpmLoads, grain, win.from, win.to]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const t = useMemo(() => {
     const gross = inRange.reduce((s, l) => s + l.gross_amount, 0);
@@ -175,10 +199,28 @@ function Analytics() {
 
       <div className="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
         <Card className="xl:col-span-2">
-          <CardHeader title="Average rate per mile" subtitle={`Loaded miles · by ${grain}`} />
+          <CardHeader
+            title="Average rate per mile"
+            subtitle={`Loaded miles · by ${grain}${equipment !== "all" ? ` · ${equipment}` : ""}`}
+            actions={
+              <Select
+                value={equipment}
+                onChange={(e) => setEquipment(e.target.value)}
+                className="h-8 w-44 text-[13px]"
+                aria-label="Equipment filter"
+              >
+                <option value="all">All equipment</option>
+                {equipmentOptions.map((eq) => (
+                  <option key={eq} value={eq}>
+                    {eq}
+                  </option>
+                ))}
+              </Select>
+            }
+          />
           <div className="p-4 sm:p-5">
             <LineChart
-              data={pts.map((p) => ({ label: p.label, value: p.loaded ? Math.round((p.gross / p.loaded) * 100) / 100 : 0, sub: `${num(p.loaded)} loaded mi` }))}
+              data={rpmPts.map((p) => ({ label: p.label, value: p.loaded ? Math.round((p.gross / p.loaded) * 100) / 100 : 0, sub: `${num(p.loaded)} loaded mi` }))}
               format={(v) => `$${v.toFixed(2)}`}
               height={200}
             />

@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { DispatchFrame, DispatchGate } from "@/components/fleet/CompanyNav";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, Building2, CalendarClock, ChevronDown, FileWarning, Plus, Truck as TruckIcon, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, Building2, CalendarClock, Check, ChevronDown, FileWarning, Plus, Truck as TruckIcon, XCircle } from "lucide-react";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card, CardHeader, Empty, Page, Pill, Stat } from "@/components/ui/Bits";
+import { MenuItem, Popover } from "@/components/ui/Menu";
 import { StatusPill } from "@/components/loads/StatusMenu";
 import { BarChart } from "@/components/analytics/Charts";
 import { useStore } from "@/lib/store";
@@ -273,17 +274,39 @@ function Dashboard() {
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           label={
-            <span className="relative inline-flex items-center gap-1 hover:text-fg">
-              Gross this month{grossBy !== "all" && ` · ${GROSS_BY.find((g) => g.v === grossBy)!.label.toLowerCase()}`}
-              <ChevronDown className="h-3 w-3" />
-              <select value={grossBy} onChange={(e) => setGrossBy(e.target.value as GrossBy)} className="absolute inset-0 cursor-pointer opacity-0" aria-label="Which loads">
-                {GROSS_BY.map((g) => (
-                  <option key={g.v} value={g.v}>
-                    {g.label}
-                  </option>
-                ))}
-              </select>
-            </span>
+            <Popover
+              align="start"
+              width={180}
+              trigger={({ toggle, ref }) => (
+                <button
+                  ref={ref}
+                  type="button"
+                  onClick={toggle}
+                  className="-mx-1 inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] transition-colors hover:bg-surface-2 hover:text-fg"
+                >
+                  Gross this month{grossBy !== "all" && ` · ${GROSS_BY.find((g) => g.v === grossBy)!.label.toLowerCase()}`}
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  {GROSS_BY.map((g) => (
+                    <MenuItem
+                      key={g.v}
+                      active={grossBy === g.v}
+                      onClick={() => {
+                        setGrossBy(g.v);
+                        close();
+                      }}
+                    >
+                      <span className="flex-1">{g.label}</span>
+                      {grossBy === g.v && <Check className="h-3.5 w-3.5 text-brand" />}
+                    </MenuItem>
+                  ))}
+                </>
+              )}
+            </Popover>
           }
           value={money(k.gross, { cents: false })}
           sub={

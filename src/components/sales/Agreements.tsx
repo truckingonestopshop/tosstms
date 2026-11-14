@@ -260,7 +260,7 @@ function AgreementModal({ value, onClose, opportunity }: { value: Agreement | "n
           >
             <option value="">None (write it below)</option>
             {templates.rows
-              .filter((t) => t.kind !== "email")
+              .filter((t) => t.kind !== "email" && !["emp", "policy"].includes((t.name || "").trim().toLowerCase()) && !`${t.name} ${t.file_name || ""}`.toLowerCase().includes("employment application") && !`${t.name} ${t.file_name || ""}`.toLowerCase().includes("drug and alcohol"))
               .map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -322,7 +322,7 @@ function AgreementModal({ value, onClose, opportunity }: { value: Agreement | "n
           </Button>
           <input ref={file} type="file" hidden accept=".pdf,image/*,.doc,.docx" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
           {editing && (
-            <Link href={`/invoices/new?${editing.opportunity_id ? `opportunity=${editing.opportunity_id}&` : `company=${editing.company_id}&`}agreement=${editing.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-semibold text-fg hover:bg-surface-2">
+            <Link href={`/invoices/new?from=sales&${editing.opportunity_id ? `opportunity=${editing.opportunity_id}&` : `company=${editing.company_id}&`}agreement=${editing.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-semibold text-fg hover:bg-surface-2">
               <FileText className="h-4 w-4" /> {editing.invoice_id ? "Invoice again" : "Create invoice"}
             </Link>
           )}

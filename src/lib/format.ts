@@ -111,6 +111,16 @@ export const stopWindow = (l: Pick<Load, "stops">, type: "pickup" | "delivery") 
   return appt && time && !appt.includes(time) ? `${time} · ${appt}` : appt || time;
 };
 
+/** 1-based number of each stop within its own type (Pickup 1, Pickup 2, Delivery 1…). */
+export function stopTypeNumbers(stops: { type: "pickup" | "delivery" }[] | ("pickup" | "delivery")[]): number[] {
+  let picks = 0;
+  let drops = 0;
+  return stops.map((s) => {
+    const t = typeof s === "string" ? s : s.type;
+    return t === "delivery" ? ++drops : ++picks;
+  });
+}
+
 export const place = (city?: string | null, state?: string | null) =>
   [city, state].filter(Boolean).join(", ") || "—";
 

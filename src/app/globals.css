@@ -161,10 +161,15 @@
     -moz-appearance: textfield;
     appearance: textfield;
   }
-  /* Native date/time pickers follow the theme. */
+  /* Native date/time pickers and select option menus follow the theme. */
   .dark input[type="date"]::-webkit-calendar-picker-indicator,
   .dark input[type="time"]::-webkit-calendar-picker-indicator {
     filter: invert(0.85);
+  }
+  select option,
+  select optgroup {
+    background-color: var(--surface);
+    color: var(--fg);
   }
   ::-webkit-scrollbar {
     width: 8px;

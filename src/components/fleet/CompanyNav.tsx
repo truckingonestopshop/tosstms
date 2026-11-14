@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   Briefcase,
+  Building2,
   FileText,
   KeyRound,
   LayoutGrid,
@@ -125,6 +126,7 @@ const DISPATCH = [
   { href: "/loads", label: "Loads", icon: TruckIcon, match: (p: string) => p.startsWith("/loads") },
   { href: "/invoices", label: "Invoices", icon: FileText, match: (p: string) => p.startsWith("/invoices") },
   { href: "/analytics", label: "Analytics", icon: BarChart3, match: (p: string) => p.startsWith("/analytics") },
+  { href: "/dispatch/companies", label: "Companies", icon: Building2, match: (p: string) => p.startsWith("/dispatch/companies") },
 ];
 
 /** Dashboard · Loads · Invoices · Analytics, under Dispatch. */

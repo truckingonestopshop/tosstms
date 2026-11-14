@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Boxes, Copy, Layers, Package, Plus, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, Empty, Pill, neutralPill } from "@/components/ui/Bits";
@@ -253,6 +254,42 @@ type VDraft = {
 };
 const num = (s: string) => (s.trim() === "" ? null : Number(s));
 
+/** Input box that shows its full text in a floating hover box when hovering over it. */
+function HoverInput(props: React.ComponentProps<typeof Input>) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [tip, setTip] = useState<{ text: string; top: number; left: number } | null>(null);
+  const rawVal = props.value !== undefined && props.value !== null && String(props.value).trim() !== "" ? String(props.value) : "";
+  const fullText = rawVal ? `${props.prefix || ""}${rawVal}${props.suffix ? ` ${props.suffix}` : ""}` : "";
+
+  const show = () => {
+    if (!fullText || !wrapRef.current) return;
+    const r = wrapRef.current.getBoundingClientRect();
+    setTip({
+      text: fullText,
+      top: Math.max(8, r.top - 6),
+      left: Math.min(Math.max(8, r.left), window.innerWidth - 260),
+    });
+  };
+
+  return (
+    <div ref={wrapRef} onMouseEnter={show} onMouseLeave={() => setTip(null)} className="relative w-full">
+      <Input {...props} title={fullText || undefined} />
+      {tip &&
+        fullText &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            style={{ top: tip.top, left: tip.left, transform: "translateY(-100%)" }}
+            className="pointer-events-none fixed z-[120] max-w-xs break-words rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-xs font-medium text-fg shadow-pop"
+          >
+            { fullText }
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 /**
  * Add or change a product: price (or variants, each with its price and Rep / Manager / CRO discounts),
  * expense, timeframe and the discounts a Rep / Manager / CRO may give.
@@ -459,7 +496,7 @@ export function ProductModal({
     >
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Field label="Name" required className="col-span-2 sm:col-span-4">
-          <Input value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Articles of Incorporation" autoFocus />
+          <HoverInput value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Articles of Incorporation" autoFocus />
         </Field>
         <Field label="Service" className="col-span-2">
           <Select value={d.service} onChange={(e) => set({ service: e.target.value as ChargeService })}>
@@ -494,13 +531,13 @@ export function ProductModal({
           <div className="hidden sm:block" />
         )}
         <Field label="Price" hint={vars.some((v) => v.name.trim()) ? "Used when no variant is picked" : undefined}>
-          <Input type="number" min={0} step="0.01" prefix="$" value={d.price || ""} onChange={(e) => set({ price: Number(e.target.value) })} />
+          <HoverInput type="number" min={0} step="0.01" prefix="$" value={d.price || ""} onChange={(e) => set({ price: Number(e.target.value) })} />
         </Field>
         <Field label="Expense" hint="What TOSS pays (fees). Optional">
-          <Input type="number" min={0} step="0.01" prefix="$" value={d.expense ?? ""} onChange={(e) => set({ expense: e.target.value === "" ? null : Number(e.target.value) })} />
+          <HoverInput type="number" min={0} step="0.01" prefix="$" value={d.expense ?? ""} onChange={(e) => set({ expense: e.target.value === "" ? null : Number(e.target.value) })} />
         </Field>
         <Field label="Timeframe" hint="Sets the case's due date">
-          <Input type="number" min={0} step="1" suffix="days" value={d.timeframe_days ?? ""} onChange={(e) => set({ timeframe_days: e.target.value === "" ? null : Number(e.target.value) })} />
+          <HoverInput type="number" min={0} step="1" suffix="days" value={d.timeframe_days ?? ""} onChange={(e) => set({ timeframe_days: e.target.value === "" ? null : Number(e.target.value) })} />
         </Field>
         <div className="hidden sm:block" />
       </div>
@@ -553,19 +590,19 @@ export function ProductModal({
                 {vars.map((v, i) => (
                   <tr key={v.id || `n${i}`}>
                     <td className="px-2 py-1">
-                      <Input value={v.name} onChange={(e) => setVar(i, { name: e.target.value })} placeholder="e.g. Florida" className="h-8" aria-label="Variant name" />
+                      <HoverInput value={v.name} onChange={(e) => setVar(i, { name: e.target.value })} placeholder="e.g. Florida" className="h-8" aria-label="Variant name" />
                     </td>
                     <td className="px-2 py-1">
-                      <Input type="number" min={0} step="0.01" prefix="$" value={v.price} onChange={(e) => setVar(i, { price: e.target.value })} className="h-8" aria-label="Variant price" />
+                      <HoverInput type="number" min={0} step="0.01" prefix="$" value={v.price} onChange={(e) => setVar(i, { price: e.target.value })} className="h-8" aria-label="Variant price" />
                     </td>
                     <td className="px-2 py-1">
-                      <Input type="number" min={0} step="0.01" prefix="$" value={v.expense} onChange={(e) => setVar(i, { expense: e.target.value })} placeholder={d.expense != null ? String(d.expense) : ""} className="h-8" aria-label="Variant expense" />
+                      <HoverInput type="number" min={0} step="0.01" prefix="$" value={v.expense} onChange={(e) => setVar(i, { expense: e.target.value })} placeholder={d.expense != null ? String(d.expense) : ""} className="h-8" aria-label="Variant expense" />
                     </td>
                     <td className="px-2 py-1">
-                      <Input type="number" min={0} step="1" value={v.timeframe_days} onChange={(e) => setVar(i, { timeframe_days: e.target.value })} placeholder={d.timeframe_days != null ? String(d.timeframe_days) : ""} className="h-8" aria-label="Variant days" />
+                      <HoverInput type="number" min={0} step="1" value={v.timeframe_days} onChange={(e) => setVar(i, { timeframe_days: e.target.value })} placeholder={d.timeframe_days != null ? String(d.timeframe_days) : ""} className="h-8" aria-label="Variant days" />
                     </td>
                     <td className="px-2 py-1">
-                      <Input
+                      <HoverInput
                         type="number"
                         min={0}
                         step="0.01"
@@ -578,7 +615,7 @@ export function ProductModal({
                       />
                     </td>
                     <td className="px-2 py-1">
-                      <Input
+                      <HoverInput
                         type="number"
                         min={0}
                         step="0.01"
@@ -591,7 +628,7 @@ export function ProductModal({
                       />
                     </td>
                     <td className="px-2 py-1">
-                      <Input
+                      <HoverInput
                         type="number"
                         min={0}
                         step="0.01"
@@ -624,13 +661,13 @@ export function ProductModal({
         <p className="mb-2 text-xs text-fg-3">In dollars, per line. A rep can give up to the Rep amount, a manager Rep + Manager, the CRO all three{totalDiscount ? ` (up to ${money(totalDiscount)})` : ""}.</p>
         <div className="grid grid-cols-3 gap-3">
           <Field label="Rep">
-            <Input type="number" min={0} step="0.01" prefix="$" value={d.discount_rep || ""} onChange={(e) => set({ discount_rep: Number(e.target.value) || 0 })} />
+            <HoverInput type="number" min={0} step="0.01" prefix="$" value={d.discount_rep || ""} onChange={(e) => set({ discount_rep: Number(e.target.value) || 0 })} />
           </Field>
           <Field label="Manager (extra)">
-            <Input type="number" min={0} step="0.01" prefix="$" value={d.discount_manager || ""} onChange={(e) => set({ discount_manager: Number(e.target.value) || 0 })} />
+            <HoverInput type="number" min={0} step="0.01" prefix="$" value={d.discount_manager || ""} onChange={(e) => set({ discount_manager: Number(e.target.value) || 0 })} />
           </Field>
           <Field label="CRO (extra)">
-            <Input type="number" min={0} step="0.01" prefix="$" value={d.discount_cro || ""} onChange={(e) => set({ discount_cro: Number(e.target.value) || 0 })} />
+            <HoverInput type="number" min={0} step="0.01" prefix="$" value={d.discount_cro || ""} onChange={(e) => set({ discount_cro: Number(e.target.value) || 0 })} />
           </Field>
         </div>
       </section>
@@ -794,7 +831,7 @@ export function BundleModal({
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label="Bundle name" required className="sm:col-span-2">
-          <Input value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Authority Creation Bundle" autoFocus />
+          <HoverInput value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Authority Creation Bundle" autoFocus />
         </Field>
         <Field label="Service">
           <Select value={d.service} onChange={(e) => set({ service: e.target.value as ChargeService })}>

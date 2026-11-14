@@ -13,7 +13,7 @@ import type { Load } from "@/lib/types";
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 /** Month grid (agenda list on phones). Loads sit on their pickup or delivery day. */
-export function LoadsCalendar({ loads }: { loads: Load[] }) {
+export function LoadsCalendar({ loads, onOpen }: { loads: Load[]; onOpen?: (l: Load) => void }) {
   const { driverById, truckById } = useStore();
   const [month, setMonth] = useState(() => {
     const d = new Date();
@@ -130,6 +130,12 @@ export function LoadsCalendar({ loads }: { loads: Load[] }) {
                     <Link
                       key={l.id}
                       href={`/loads/${l.id}`}
+                      onClick={(e) => {
+                        if (onOpen) {
+                          e.preventDefault();
+                          onOpen(l);
+                        }
+                      }}
                       title={tip(l)}
                       className={cn("block rounded-md border-l-[3px] bg-surface-2 px-1.5 py-1 text-[11px] leading-tight text-fg hover:bg-surface-3", STATUS[l.status].chip)}
                     >
@@ -164,7 +170,17 @@ export function LoadsCalendar({ loads }: { loads: Load[] }) {
               {k === t && " · Today"}
             </div>
             {(byDay.get(k) || []).map((l) => (
-              <Link key={l.id} href={`/loads/${l.id}`} className="flex items-center gap-3 px-4 py-2.5 active:bg-surface-2">
+              <Link
+                key={l.id}
+                href={`/loads/${l.id}`}
+                onClick={(e) => {
+                  if (onOpen) {
+                    e.preventDefault();
+                    onOpen(l);
+                  }
+                }}
+                className="flex items-center gap-3 px-4 py-2.5 active:bg-surface-2"
+              >
                 <span className={cn("h-8 w-1 shrink-0 rounded-full", STATUS[l.status].dot)} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] font-medium text-fg">

@@ -36,7 +36,7 @@ import {
   sb,
 } from "./db";
 import { byTypeOrder, withRules } from "./docs";
-import { autoChargeDate, servicePeriod, totals, type InvoiceDraft } from "./invoice";
+import { autoChargeDate, servicePeriod, totals, withInvoiceSuffix, type InvoiceDraft } from "./invoice";
 import { cut, fmtDay, today } from "./format";
 import { toast } from "./toast";
 
@@ -894,7 +894,7 @@ export function StoreProvider({ me, preview = false, children }: { me: Me; previ
         .join("\n");
       const inv = {
         company_id: companyId,
-        invoice_number: num.data as string,
+        invoice_number: withInvoiceSuffix(num.data as string, "dispatch", "load"),
         invoice_type: "load" as const,
         status: "draft" as const,
         currency: "USD" as const,

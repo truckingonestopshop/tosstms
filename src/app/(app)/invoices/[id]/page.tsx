@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { use, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, use, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Ban,
@@ -36,7 +36,7 @@ import { useStore } from "@/lib/store";
 import { signatureOf } from "@/lib/profile";
 import { toast } from "@/lib/toast";
 import { saveElementPdf } from "@/lib/pdf";
-import { METHODS, PAY_META, balance, draftOf, draftToRow, methodLabel, payState, type InvoiceDraft } from "@/lib/invoice";
+import { METHODS, PAY_META, balance, draftOf, draftToRow, isSalesInvoice, methodLabel, payState, type InvoiceDraft } from "@/lib/invoice";
 import { cn, cut, fmtDateTime, fmtDay, lane, money, today } from "@/lib/format";
 import { caseHref } from "@/lib/cases";
 import type { Invoice, PaymentMethod } from "@/lib/types";
@@ -54,13 +54,20 @@ export default function InvoicePage({ params }: PageProps<"/invoices/[id]">) {
       </Page>
     );
   }
-  return <InvoiceView id={id} />;
+  return (
+    <Suspense>
+      <InvoiceView id={id} />
+    </Suspense>
+  );
 }
 
 function InvoiceView({ id }: { id: string }) {
   const router = useRouter();
+  const params = useSearchParams();
   const { me, memberById, invoices, loads, payments, saveInvoice, setInvoiceStatus, deleteInvoice, deletePayment, driverById, companyById } = useStore();
   const inv = invoices.find((i) => i.id === id)!;
+  const fromSales = params.get("from") === "sales" || isSalesInvoice(inv);
+  const backHref = fromSales ? "/sales?tab=invoices" : "/invoices";
   const [editing, setEditing] = useState(false);
   const [d, setD] = useState<InvoiceDraft>(() => draftOf(inv));
   const [saving, setSaving] = useState(false);
@@ -143,8 +150,8 @@ function InvoiceView({ id }: { id: string }) {
   return (
     <Page>
       <div className="no-print mb-3">
-        <Link href="/invoices" className="group inline-flex items-center gap-1.5 text-[13px] text-fg-3 hover:text-fg">
-          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" /> Invoices
+        <Link href={backHref} className="group inline-flex items-center gap-1.5 text-[13px] text-fg-3 hover:text-fg">
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" /> {fromSales ? "Sales Invoices" : "Invoices"}
         </Link>
       </div>
 
@@ -278,7 +285,7 @@ function InvoiceView({ id }: { id: string }) {
                         )
                           if (await deleteInvoice(inv.id)) {
                             toast.success("Invoice deleted");
-                            router.push("/invoices");
+                            router.push(backHref);
                           }
                       }}
                     >

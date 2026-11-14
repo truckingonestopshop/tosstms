@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 
 /** Pages under Dispatch (its own section, inside the carrier's sections). Invoices are shared across all products/services. */
-export const isDispatchPath = (p: string) => p === "/dispatch" || p.startsWith("/loads") || p.startsWith("/analytics");
+export const isDispatchPath = (p: string) => p === "/dispatch" || p.startsWith("/dispatch/") || p.startsWith("/loads") || p.startsWith("/analytics");
 
 export interface NavItem {
   /** section key (Users → access) */

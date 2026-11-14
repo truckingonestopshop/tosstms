@@ -6,17 +6,18 @@ export const inputBase =
   "w-full rounded-lg border border-line-strong bg-surface px-3 text-sm text-fg placeholder:text-fg-4 transition-colors hover:border-fg-4/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-fg-3";
 
 export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & { prefix?: string; suffix?: string }>(
-  function Input({ className, prefix, suffix, ...rest }, ref) {
+  function Input({ className, prefix, suffix, title, value, ...rest }, ref) {
+    const autoTitle = title ?? (typeof value === "string" || typeof value === "number" ? String(value) || undefined : undefined);
     if (prefix || suffix) {
       return (
         <div className="relative">
           {prefix && <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-fg-3">{prefix}</span>}
-          <input ref={ref} className={cn(inputBase, "h-9", prefix && "pl-7", suffix && "pr-10", className)} {...rest} />
+          <input ref={ref} value={value} title={autoTitle} className={cn(inputBase, "h-9", prefix && "pl-7", suffix && "pr-10", className)} {...rest} />
           {suffix && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-fg-3">{suffix}</span>}
         </div>
       );
     }
-    return <input ref={ref} className={cn(inputBase, "h-9", className)} {...rest} />;
+    return <input ref={ref} value={value} title={autoTitle} className={cn(inputBase, "h-9", className)} {...rest} />;
   },
 );
 

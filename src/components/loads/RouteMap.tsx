@@ -5,7 +5,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import type { GeoJSONSource, Map as MapboxMap, Marker } from "mapbox-gl";
 import { MapPin, Maximize2, Minimize2 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
-import { cn } from "@/lib/format";
+import { cn, stopTypeNumbers } from "@/lib/format";
 import type { RouteData } from "@/lib/route";
 
 export const STYLE = { light: "mapbox://styles/mapbox/light-v11", dark: "mapbox://styles/mapbox/dark-v11" };
@@ -57,10 +57,11 @@ function staticUrl(route: RouteData, types: ("pickup" | "delivery")[], theme: "l
   if (dh?.line && dh.line.length >= 2) overlays.push(`path-3+8a8a93-0.9(${encodeURIComponent(encodePolyline(thinTo(dh.line, 40)))})`);
   if (dh?.point) overlays.push(`pin-s-e+8a8a93(${dh.point[0].toFixed(5)},${dh.point[1].toFixed(5)})`);
   if (thin.length >= 2) overlays.push(`path-4+f28c38-0.95(${encodeURIComponent(encodePolyline(thin))})`);
+  const nums = stopTypeNumbers(types);
   route.points.forEach((p, i) => {
     if (!p) return;
     const color = types[i] === "delivery" ? "f28c38" : theme === "dark" ? "f4f4f5" : "0a0a0d";
-    overlays.push(`pin-s-${Math.min(i + 1, 99)}+${color}(${p[0].toFixed(5)},${p[1].toFixed(5)})`);
+    overlays.push(`pin-s-${Math.min(nums[i] || i + 1, 99)}+${color}(${p[0].toFixed(5)},${p[1].toFixed(5)})`);
   });
   const style = theme === "dark" ? "dark-v11" : "light-v11";
   return `https://api.mapbox.com/styles/v1/mapbox/${style}/static/${overlays.join(",")}/auto/${w}x${h}@2x?padding=40&access_token=${TOKEN}`;
@@ -176,11 +177,12 @@ export function RouteMap({
       }
 
       const pts = (route?.points || []).map((p, i) => ({ p, i })).filter((x): x is { p: [number, number]; i: number } => !!x.p);
+      const nums = stopTypeNumbers(types);
       pts.forEach(({ p, i }) => {
         const el = document.createElement("div");
         const pickup = types[i] !== "delivery";
         el.style.cssText = `width:24px;height:24px;border-radius:999px;display:flex;align-items:center;justify-content:center;font:700 11px/1 ${font};border:2px solid ${ring};box-shadow:0 1px 4px rgba(0,0,0,.35);background:${pickup ? (dark ? "#f4f4f5" : "#0a0a0d") : "#f28c38"};color:${pickup ? (dark ? "#0a0a0d" : "#fff") : "#0a0a0d"}`;
-        el.textContent = String(i + 1);
+        el.textContent = String(nums[i] || i + 1);
         markers.current.push(new mapboxgl.Marker({ element: el }).setLngLat(p).addTo(m));
       });
       const all = [...(line.length ? line : pts.map((x) => x.p)), ...dhLine, ...(dh?.point ? [dh.point] : [])];
@@ -399,7 +401,8 @@ function MilesPanel({
   const [open, setOpen] = useState(false);
   const expanded = full || open;
   if (!loaded && !dh) return null;
-  const tag = (i: number) => (types[i] === "delivery" ? "D" : "P");
+  const nums = stopTypeNumbers(types);
+  const tag = (i: number) => `${nums[i] || i + 1} ${types[i] === "delivery" ? "D" : "P"}`;
 
   return (
     <div
@@ -426,7 +429,7 @@ function MilesPanel({
               key={b}
               label={
                 <>
-                  <Dot /> {a + 1} {tag(a)} → {b + 1} {tag(b)}
+                  <Dot /> {tag(a)} → {tag(b)}
                 </>
               }
               miles={leg.miles}

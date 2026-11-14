@@ -198,5 +198,43 @@ export function draftToRow(d: InvoiceDraft) {
   return { ...rest, total_due: t.due, total_gross: t.gross };
 }
 
-export const remittanceDefault = (s: Settings | null) =>
-  s?.remittance_text || "Please pay by ACH, wire transfer or Zelle within the agreed payment terms.";
+export const NON_DISPATCH_REMITTANCE = "The invoice will be automatically charged to the payment method on file.";
+export const OLD_ACH_REMITTANCE = "Please pay by ACH, wire transfer or Zelle within the agreed payment terms.";
+
+export const remittanceDefault = (s: Settings | null, isDispatch = false) =>
+  isDispatch ? s?.remittance_text || OLD_ACH_REMITTANCE : NON_DISPATCH_REMITTANCE;
+
+export const INVOICE_SERVICE_SUFFIX: Record<string, string> = {
+  dispatch: "D",
+  mcpt: "TP",
+  dot_compliance: "DC",
+  ifta: "TP",
+  ucr: "TP",
+  boc3: "TP",
+  mcs150: "DC",
+  factoring: "F",
+  other: "TP",
+};
+
+export function invoiceSuffixFor(service?: string | null, invoiceType?: "load" | "custom"): string {
+  if (invoiceType === "load" || service === "dispatch") return "D";
+  if (!service) return "TP";
+  return INVOICE_SERVICE_SUFFIX[service] || "TP";
+}
+
+/** Strip any trailing -D / -TP / -DC / -F suffix from an invoice number and append the service suffix. */
+export function withInvoiceSuffix(num: string, service?: string | null, invoiceType?: "load" | "custom"): string {
+  const base = (num || "").trim().replace(/-(D|TP|DC|F)$/i, "");
+  if (!base) return "";
+  const suf = invoiceSuffixFor(service, invoiceType);
+  return `${base}-${suf}`;
+}
+
+/** True when an invoice is a Sales / Product invoice (not a Dispatch load invoice). */
+export function isSalesInvoice(i: Pick<Invoice, "invoice_type" | "invoice_number" | "doc_overrides">): boolean {
+  if (i.invoice_type === "load") return false;
+  if ((i.invoice_number || "").trim().toUpperCase().endsWith("-D")) return false;
+  const svc = (i.doc_overrides as { service?: string } | null)?.service;
+  if (svc === "dispatch") return false;
+  return true;
+}

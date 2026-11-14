@@ -12,7 +12,7 @@ import { useLiveTable } from "@/lib/live";
 import { monthly, runningSub, type Charge } from "@/lib/billing";
 import { isOpen, type Opportunity } from "@/lib/sales";
 import { toast } from "@/lib/toast";
-import { ACTIVE_STATUSES, daysUntil, fmtDay, isCanceled, money, today } from "@/lib/format";
+import { daysUntil, fmtDay, isCanceled, money, today } from "@/lib/format";
 import { SERVICES, activeServices, hasService } from "@/lib/services";
 import type { Company, ServiceKey } from "@/lib/types";
 
@@ -53,10 +53,11 @@ function haystack(c: Company) {
 }
 const phones = (c: Company) => [c.contact_phone, c.secondary_phone].map(digits).join(" ");
 
-export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
+export function CompaniesCrm({ onAdd, mode = "all" }: { onAdd: () => void; mode?: "all" | "dispatch" }) {
   const { companies, trucks, drivers, loads, documents, invoices, updateCompany } = useStore();
   const router = useRouter();
-  const open = (id: string) => router.push(`/fleet?company=${id}`);
+  const isDispatch = mode === "dispatch";
+  const open = (id: string) => router.push(isDispatch ? `/dispatch?company=${id}` : `/fleet?company=${id}`);
   const [stage, setStage] = useState<Stage>("all");
   const [age, setAge] = useState<Age>("any");
   const [service, setService] = useState<ServiceKey | "none" | "any">("any");
@@ -75,36 +76,48 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
     pipe.set(o.company_id, r);
   }
 
+  const baseCompanies = useMemo(
+    () =>
+      isDispatch
+        ? companies.filter((c) => c.stage !== "lead" && c.status !== "inactive" && hasService(c, "dispatch"))
+        : companies,
+    [companies, isDispatch],
+  );
+
   const counts = {
-    all: companies.length,
-    client: companies.filter((c) => c.stage !== "lead" && c.status !== "inactive").length,
-    lead: companies.filter((c) => c.stage === "lead").length,
-    inactive: companies.filter((c) => c.stage !== "lead" && c.status === "inactive").length,
+    all: baseCompanies.length,
+    client: baseCompanies.filter((c) => c.stage !== "lead" && c.status !== "inactive").length,
+    lead: baseCompanies.filter((c) => c.stage === "lead").length,
+    inactive: baseCompanies.filter((c) => c.stage !== "lead" && c.status === "inactive").length,
   };
 
   const list = useMemo(() => {
     const text = q.trim().toLowerCase();
     const num = digits(q);
-    return companies
+    return baseCompanies
       .filter((c) => {
-        if (stage === "lead" && c.stage !== "lead") return false;
-        if (stage === "client" && (c.stage === "lead" || c.status === "inactive")) return false;
-        if (stage === "inactive" && (c.stage === "lead" || c.status !== "inactive")) return false;
+        if (!isDispatch) {
+          if (stage === "lead" && c.stage !== "lead") return false;
+          if (stage === "client" && (c.stage === "lead" || c.status === "inactive")) return false;
+          if (stage === "inactive" && (c.stage === "lead" || c.status !== "inactive")) return false;
+        }
         // Leads: how long ago they came in; clients: how long they've been a client.
         const n = ageDays(c.stage === "lead" ? c.created_at : c.became_client_at || c.created_at);
         if (age === "7" && n > 7) return false;
         if (age === "30" && n > 30) return false;
         if (age === "30-90" && (n < 30 || n > 90)) return false;
         if (age === "90+" && n < 90) return false;
-        if (service === "none" && activeServices(c).length) return false;
-        if (service !== "any" && service !== "none" && !hasService(c, service)) return false;
+        if (!isDispatch) {
+          if (service === "none" && activeServices(c).length) return false;
+          if (service !== "any" && service !== "none" && !hasService(c, service)) return false;
+        }
         if (text && !haystack(c).includes(text) && !(num.length >= 3 && (phones(c).includes(num) || digits(c.ein).includes(num) || digits(c.dot_number).includes(num) || digits(c.mc_number).includes(num)))) return false;
         return true;
       })
       .sort((a, b) => (sort === "newest" ? b.created_at.localeCompare(a.created_at) : sort === "oldest" ? a.created_at.localeCompare(b.created_at) : a.name.localeCompare(b.name)));
-  }, [companies, stage, age, service, q, sort]);
+  }, [baseCompanies, isDispatch, stage, age, service, q, sort]);
 
-  const filtered = stage !== "all" || age !== "any" || service !== "any" || !!q;
+  const filtered = (!isDispatch && (stage !== "all" || service !== "any")) || age !== "any" || !!q;
   const makeClient = async (c: Company) => {
     if (await updateCompany(c.id, { stage: "client" })) toast.success(`${c.name} is now a client`);
   };
@@ -112,7 +125,7 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
   return (
     <>
       <PageHeader
-        eyebrow="All companies"
+        eyebrow={isDispatch ? "Dispatch · Active clients" : "All companies"}
         title="Companies"
         actions={
           <Button variant="primary" onClick={onAdd}>
@@ -122,17 +135,19 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
       />
 
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
-        <Segmented<Stage>
-          value={stage}
-          onChange={setStage}
-          className="scrollbar-none overflow-x-auto"
-          options={[
-            { value: "all", label: `All ${counts.all}` },
-            { value: "client", label: `Clients ${counts.client}` },
-            { value: "lead", label: `Leads ${counts.lead}` },
-            { value: "inactive", label: `Inactive ${counts.inactive}` },
-          ]}
-        />
+        {!isDispatch && (
+          <Segmented<Stage>
+            value={stage}
+            onChange={setStage}
+            className="scrollbar-none overflow-x-auto"
+            options={[
+              { value: "all", label: `All ${counts.all}` },
+              { value: "client", label: `Clients ${counts.client}` },
+              { value: "lead", label: `Leads ${counts.lead}` },
+              { value: "inactive", label: `Inactive ${counts.inactive}` },
+            ]}
+          />
+        )}
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-4" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="EIN, DOT, MC, company, representative, email, phone" className="pl-9" />
@@ -151,15 +166,17 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
           <option value="30-90">30–90 days</option>
           <option value="90+">Over 90 days</option>
         </Select>
-        <Select value={service} onChange={(e) => setService(e.target.value as typeof service)} className="w-auto" aria-label="Service">
-          <option value="any">Any service</option>
-          {SERVICES.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
-            </option>
-          ))}
-          <option value="none">No service yet</option>
-        </Select>
+        {!isDispatch && (
+          <Select value={service} onChange={(e) => setService(e.target.value as typeof service)} className="w-auto" aria-label="Service">
+            <option value="any">Any service</option>
+            {SERVICES.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+            <option value="none">No service yet</option>
+          </Select>
+        )}
         <Select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="w-auto" aria-label="Sort">
           <option value="name">Name A–Z</option>
           <option value="newest">Newest first</option>
@@ -180,7 +197,7 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
           </Button>
         )}
         <span className="ml-auto text-xs text-fg-3">
-          {list.length} of {companies.length}
+          {list.length} of {baseCompanies.length}
         </span>
         <Segmented
           size="sm"
@@ -260,7 +277,7 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
             const t = trucks.filter((x) => x.company_id === c.id);
             const d = drivers.filter((x) => x.company_id === c.id);
             const l = loads.filter((x) => x.company_id === c.id);
-            const active = l.filter((x) => ACTIVE_STATUSES.includes(x.status)).length;
+            const deliveredAllTime = l.filter((x) => ["delivered", "invoiced", "paid"].includes(x.status)).length;
             const tDay = today();
             const month = tDay.slice(0, 7);
             // Total amount TOSS charged the client this month across all services (dispatch fees,
@@ -268,20 +285,22 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
             const coCharges = charges.filter((x) => x.company_id === c.id);
             const subTotal = coCharges.filter((x) => runningSub(x, tDay)).reduce((s, x) => s + monthly(x), 0);
             const oneTimeTotal = coCharges
-              .filter((x) => x.kind === "one_time" && x.status !== "void" && (x.charge_date || "").startsWith(month))
+              .filter((x) => x.kind === "one_time" && x.status !== "void" && (isDispatch || (x.charge_date || "").startsWith(month)))
               .reduce((s, x) => s + (Number(x.amount) || 0), 0);
-            const coInvoices = invoices.filter((x) => x.company_id === c.id && x.status !== "void" && x.status !== "draft" && (x.issue_date || "").startsWith(month));
+            const coInvoices = invoices.filter(
+              (x) => x.company_id === c.id && x.status !== "void" && x.status !== "draft" && (isDispatch || (x.issue_date || "").startsWith(month)),
+            );
             const billedLoadIds = new Set(coInvoices.flatMap((i) => i.lines.map((ln) => ln.load_id).filter(Boolean)));
             const invoiceTotal = coInvoices.reduce((s, i) => s + (Number(i.total_due) || 0), 0);
             const unbilledDispatchFee = l
-              .filter((x) => !isCanceled(x.status) && !billedLoadIds.has(x.id) && (x.delivery_date || x.pickup_date || "").startsWith(month))
+              .filter((x) => !isCanceled(x.status) && !billedLoadIds.has(x.id) && (isDispatch || (x.delivery_date || x.pickup_date || "").startsWith(month)))
               .reduce((s, x) => s + (Number(x.dispatcher_cut) || 0), 0);
             const wonSalesTotal = allOpps
               .filter(
                 (o) =>
                   o.company_id === c.id &&
                   o.status === "won" &&
-                  (o.closed_at || o.updated_at || "").startsWith(month) &&
+                  (isDispatch || (o.closed_at || o.updated_at || "").startsWith(month)) &&
                   !coCharges.some((ch) => ch.notes?.includes(`OPP-${o.number}`)),
               )
               .reduce((s, o) => s + (Number(o.value) || 0), 0);
@@ -333,8 +352,14 @@ export function CompaniesCrm({ onAdd }: { onAdd: () => void }) {
                     {[
                       ["Trucks", t.length, undefined],
                       ["Drivers", d.length, undefined],
-                      ["Active", active, undefined],
-                      ["This month", money(charged, { cents: false }), "Total amount charged to client this month (all services, subscriptions, charges & dispatch fees)"],
+                      ["Delivered", deliveredAllTime, "Delivered loads all time"],
+                      [
+                        isDispatch ? "All time" : "This month",
+                        money(charged, { cents: false }),
+                        isDispatch
+                          ? "Total amount charged to client all time"
+                          : "Total amount charged to client this month (all services, subscriptions, charges & dispatch fees)",
+                      ],
                     ].map(([k, v, hint]) => (
                       <div key={k as string} className="min-w-0" title={hint as string | undefined}>
                         <div className="tnum truncate text-sm font-semibold text-fg">{v}</div>

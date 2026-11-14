@@ -33,7 +33,7 @@ import { useRoute } from "@/lib/route";
 import { toast } from "@/lib/toast";
 import { buildPacket } from "@/lib/packet";
 import { checklist, problems, type DocTarget } from "@/lib/docs";
-import { STATUS, cn, fmtDateTime, fmtDay, isCanceled, lane, money, num, rpm, rpmAllIn, totalMiles } from "@/lib/format";
+import { STATUS, cn, fmtDateTime, fmtDay, isCanceled, lane, money, num, rpm, rpmAllIn, stopTypeNumbers, totalMiles } from "@/lib/format";
 import type { Load, LoadStatus, LoadStop, StopStatus } from "@/lib/types";
 
 const FLOW: LoadStatus[] = ["booked", "in_transit", "delivered", "invoiced", "paid"];
@@ -60,11 +60,12 @@ export default function LoadPage({ params }: PageProps<"/loads/[id]">) {
   return <LoadView load={load} />;
 }
 
-function driverSheet(l: Load, company?: string, driver?: string, truck?: string, dispatcher?: string) {
+export function driverSheet(l: Load, company?: string, driver?: string, truck?: string, dispatcher?: string) {
+  const nums = stopTypeNumbers(l.stops);
   const stops = l.stops
     .map(
       (s, i) =>
-        `${i + 1}. ${s.type === "pickup" ? "PICKUP" : "DELIVERY"} ${s.date ? fmtDay(s.date, false) : ""} ${s.time || ""} ${s.appointment || ""}\n   ${s.facility_name || ""}\n   ${[s.address, [s.city, s.state].filter(Boolean).join(", "), s.zip].filter(Boolean).join(" ")}${s.reference_numbers ? `\n   Ref: ${s.reference_numbers}` : ""}${s.phone ? `\n   Phone: ${s.phone}` : ""}${s.instructions ? `\n   Notes: ${s.instructions}` : ""}`,
+        `${nums[i]}. ${s.type === "pickup" ? "PICKUP" : "DELIVERY"} ${s.date ? fmtDay(s.date, false) : ""} ${s.time || ""} ${s.appointment || ""}\n   ${s.facility_name || ""}\n   ${[s.address, [s.city, s.state].filter(Boolean).join(", "), s.zip].filter(Boolean).join(" ")}${s.reference_numbers ? `\n   Ref: ${s.reference_numbers}` : ""}${s.phone ? `\n   Phone: ${s.phone}` : ""}${s.instructions ? `\n   Notes: ${s.instructions}` : ""}`,
     )
     .join("\n\n");
   return [
@@ -107,6 +108,7 @@ function LoadView({ load }: { load: Load }) {
   const truck = truckById(load.truck_id);
   const route = useRoute(load.stops.length ? load.stops : [], { from: load.deadhead_from });
   const types = useMemo(() => load.stops.map((s) => s.type), [load.stops]);
+  const stopNums = useMemo(() => stopTypeNumbers(load.stops), [load.stops]);
   const docs = documents.filter((d) => d.load_id === load.id);
   const invoice = invoices.find((i) => i.lines.some((li) => li.load_id === load.id));
   const [packing, setPacking] = useState(false);
@@ -261,7 +263,7 @@ function LoadView({ load }: { load: Load }) {
                         s.type === "pickup" ? "bg-inverse text-inverse-fg" : "bg-brand text-brand-fg",
                       )}
                     >
-                      {i + 1}
+                      {stopNums[i]}
                     </span>
                     {i < load.stops.length - 1 && route.data?.legs[i] && (
                       <span className="tnum mt-2 text-[10px] text-fg-4">{num(route.data.legs[i].miles)} mi</span>
@@ -270,7 +272,9 @@ function LoadView({ load }: { load: Load }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-4">{s.type === "pickup" ? "Pickup" : "Delivery"}</div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-4">
+                          {s.type === "pickup" ? `Pickup ${stopNums[i]}` : `Delivery ${stopNums[i]}`}
+                        </div>
                         <div className="truncate text-sm font-semibold text-fg">{s.facility_name || [s.city, s.state].filter(Boolean).join(", ")}</div>
                         <div className="text-[13px] text-fg-2">
                           {[s.address, [s.city, s.state].filter(Boolean).join(", "), s.zip].filter(Boolean).join(" · ")}

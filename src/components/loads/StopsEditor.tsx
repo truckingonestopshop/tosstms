@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { PlaceInput } from "@/components/ui/PlaceInput";
 import { splitPlace } from "@/lib/place";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
-import { cn, uid, US_STATES } from "@/lib/format";
+import { cn, stopTypeNumbers, uid, US_STATES } from "@/lib/format";
 import type { LoadStop } from "@/lib/types";
 
 export const newStop = (type: LoadStop["type"], p: Partial<LoadStop> = {}): LoadStop => ({
@@ -49,12 +49,14 @@ export function StopsEditor({
     [next[i], next[j]] = [next[j], next[i]];
     onChange(next);
   };
+  const stopNums = stopTypeNumbers(stops);
 
   return (
     <div className="space-y-2.5">
       {stops.map((s, i) => {
         const pickup = s.type === "pickup";
         const expanded = open[s.id] ?? false;
+        const typeNum = stopNums[i];
         return (
           <div key={s.id}>
             {i > 0 && legs?.[i - 1] && legs[i - 1].miles > 0 && (
@@ -70,7 +72,7 @@ export function StopsEditor({
                     pickup ? "bg-inverse text-inverse-fg" : "bg-brand text-brand-fg",
                   )}
                 >
-                  {i + 1}
+                  {typeNum}
                 </span>
                 <Select
                   value={s.type}

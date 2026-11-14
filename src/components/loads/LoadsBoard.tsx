@@ -10,7 +10,7 @@ import type { Load, LoadStatus } from "@/lib/types";
 const COLUMNS: LoadStatus[] = ["new", "booked", "in_transit", "delivered", "invoiced", "paid"];
 
 /** Kanban by status. Drag a card to another column to change its status. */
-export function LoadsBoard({ loads }: { loads: Load[] }) {
+export function LoadsBoard({ loads, onOpen }: { loads: Load[]; onOpen?: (l: Load) => void }) {
   const { driverById, truckById, setLoadStatus } = useStore();
   const [over, setOver] = useState<LoadStatus | null>(null);
 
@@ -55,6 +55,12 @@ export function LoadsBoard({ loads }: { loads: Load[] }) {
                   <Link
                     key={l.id}
                     href={`/loads/${l.id}`}
+                    onClick={(e) => {
+                      if (onOpen) {
+                        e.preventDefault();
+                        onOpen(l);
+                      }
+                    }}
                     draggable
                     onDragStart={(e) => e.dataTransfer.setData("text/load-id", l.id)}
                     className="block rounded-lg border border-line bg-surface p-3 shadow-[0_1px_0_rgba(0,0,0,0.02)] transition-colors hover:border-line-strong"

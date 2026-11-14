@@ -76,14 +76,30 @@ export const normLine = (r: InvoiceLine): InvoiceLine => ({
   gross_amount: n(r.gross_amount),
   amount: n(r.amount),
 });
-export const normInvoice = (r: Invoice): Invoice => ({
-  ...r,
-  total_gross: n(r.total_gross),
-  total_due: n(r.total_due),
-  amount_paid: n(r.amount_paid),
-  doc_overrides: r.doc_overrides && typeof r.doc_overrides === "object" ? r.doc_overrides : {},
-  lines: (r.lines || []).map(normLine).sort((a, b) => a.position - b.position),
-});
+export const normInvoice = (r: Invoice): Invoice => {
+  const num = (r.invoice_number || "").trim();
+  const hasSuffix = /-(D|TP|DC|F)$/i.test(num);
+  const svc = (r.doc_overrides as { service?: string } | null)?.service;
+  const invoice_number =
+    hasSuffix || !num
+      ? num
+      : r.invoice_type === "load" || svc === "dispatch"
+        ? `${num}-D`
+        : svc === "dot_compliance" || svc === "mcs150"
+          ? `${num}-DC`
+          : svc
+            ? `${num}-TP`
+            : num;
+  return {
+    ...r,
+    invoice_number,
+    total_gross: n(r.total_gross),
+    total_due: n(r.total_due),
+    amount_paid: n(r.amount_paid),
+    doc_overrides: r.doc_overrides && typeof r.doc_overrides === "object" ? r.doc_overrides : {},
+    lines: (r.lines || []).map(normLine).sort((a, b) => a.position - b.position),
+  };
+};
 
 /** Human message for a Supabase/PostgREST error. */
 export function errMsg(e: unknown): string {

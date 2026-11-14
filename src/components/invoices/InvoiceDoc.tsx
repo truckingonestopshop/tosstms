@@ -2,8 +2,7 @@
 
 import { forwardRef } from "react";
 import { ArrowDown, ArrowUp, Copy, Plus, X } from "lucide-react";
-import { LogoMark } from "@/components/brand/Logo";
-import { CHARGE_PRESETS, CREDIT_PRESETS, adjustmentLine, blankLine, mondayOf, totals, type InvoiceDraft } from "@/lib/invoice";
+import { CHARGE_PRESETS, CREDIT_PRESETS, NON_DISPATCH_REMITTANCE, OLD_ACH_REMITTANCE, adjustmentLine, blankLine, mondayOf, totals, type InvoiceDraft } from "@/lib/invoice";
 import { addDays, cn, fmtDay, money } from "@/lib/format";
 
 // The invoice as a printed page: always black on white, whatever the app theme.
@@ -89,24 +88,16 @@ function LineTools({ first, last, onMove, onCopy, onRemove, label = "line" }: { 
 const SUB = "text-[#5b6b86]";
 const LABEL = "text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]";
 
-const DEFAULT_TAGLINE = "All your trucking needs in one place";
-
-/** Letterhead mark: tagline | TOSS logo with "TRUCKING ONE STOP SHOP" under it. */
-function Letterhead({ tagline, editing, onTagline }: { tagline: string; editing: boolean; onTagline: (v: string) => void }) {
+/** Letterhead mark: official TOSS logo ("All your trucking needs in one place | TOSS TRUCKING ONE STOP SHOP"). */
+function Letterhead() {
   return (
-    <div className="flex items-center gap-4">
-      <div className="w-[108px] text-right font-serif text-[15px] italic leading-[1.15] text-[#111] [text-wrap:balance]">
-        {editing ? (
-          <T editing value={tagline} onChange={onTagline} multiline rows={3} className="text-right" />
-        ) : (
-          <span className="whitespace-pre-line">{tagline}</span>
-        )}
-      </div>
-      <div className="h-[62px] w-px bg-[#111]" aria-hidden />
-      <div className="flex flex-col items-center">
-        <LogoMark className="h-[46px] w-auto text-[#111]" />
-        <div className="mt-1 text-[7.5px] font-bold uppercase tracking-[0.12em] text-[#111]">Trucking One Stop Shop</div>
-      </div>
+    <div className="flex items-center">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/brand/toss-footer-logo.png"
+        alt="All your trucking needs in one place · TOSS Trucking One Stop Shop"
+        className="h-[68px] w-auto object-contain"
+      />
     </div>
   );
 }
@@ -182,7 +173,7 @@ export const InvoiceDoc = forwardRef<
       {/* Letterhead + company · INVOICE + number / dates / status */}
       <div className="flex flex-col gap-6 border-b border-zinc-200 pb-6 sm:flex-row sm:justify-between">
         <div className="min-w-0 sm:max-w-[58%]">
-          <Letterhead tagline={o.tagline ?? DEFAULT_TAGLINE} editing={editing} onTagline={(v) => setO({ tagline: v })} />
+          <Letterhead />
           <div className="mt-5 text-[15px] font-bold">
             <T editing={editing} value={d.issuer_name || ""} onChange={(v) => set({ issuer_name: v })} placeholder="Your company name" />
           </div>
@@ -477,7 +468,17 @@ export const InvoiceDoc = forwardRef<
             <T editing={editing} value={o.remittance_title ?? "Payment notice"} onChange={(v) => setO({ remittance_title: v })} />
           </div>
           <div className={SUB}>
-            <T editing={editing} multiline value={o.remittance_text ?? ""} onChange={(v) => setO({ remittance_text: v })} placeholder="How and when payment is collected" />
+            <T
+              editing={editing}
+              multiline
+              value={
+                !isLoad && (!o.remittance_text || o.remittance_text === OLD_ACH_REMITTANCE)
+                  ? NON_DISPATCH_REMITTANCE
+                  : (o.remittance_text ?? "")
+              }
+              onChange={(v) => setO({ remittance_text: v })}
+              placeholder="How and when payment is collected"
+            />
           </div>
         </div>
         {(editing || d.notes) && (
