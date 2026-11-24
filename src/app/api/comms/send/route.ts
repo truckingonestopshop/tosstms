@@ -72,7 +72,9 @@ export async function POST(req: NextRequest) {
       to,
       subject,
       html: mailHtml({ heading: subject, lines: text.split(/\n{2,}/), button }),
-      replyTo: me.email || undefined,
+      // replies come back into the Inbox (Resend receiving, /api/resend/inbound) once
+      // INBOX_REPLY_TO is set; until then they go to the sender's own email
+      replyTo: process.env.INBOX_REPLY_TO?.trim() || me.email || undefined,
     });
     const companyId = b.companyId || match?.company_id || null;
     await saveComm({
