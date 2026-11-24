@@ -131,7 +131,7 @@ export async function listWebhooks(): Promise<KixieHook[]> {
 }
 
 /** The events TOSS listens to, each its own Kixie webhook. */
-export const TOSS_EVENTS = ["endcall", "disposition", "SMS", "answeredcall", "voicemail"] as const;
+export const TOSS_EVENTS = ["startcall", "answeredcall", "endcall", "disposition", "SMS", "voicemail"] as const;
 export const hookName = (event: string) => `TOSS Cloud ${event}`;
 
 export async function createWebhook(event: string, location: string) {

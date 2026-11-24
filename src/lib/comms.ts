@@ -4,7 +4,7 @@ import { toast } from "@/lib/toast";
 
 // The Inbox in the browser: calls and texts (Kixie) and emails (Resend) with customers.
 
-export type CommChannel = "call" | "sms" | "email";
+export type CommChannel = "call" | "sms" | "email" | "note";
 
 export interface Comm {
   id: string;
@@ -20,6 +20,7 @@ export interface Comm {
   body: string | null;
   status: string | null;
   duration_sec: number | null;
+  ended_at: string | null;
   recording_url: string | null;
   recording_path: string | null;
   disposition: string | null;

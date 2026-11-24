@@ -25,6 +25,8 @@ export interface CommRow {
   body?: string | null;
   status?: string | null;
   duration_sec?: number | null;
+  /** a call is live until this is set (Kixie's end-call webhook) */
+  ended_at?: string | null;
   recording_url?: string | null;
   recording_path?: string | null;
   disposition?: string | null;
