@@ -88,6 +88,9 @@ export function sendSms(o: { agentEmail: string; target: string; message: string
 
 export interface KixieHook {
   webhookid?: string | number;
+  /** Kixie's list answers with `event` and `webhookLocation` */
+  event?: string;
+  webhookLocation?: string;
   id?: string | number;
   name?: string;
   eventname?: string;
@@ -111,6 +114,9 @@ async function hooksCall(path: string, call: string, fields: Record<string, unkn
     /* plain text */
   }
   if (!res.ok) throw new Error(typeof body === "string" && body ? body.slice(0, 300) : `Kixie said no (${res.status})`);
+  // Kixie answers 200 with { success: false, error } when it refuses
+  const o = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  if (o.success === false) throw new Error(String(o.error || o.message || "Kixie said no"));
   return body;
 }
 
@@ -127,7 +133,8 @@ export const TOSS_EVENTS = ["endcall", "disposition", "SMS", "answeredcall", "vo
 export const hookName = (event: string) => `TOSS Cloud ${event}`;
 
 export async function createWebhook(event: string, location: string) {
-  return hooksCall("postwebhook", "postWebhook", {
+  // the path is case-sensitive: "postwebhook" answers "function does not exist"
+  return hooksCall("postWebhook", "postWebhook", {
     callresult: "all",
     direction: "all",
     disposition: "all",

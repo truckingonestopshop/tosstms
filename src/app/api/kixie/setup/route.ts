@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 
 const idOf = (h: KixieHook) => h.webhookid ?? h.id ?? h.webhookId;
 const eventOf = (h: KixieHook) => String(h.eventname ?? h.eventName ?? h.event ?? "");
-const locationOf = (h: KixieHook) => String(h.location ?? h.url ?? h.webhookurl ?? "");
+const locationOf = (h: KixieHook) => String(h.webhookLocation ?? h.location ?? h.url ?? h.webhookurl ?? "");
 const isToss = (h: KixieHook) => String(h.name ?? "").startsWith("TOSS Cloud ") || locationOf(h).includes("/api/kixie/webhook");
 
 export async function GET(req: NextRequest) {
@@ -53,13 +53,17 @@ export async function POST(req: NextRequest) {
   }
   const location = `${origin}/api/kixie/webhook`;
   try {
-    // replace TOSS's own webhooks (an old address, or a second copy); other webhooks are left alone
-    for (const h of (await listWebhooks()).filter(isToss)) {
-      const id = idOf(h);
-      if (id !== undefined && id !== null) await removeWebhook(id as string | number);
-    }
+    const existing = (await listWebhooks()).filter(isToss);
     const done: string[] = [];
     for (const ev of TOSS_EVENTS) {
+      const mine = existing.filter((h) => eventOf(h).toLowerCase() === ev.toLowerCase());
+      // already pointing here: keep it
+      if (mine.some((h) => locationOf(h) === location)) continue;
+      // an old address: remove it (if Kixie refuses, the new one is still added)
+      for (const h of mine) {
+        const id = idOf(h);
+        if (id !== undefined && id !== null) await removeWebhook(id as string | number).catch(() => null);
+      }
       await createWebhook(ev, location);
       done.push(hookName(ev));
     }
