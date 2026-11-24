@@ -300,6 +300,14 @@ function repairStrippedTemplateHtml(container: HTMLElement, doc: Document) {
     h.replaceWith(div);
   }
 
+  /** A line made only of value chips and separators ("Company: legal name · Company: address · …"), not a sentence that contains a value. */
+  const onlyValues = (el: HTMLElement) => {
+    if (!el.querySelector("[data-merge]")) return false;
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("[data-merge], [data-field]").forEach((t) => t.remove());
+    return !(clone.textContent || "").replace(/[\s\u00a0·•|,\-–—/]+/g, "");
+  };
+
   // 3. Repair top-level headings in Employment Application / bilingual forms that lost their inline styles.
   for (const h of Array.from(container.querySelectorAll<HTMLElement>("h1, h2, h3"))) {
     if (h.closest("td, th")) continue;
@@ -327,8 +335,7 @@ function repairStrippedTemplateHtml(container: HTMLElement, doc: Document) {
       continue;
     }
     // Merge token line under DRIVER EMPLOYMENT APPLICATION (Company: legal name · Company: address · Company: phone · Company: email):
-    const hasMerge = !!h.querySelector("[data-merge]");
-    if (hasMerge && rawText.includes("Company:")) {
+    if (onlyValues(h) && rawText.includes("Company:")) {
       const p = doc.createElement("p");
       p.style.cssText = "text-align: center; font-size: 11.5px; font-weight: 700; line-height: 1.4; margin: 2px 0 4px;";
       p.append(...Array.from(h.childNodes));
@@ -369,6 +376,20 @@ function repairStrippedTemplateHtml(container: HTMLElement, doc: Document) {
   // 4. Also check centered <p> disclosure / instruction paragraphs and table cell spacing that lost their compact font size.
   for (const p of Array.from(container.querySelectorAll<HTMLElement>("p"))) {
     if (p.closest("td, th")) continue;
+    // Undo the old value-line stamp (centered, 11.5px, bold) that an earlier version put on any
+    // sentence containing a company value, and that got saved into templates.
+    if (p.style.textAlign === "center" && p.style.fontSize === "11.5px" && p.style.fontWeight === "700" && !onlyValues(p)) {
+      p.style.textAlign = "";
+      p.style.fontSize = "";
+      p.style.fontWeight = "";
+      p.style.margin = "";
+      p.querySelectorAll<HTMLElement>("span").forEach((sp) => {
+        if (sp.style.fontSize === "11.5px") sp.style.fontSize = "";
+        if (sp.style.textAlign === "center") sp.style.textAlign = "";
+        if (sp.hasAttribute("data-merge") && sp.style.fontWeight === "700") sp.style.fontWeight = "";
+      });
+      if (!p.getAttribute("style")?.trim()) p.removeAttribute("style");
+    }
     if (p.style?.fontSize) continue;
     const rawText = (p.textContent || "").replace(/\s+/g, " ").trim();
     if (/^Trucking One Stop Shop CORP\.\s*d\/b\/a\s*TOSS/i.test(rawText)) {
@@ -388,7 +409,7 @@ function repairStrippedTemplateHtml(container: HTMLElement, doc: Document) {
       p.style.fontSize = "11px";
       p.style.lineHeight = "1.35";
       p.style.margin = "10px 0 4px";
-    } else if (p.querySelector("[data-merge]") && rawText.includes("Company:")) {
+    } else if (onlyValues(p) && rawText.includes("Company:")) {
       p.style.textAlign = "center";
       p.style.fontSize = "11.5px";
       p.style.fontWeight = "700";
@@ -939,7 +960,9 @@ export async function renderWritten(
       Array.from(parent.children).flatMap((el) => {
         const tag = el.tagName.toUpperCase();
         if (tag === "UL" || tag === "OL" || tag === "DIV" || tag === "SECTION" || tag === "ARTICLE" || tag === "BLOCKQUOTE") return collectBlocks(el);
-        if (tag === "TABLE") return Array.from(el.querySelectorAll<HTMLElement>("tr"));
+        // a short table (a signature block, a details box) moves to the next page in one piece;
+        // a long one flows row by row
+        if (tag === "TABLE") return (el as HTMLElement).getBoundingClientRect().height <= CH * 0.45 ? [el as HTMLElement] : Array.from(el.querySelectorAll<HTMLElement>("tr"));
         return [el as HTMLElement];
       });
 
