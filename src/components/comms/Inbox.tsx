@@ -210,9 +210,10 @@ export function Inbox({ companyId }: { companyId?: string | null }) {
   };
 
   return (
-    <div className="space-y-3">
+    // fills the screen: the page doesn't scroll, the list and the messages scroll inside
+    <div className={cn("flex min-h-[520px] flex-col gap-3", companyId ? "h-[calc(100dvh-260px)]" : "h-[calc(100dvh-200px)] lg:h-[calc(100dvh-205px)]")}>
       {live.length > 0 && (
-        <div className="space-y-2">
+        <div className="shrink-0 space-y-2">
           {live.map((c) => (
             <button
               key={c.id}
@@ -238,7 +239,7 @@ export function Inbox({ companyId }: { companyId?: string | null }) {
         </div>
       )}
 
-      <div className="grid min-h-[calc(100dvh-240px)] gap-4 lg:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)_300px]">
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4 lg:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)_300px]">
         {/* conversations */}
         <Card className={cn("flex min-h-0 flex-col overflow-hidden", current && "hidden lg:flex")}>
           <div className="space-y-2 border-b border-line p-3">
