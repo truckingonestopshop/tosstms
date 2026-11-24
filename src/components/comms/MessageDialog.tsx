@@ -110,7 +110,7 @@ export function MessageDialog({
       open={open}
       onClose={onClose}
       title={defaults.title || "Send a message"}
-      subtitle={channel === "sms" ? "Sent from your Kixie number. Replies come to the Inbox." : "Sent from TOSS. Replies go to your email."}
+      subtitle={channel === "sms" ? "Sent from your Kixie number. Replies come to the Inbox." : "Sent from TOSS. Replies come back to the Inbox."}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>

@@ -37,7 +37,7 @@ export async function proxy(request: NextRequest) {
   // Cloud); /api/ghl/customer its secret key (GoHighLevel workflow → TOSS Cloud); /api/kixie/webhook
   // and /api/kixie/lookup theirs (Kixie → TOSS Cloud). /i/<token>: an invoice sent by text or email.
   const isPublic =
-    path.startsWith("/login") || path.startsWith("/auth/") || path.startsWith("/preview-ui") || path.startsWith("/sign/") || path.startsWith("/api/sign/public/") || path.startsWith("/api/sign/link/") || path === "/api/sign/cron" || path === "/api/handoff" || path === "/api/ghl/customer" || path === "/api/hunter/carrier" || path === "/api/kixie/webhook" || path === "/api/kixie/lookup" || path.startsWith("/i/") || path === "/logout" || preview;
+    path.startsWith("/login") || path.startsWith("/auth/") || path.startsWith("/preview-ui") || path.startsWith("/sign/") || path.startsWith("/api/sign/public/") || path.startsWith("/api/sign/link/") || path === "/api/sign/cron" || path === "/api/handoff" || path === "/api/ghl/customer" || path === "/api/hunter/carrier" || path === "/api/kixie/webhook" || path === "/api/kixie/lookup" || path === "/api/resend/inbound" || path.startsWith("/i/") || path === "/logout" || preview;
   // Already signed in and opening the sign-in page: go straight on. Lead Hunter (e.g. someone
   // opened tossleadhunter.tech) through /go/leads; TOSS Cloud to the page asked for. Only plain
   // page loads: the sign-in form's own POSTs to /login must reach it.

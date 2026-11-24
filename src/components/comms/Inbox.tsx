@@ -595,7 +595,7 @@ function ThreadView({
               ? `${text.length} chars · ${segments} SMS${agent ? ` · from Kixie user ${agent}` : ""}`
               : mode === "note"
                 ? "Only your team sees notes"
-                : "From TOSS · replies go to your email"}
+                : "From TOSS · replies come back here"}
           </span>
         </div>
         {mode === "email" && !emailTo.trim() && (
