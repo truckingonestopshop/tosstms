@@ -12,6 +12,7 @@ interface Status {
   kixie: boolean;
   email: boolean;
   kixieEmail: string;
+  ownKixieEmail: string;
   mainKixie: string | null;
   owner: boolean;
   webhookUrl: string;
@@ -34,6 +35,8 @@ export function KixieSetup({ open, onClose }: { open: boolean; onClose: () => vo
   const [s, setS] = useState<Status | null>(null);
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
+  const [main, setMain] = useState("");
+  const [savingMain, setSavingMain] = useState(false);
   const [connecting, setConnecting] = useState(false);
 
   const load = useCallback(async () => {
@@ -41,7 +44,8 @@ export function KixieSetup({ open, onClose }: { open: boolean; onClose: () => vo
     const j = (await res.json().catch(() => null)) as Status | null;
     if (j && res.ok) {
       setS(j);
-      setEmail(j.kixieEmail);
+      setEmail(j.ownKixieEmail || "");
+      setMain(j.mainKixie || "");
     }
   }, []);
   useEffect(() => {
@@ -55,6 +59,16 @@ export function KixieSetup({ open, onClose }: { open: boolean; onClose: () => vo
     setSaving(false);
     if (!res.ok) return toast.error(j.error || "Couldn't save");
     toast.success("Saved");
+    load();
+  };
+
+  const saveMain = async () => {
+    setSavingMain(true);
+    const res = await fetch("/api/kixie/setup", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mainKixie: main }) });
+    const j = (await res.json().catch(() => ({}))) as { error?: string };
+    setSavingMain(false);
+    if (!res.ok) return toast.error(j.error || "Couldn't save");
+    toast.success(main.trim() ? `Everyone now calls and texts as ${main.trim()}` : "Each person uses their own Kixie login");
     load();
   };
 
@@ -81,7 +95,34 @@ export function KixieSetup({ open, onClose }: { open: boolean; onClose: () => vo
             <Check ok={s.email} label="Email" detail={s.email ? "Emails go out through Resend" : "Add RESEND_API_KEY on the server"} />
           </div>
 
-          <Field label="Your Kixie login email" hint={`Kixie rings this user's app or phone when you press Call, and texts from their number. It must be a Kixie user on Professional or higher. Leave empty to use ${s.mainKixie ? `the main Kixie user (${s.mainKixie})` : "your TOSS email"}.`}>
+          <div className="rounded-xl border border-brand/40 bg-brand/5 p-3.5">
+            <div className="text-[13px] font-semibold text-fg">You call and text as: {s.kixieEmail || "nobody yet"}</div>
+            <div className="mt-0.5 text-[12px] text-fg-3">
+              {s.mainKixie
+                ? "That's the company's main Kixie account. Everyone in TOSS calls and texts through it, whoever is signed in."
+                : "That's your own Kixie login (below). Set a main Kixie account to have everyone use the same one."}
+            </div>
+          </div>
+
+          <Field
+            label="Main Kixie account (everyone)"
+            hint={
+              s.owner
+                ? "Everyone in TOSS calls and texts through this Kixie user. Kixie rings its app or phone when someone presses Call, and texts go out from its number. It must be on Professional or higher, with a number that can text. Leave empty to let each person use their own."
+                : "Only owners change this."
+            }
+          >
+            <div className="flex gap-2">
+              <Input value={main} onChange={(e) => setMain(e.target.value)} placeholder="agent@company.com" type="email" disabled={!s.owner} />
+              {s.owner && (
+                <Button variant="primary" onClick={saveMain} loading={savingMain}>
+                  Save
+                </Button>
+              )}
+            </div>
+          </Field>
+
+          <Field label="Your own Kixie login" hint={s.mainKixie ? "Not used while there's a main Kixie account." : "Used when there's no main Kixie account. Empty = your TOSS email."}>
             <div className="flex gap-2">
               <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" type="email" />
               <Button onClick={save} loading={saving}>
