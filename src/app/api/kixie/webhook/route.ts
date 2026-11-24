@@ -78,6 +78,13 @@ async function onCall(d: Json, event: string) {
 
   const [match, member] = await Promise.all([matchPhone(contact), memberByEmail(s(cd.email))]);
   const name = [s(cd.fname), s(cd.lname)].filter(Boolean).join(" ") || null;
+  const final = event === "endcall" || event === "voicemail";
+  // a late "started" / "answered" never undoes a call that already ended
+  let ended = false;
+  if (!final) {
+    const { data: prev } = await adminClient().from("tms_comms").select("ended_at").eq("channel", "call").eq("external_id", callId).maybeSingle();
+    ended = !!prev?.ended_at;
+  }
   const status = event === "voicemail" ? "voicemail" : event === "answeredcall" ? "answered" : event === "startcall" ? "ringing" : s(cd.callstatus);
   const duration = Number(cd.duration);
   const saved = await saveComm({
@@ -89,7 +96,8 @@ async function onCall(d: Json, event: string) {
     our_address: s(d.businessnumber) || (direction === "inbound" ? s(cd.tonumber164) : s(cd.fromnumber164)) || undefined,
     member_id: member?.user_id,
     agent_email: s(cd.email) ? decodeURIComponent(s(cd.email)!) : undefined,
-    status: status || undefined,
+    status: ended ? undefined : status || undefined,
+    ended_at: final ? when(cd.callEndDate) || new Date().toISOString() : undefined,
     duration_sec: Number.isFinite(duration) && cd.duration !== null && cd.duration !== "" ? duration : undefined,
     recording_url: s(cd.recordingurl) || undefined,
     disposition: realOutcome(cd.disposition) || undefined,

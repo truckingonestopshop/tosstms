@@ -21,6 +21,7 @@ interface Status {
 }
 
 const EVENT_LABEL: Record<string, string> = {
+  startcall: "Call started (live calls)",
   endcall: "Call ended (length, recording)",
   disposition: "Call outcome",
   SMS: "Texts in and out",

@@ -9,6 +9,13 @@ import { LogoMark } from "@/components/brand/Logo";
 import { cn } from "@/lib/format";
 import { inCompanyArea, leaveCompany, useStore } from "@/lib/store";
 import { ACCOUNTING_SIDEBAR, SIDEBAR, canOpen } from "./nav";
+import { useInboxUnread } from "@/lib/useUnread";
+
+/** The Inbox unread count next to its menu item. */
+function Badge({ n, className }: { n: number; className?: string }) {
+  if (!n) return null;
+  return <span className={cn("tnum min-w-[18px] rounded-full bg-brand px-1.5 text-center text-[11px] font-bold leading-[18px] text-brand-fg", className)}>{n > 99 ? "99+" : n}</span>;
+}
 
 /** Inside one company's area the menu shows Companies; everywhere else, the page's own item. */
 function useActive() {
@@ -21,6 +28,7 @@ function useActive() {
 function Items({ onPick }: { onPick?: () => void }) {
   const path = usePathname();
   const isOn = useActive();
+  const unread = useInboxUnread();
   const { me, memberById } = useStore();
   const self = memberById(me.id) ?? { role: me.role, workspace_view: me.view };
   // Sections this person can open (Users → access); empty groups drop out.
@@ -50,6 +58,7 @@ function Items({ onPick }: { onPick?: () => void }) {
                 {on && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-brand" />}
                 <n.icon className="h-4 w-4 shrink-0" strokeWidth={on ? 2.25 : 1.75} />
                 <span className="truncate">{n.label}</span>
+                {n.key === "inbox" && <Badge n={unread} className="ml-auto" />}
               </Link>
             );
           })}
@@ -101,6 +110,7 @@ const readPinned = () => {
  */
 export function Sidebar() {
   const path = usePathname();
+  const unread = useInboxUnread();
   const { me, memberById } = useStore();
   const self = memberById(me.id) ?? { role: me.role, workspace_view: me.view };
   const accounting = path.startsWith("/accounting");
@@ -185,6 +195,7 @@ export function Sidebar() {
                       )}
                     >
                       <n.icon className="h-[18px] w-[18px]" strokeWidth={on ? 2.2 : 1.8} />
+                      {n.key === "inbox" && <Badge n={unread} className="absolute -right-1 -top-1 min-w-[16px] px-1 text-[10px] leading-[16px]" />}
                     </span>
                     <span
                       className={cn("relative truncate whitespace-nowrap text-[13px] font-medium transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]", open ? "translate-x-0 opacity-100" : "-translate-x-2 opacity-0")}
