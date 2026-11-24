@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Briefcase, FileImage, FileText, Layers, TrendingUp, MessageSquare, Paperclip, Plus, RefreshCw, ScrollText, ShieldCheck, Trash2, X } from "lucide-react";
+import { Briefcase, FileImage, FileText, Layers, Mail, MessageCircle, Phone, TrendingUp, MessageSquare, Paperclip, Plus, RefreshCw, ScrollText, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Bits";
 import { Textarea } from "@/components/ui/Field";
@@ -26,6 +26,9 @@ const ICON: Record<CompanyEvent["kind"], typeof FileText> = {
   update: RefreshCw,
   case: Briefcase,
   sale: TrendingUp,
+  call: Phone,
+  sms: MessageCircle,
+  email: Mail,
 };
 
 export function CompanyTimeline({ companyId }: { companyId: string }) {

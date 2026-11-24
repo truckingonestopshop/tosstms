@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PhoneActions } from "@/components/comms/ContactActions";
 import { useEffect, useRef, useState } from "react";
 import { FilePlus2, Mail, Pencil, Phone, Trash2, User, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -448,11 +449,7 @@ export function DriverSheet({ driver, onClose, onEdit }: { driver: Driver | null
         <DriverRig driver={driver} />
         <div className="grid grid-cols-2 gap-4">
           <KV label="Phone" copy={driver.phone}>
-            {driver.phone ? (
-              <a href={`tel:${driver.phone}`} className="hover:underline">
-                {driver.phone}
-              </a>
-            ) : null}
+            {driver.phone ? <PhoneActions phone={driver.phone} name={driver.name} companyId={driver.company_id} label="Driver" /> : null}
           </KV>
           <KV label="Email" copy={driver.email}>
             {driver.email ? (

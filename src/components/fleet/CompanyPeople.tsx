@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PhoneActions } from "@/components/comms/ContactActions";
 import { useRef, useState } from "react";
 import { Paperclip, Pencil, Plus, Send, Trash2, UserRound, X } from "lucide-react";
 import { SendDialog } from "@/components/signing/SendDialog";
@@ -110,7 +111,7 @@ function PersonRow({ p, onEdit }: { p: CompanyPerson; onEdit: () => void }) {
           <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
             <KV label="First name">{p.first_name}</KV>
             <KV label="Last name">{p.last_name}</KV>
-            <KV label="Phone" copy={p.phone}>{p.phone ? <a href={`tel:${p.phone}`} className="hover:underline">{p.phone}</a> : null}</KV>
+            <KV label="Phone" copy={p.phone}>{p.phone ? <PhoneActions phone={p.phone} name={`${p.first_name} ${p.last_name}`.trim()} companyId={p.company_id} /> : null}</KV>
             <KV label="Email" copy={p.email}>{p.email ? <a href={`mailto:${p.email}`} className="break-all hover:underline">{p.email}</a> : null}</KV>
             {p.is_owner && license && (
               <>

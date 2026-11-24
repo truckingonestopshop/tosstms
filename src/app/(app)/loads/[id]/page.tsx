@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PhoneActions } from "@/components/comms/ContactActions";
 import { use, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -336,9 +337,7 @@ function LoadView({ load }: { load: Load }) {
                 {load.broker_phone && (
                   <span className="inline-flex items-center gap-1">
                     <Phone className="h-3 w-3 text-fg-4" />
-                    <a href={`tel:${load.broker_phone}`} className="hover:underline">
-                      {load.broker_phone}
-                    </a>
+                    <PhoneActions phone={load.broker_phone} name={load.broker_contact || load.broker_name || null} label="Broker" />
                   </span>
                 )}
               </KV>
@@ -463,9 +462,10 @@ function LoadView({ load }: { load: Load }) {
                 </Select>
               </label>
               {driver?.phone && (
-                <a href={`tel:${driver.phone}`} className="flex items-center gap-2 text-[13px] text-fg-2 hover:text-fg">
-                  <Phone className="h-3.5 w-3.5 text-fg-4" /> Call {driver.name.split(" ")[0]} · {driver.phone}
-                </a>
+                <div className="flex items-center gap-2 text-[13px] text-fg-2">
+                  <Phone className="h-3.5 w-3.5 text-fg-4" /> {driver.name.split(" ")[0]} ·
+                  <PhoneActions phone={driver.phone} name={driver.name} companyId={driver.company_id} label="Driver" />
+                </div>
               )}
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold text-fg-2">Dispatcher</span>

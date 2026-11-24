@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Ban, Bell, Check, Copy, Download, FileSignature, MessageSquare, PenLine, Send, ShieldCheck } from "lucide-react";
+import { TextLinkButton } from "@/components/comms/TextLinkButton";
+import { Ban, Bell, Check, Copy, Download, FileSignature, PenLine, Send, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader, Empty, Pill } from "@/components/ui/Bits";
 import { Input, Segmented } from "@/components/ui/Field";
@@ -224,9 +225,14 @@ export function RequestModal({ r, recipients, onClose, onSaved }: { r: SignReque
                   {copied === x.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {copied === x.id ? "Copied" : "Copy link"}
                 </Button>
                 {x.phone && (
-                  <a href={`sms:${x.phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(`Hi ${x.name.split(" ")[0]}, please review and sign: ${link(x.token)}`)}`} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-line px-2.5 text-xs font-medium text-fg hover:bg-surface-2">
-                    <MessageSquare className="h-3.5 w-3.5" /> Text it
-                  </a>
+                  <TextLinkButton
+                    phone={x.phone}
+                    name={x.name}
+                    message={`Hi ${x.name.split(" ")[0]}, please review and sign "${r.title}": ${link(x.token)}`}
+                    companyId={r.company_id}
+                    signRequestId={r.id}
+                    title={`Text ${x.name} the signing link`}
+                  />
                 )}
               </div>
             )}

@@ -8,6 +8,7 @@ import {
   Clock,
   FolderOpen,
   Headset,
+  Inbox,
   KeyRound,
   Layers,
   LayoutDashboard,
@@ -38,6 +39,7 @@ export interface NavItem {
 export const SIDEBAR: NavItem[][] = [
   [
     { key: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, match: (p) => p.startsWith("/dashboard") },
+    { key: "inbox", href: "/inbox", label: "Inbox", icon: Inbox, match: (p) => p.startsWith("/inbox") },
     { key: "companies", href: "/fleet", label: "Companies", icon: Building2, match: (p) => p.startsWith("/fleet") },
     { key: "services", href: "/services", label: "Services", icon: Layers, match: (p) => p.startsWith("/services") },
     { key: "dispatch", href: "/dispatch", label: "Dispatch", icon: Route, match: isDispatchPath },

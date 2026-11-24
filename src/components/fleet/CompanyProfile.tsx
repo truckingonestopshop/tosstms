@@ -6,6 +6,7 @@ import { StagePill } from "./CompaniesCrm";
 import { Card, Empty, KV } from "@/components/ui/Bits";
 import { useStore } from "@/lib/store";
 import { CompanyTimeline } from "./CompanyTimeline";
+import { PhoneActions } from "@/components/comms/ContactActions";
 import { CompanyPeople } from "./CompanyPeople";
 import { openDocument, errMsg } from "@/lib/db";
 import { toast } from "@/lib/toast";
@@ -285,7 +286,9 @@ export function CompanyOverview({ company, onServices }: { company: Company; onS
         <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
           <KV label="First name">{firstName}</KV>
           <KV label="Last name">{lastName}</KV>
-          <KV label="Phone">{company.contact_phone}</KV>
+          <KV label="Phone">
+            <PhoneActions phone={company.contact_phone} name={company.contact_name || company.name} companyId={company.id} label="Owner" />
+          </KV>
           <KV label="Email">{company.contact_email}</KV>
         </div>
         {second && (
@@ -293,7 +296,9 @@ export function CompanyOverview({ company, onServices }: { company: Company; onS
             <KV label="First name">{company.secondary_first_name}</KV>
             <KV label="Last name">{company.secondary_last_name}</KV>
             <KV label="Role">{company.secondary_title}</KV>
-            <KV label="Phone">{company.secondary_phone}</KV>
+            <KV label="Phone">
+              <PhoneActions phone={company.secondary_phone} name={[company.secondary_first_name, company.secondary_last_name].filter(Boolean).join(" ") || null} companyId={company.id} label={company.secondary_title} />
+            </KV>
             <KV label="Email">{company.secondary_email}</KV>
           </div>
         )}

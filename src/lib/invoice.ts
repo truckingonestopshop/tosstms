@@ -193,8 +193,9 @@ export function draftToRow(d: InvoiceDraft) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { lines, ...head } = d;
   // amount_paid is never written here: it is the sum of recorded payments (database trigger).
+  // public_token (the invoice's private link) is made by the database and never copied.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { amount_paid, ...rest } = head;
+  const { amount_paid, public_token, ...rest } = head as typeof head & { public_token?: string | null };
   return { ...rest, total_due: t.due, total_gross: t.gross };
 }
 
