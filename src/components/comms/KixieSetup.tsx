@@ -12,6 +12,7 @@ interface Status {
   kixie: boolean;
   email: boolean;
   kixieEmail: string;
+  mainKixie: string | null;
   owner: boolean;
   webhookUrl: string;
   lookupUrl: string;
@@ -79,7 +80,7 @@ export function KixieSetup({ open, onClose }: { open: boolean; onClose: () => vo
             <Check ok={s.email} label="Email" detail={s.email ? "Emails go out through Resend" : "Add RESEND_API_KEY on the server"} />
           </div>
 
-          <Field label="Your Kixie login email" hint="Kixie rings this user's app or phone when you press Call, and texts from their number. Leave empty to use your TOSS email.">
+          <Field label="Your Kixie login email" hint={`Kixie rings this user's app or phone when you press Call, and texts from their number. It must be a Kixie user on Professional or higher. Leave empty to use ${s.mainKixie ? `the main Kixie user (${s.mainKixie})` : "your TOSS email"}.`}>
             <div className="flex gap-2">
               <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" type="email" />
               <Button onClick={save} loading={saving}>

@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   const error = await makeCall({ agentEmail: me.kixieEmail, target, displayName: name?.trim() || target });
   // The account can't use Kixie's automation API (yet): the browser hands the number to the
   // Kixie app / extension instead (tel: link), and the call still comes back by webhook.
-  if (error && /automation api|access to use/i.test(error)) return NextResponse.json({ error: `Kixie: ${error}`, fallback: "tel", target }, { status: 403 });
-  if (error) return NextResponse.json({ error: `Kixie: ${error}` }, { status: 502 });
+  if (error && /automation api|access to use/i.test(error)) return NextResponse.json({ error: `Kixie: ${error} (Kixie user ${me.kixieEmail}. Change it in Inbox → Phone setup; the Kixie user must be on Professional or higher.)`, fallback: "tel", target }, { status: 403 });
+  if (error) return NextResponse.json({ error: `Kixie: ${error} (Kixie user ${me.kixieEmail}. Change it in Inbox → Phone setup; the Kixie user must be on Professional or higher.)` }, { status: 502 });
   return NextResponse.json({ ok: true, target, agent: me.kixieEmail });
 }

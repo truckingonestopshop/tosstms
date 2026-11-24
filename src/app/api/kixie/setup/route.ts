@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { adminClient, adminConfigured } from "@/lib/server/admin";
 import { emailConfigured } from "@/lib/server/email";
 import { TOSS_EVENTS, createWebhook, hookName, kixieConfigured, listWebhooks, removeWebhook, webhookSecret, type KixieHook } from "@/lib/server/kixie";
-import { agent } from "@/lib/server/agent";
+import { agent, defaultKixieEmail } from "@/lib/server/agent";
 
 export const runtime = "nodejs";
 
@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
     kixie: kixieConfigured(),
     email: emailConfigured(),
     kixieEmail: me.kixieEmail,
+    mainKixie: defaultKixieEmail() || null,
     owner: me.role === "owner",
     webhookUrl: `${req.nextUrl.origin}/api/kixie/webhook`,
     lookupUrl: `${req.nextUrl.origin}/api/kixie/lookup`,
@@ -82,5 +83,5 @@ export async function PATCH(req: NextRequest) {
   if (v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return NextResponse.json({ error: "That isn't an email address" }, { status: 400 });
   const { error } = await adminClient().from("tms_members").update({ kixie_email: v || null }).eq("user_id", me.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, kixieEmail: v || me.email });
+  return NextResponse.json({ ok: true, kixieEmail: v || defaultKixieEmail() || me.email });
 }
