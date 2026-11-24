@@ -50,7 +50,7 @@ async function readResult(res: Response): Promise<string | null> {
     /* plain text */
   }
   const o = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
-  const msg = String(o.message || o.error || o.errorMessage || (typeof body === "string" ? body : "") || "").slice(0, 300);
+  const msg = String(o.msg || o.message || o.error || o.errorMessage || (typeof body === "string" ? body : "") || "").slice(0, 300);
   if (!res.ok) return msg || `Kixie said no (${res.status})`;
   if (o.success === false || o.status === "error" || o.error) return msg || "Kixie said no";
   return null;
@@ -116,7 +116,7 @@ async function hooksCall(path: string, call: string, fields: Record<string, unkn
   if (!res.ok) throw new Error(typeof body === "string" && body ? body.slice(0, 300) : `Kixie said no (${res.status})`);
   // Kixie answers 200 with { success: false, error } when it refuses
   const o = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
-  if (o.success === false) throw new Error(String(o.error || o.message || "Kixie said no"));
+  if (o.success === false) throw new Error(String(o.msg || o.error || o.message || "Kixie said no"));
   return body;
 }
 
