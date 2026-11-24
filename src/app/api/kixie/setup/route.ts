@@ -24,8 +24,10 @@ export async function GET(req: NextRequest) {
     kixie: kixieConfigured(),
     email: emailConfigured(),
     kixieEmail: me.kixieEmail,
+    callEmail: me.callEmail,
     ownKixieEmail: me.ownKixieEmail,
     mainKixie: me.mainKixieEmail || null,
+    mainCall: me.mainCallEmail && me.mainCallEmail !== me.mainKixieEmail ? me.mainCallEmail : null,
     owner: me.role === "owner",
     webhookUrl: `${req.nextUrl.origin}/api/kixie/webhook`,
     lookupUrl: `${req.nextUrl.origin}/api/kixie/lookup`,
@@ -80,15 +82,21 @@ export async function PATCH(req: NextRequest) {
   const me = await agent();
   if (!me) return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   if (!adminConfigured()) return NextResponse.json({ error: "Server not set up (SUPABASE_SECRET_KEY)" }, { status: 503 });
-  const body = (await req.json().catch(() => ({}))) as { kixieEmail?: string; mainKixie?: string };
+  const body = (await req.json().catch(() => ({}))) as { kixieEmail?: string; mainKixie?: string; mainCall?: string };
   const isEmail = (v: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
-  if (body.mainKixie !== undefined) {
-    if (me.role !== "owner") return NextResponse.json({ error: "Only owners can change the main Kixie account" }, { status: 403 });
-    const v = body.mainKixie.trim().toLowerCase();
-    if (v && !isEmail(v)) return NextResponse.json({ error: "That isn't an email address" }, { status: 400 });
-    const { error } = await adminClient().from("tms_settings").update({ kixie_main_email: v || null }).eq("id", 1);
+  if (body.mainKixie !== undefined || body.mainCall !== undefined) {
+    if (me.role !== "owner") return NextResponse.json({ error: "Only owners can change the main Kixie accounts" }, { status: 403 });
+    const patch: Record<string, string | null> = {};
+    for (const [k, col] of [["mainKixie", "kixie_main_email"], ["mainCall", "kixie_call_email"]] as const) {
+      const raw = body[k];
+      if (raw === undefined) continue;
+      const v = raw.trim().toLowerCase();
+      if (v && !isEmail(v)) return NextResponse.json({ error: "That isn't an email address" }, { status: 400 });
+      patch[col] = v || null;
+    }
+    const { error } = await adminClient().from("tms_settings").update(patch).eq("id", 1);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, mainKixie: v || null });
+    return NextResponse.json({ ok: true });
   }
   const v = (body.kixieEmail || "").trim().toLowerCase();
   if (v && !isEmail(v)) return NextResponse.json({ error: "That isn't an email address" }, { status: 400 });

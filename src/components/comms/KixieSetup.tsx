@@ -12,8 +12,10 @@ interface Status {
   kixie: boolean;
   email: boolean;
   kixieEmail: string;
+  callEmail: string;
   ownKixieEmail: string;
   mainKixie: string | null;
+  mainCall: string | null;
   owner: boolean;
   webhookUrl: string;
   lookupUrl: string;
@@ -36,6 +38,7 @@ export function KixieSetup({ open, onClose }: { open: boolean; onClose: () => vo
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [main, setMain] = useState("");
+  const [mainCall, setMainCall] = useState("");
   const [savingMain, setSavingMain] = useState(false);
   const [connecting, setConnecting] = useState(false);
 
@@ -46,6 +49,7 @@ export function KixieSetup({ open, onClose }: { open: boolean; onClose: () => vo
       setS(j);
       setEmail(j.ownKixieEmail || "");
       setMain(j.mainKixie || "");
+      setMainCall(j.mainCall || "");
     }
   }, []);
   useEffect(() => {
@@ -64,11 +68,11 @@ export function KixieSetup({ open, onClose }: { open: boolean; onClose: () => vo
 
   const saveMain = async () => {
     setSavingMain(true);
-    const res = await fetch("/api/kixie/setup", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mainKixie: main }) });
+    const res = await fetch("/api/kixie/setup", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mainKixie: main, mainCall }) });
     const j = (await res.json().catch(() => ({}))) as { error?: string };
     setSavingMain(false);
     if (!res.ok) return toast.error(j.error || "Couldn't save");
-    toast.success(main.trim() ? `Everyone now calls and texts as ${main.trim()}` : "Each person uses their own Kixie login");
+    toast.success(main.trim() ? "Saved for everyone" : "Each person uses their own Kixie login");
     load();
   };
 
@@ -96,7 +100,8 @@ export function KixieSetup({ open, onClose }: { open: boolean; onClose: () => vo
           </div>
 
           <div className="rounded-xl border border-brand/40 bg-brand/5 p-3.5">
-            <div className="text-[13px] font-semibold text-fg">You call and text as: {s.kixieEmail || "nobody yet"}</div>
+            <div className="text-[13px] font-semibold text-fg">Texts go out as: {s.kixieEmail || "nobody yet"}</div>
+            <div className="text-[13px] font-semibold text-fg">Calls ring: {s.callEmail || "nobody yet"}</div>
             <div className="mt-0.5 text-[12px] text-fg-3">
               {s.mainKixie
                 ? "That's the company's main Kixie account. Everyone in TOSS calls and texts through it, whoever is signed in."
@@ -105,15 +110,29 @@ export function KixieSetup({ open, onClose }: { open: boolean; onClose: () => vo
           </div>
 
           <Field
-            label="Main Kixie account (everyone)"
+            label="Main Kixie account for texts (everyone)"
             hint={
               s.owner
-                ? "Everyone in TOSS calls and texts through this Kixie user. Kixie rings its app or phone when someone presses Call, and texts go out from its number. It must be on Professional or higher, with a number that can text. Leave empty to let each person use their own."
+                ? "Everyone's texts go out from this Kixie user's number (and calls ring it too, unless a calls account is set below). It must be on Professional or higher, with a number that can text. Leave empty to let each person use their own."
                 : "Only owners change this."
             }
           >
             <div className="flex gap-2">
               <Input value={main} onChange={(e) => setMain(e.target.value)} placeholder="agent@company.com" type="email" disabled={!s.owner} />
+              {s.owner && (
+                <Button variant="primary" onClick={saveMain} loading={savingMain}>
+                  Save
+                </Button>
+              )}
+            </div>
+          </Field>
+
+          <Field
+            label="Main Kixie account for calls (everyone)"
+            hint="Pressing Call rings this Kixie user's app or phone first, then Kixie dials the customer, so someone must be signed in to Kixie as this user. Leave empty to use the texts account."
+          >
+            <div className="flex gap-2">
+              <Input value={mainCall} onChange={(e) => setMainCall(e.target.value)} placeholder="Same as texts" type="email" disabled={!s.owner} />
               {s.owner && (
                 <Button variant="primary" onClick={saveMain} loading={savingMain}>
                   Save
