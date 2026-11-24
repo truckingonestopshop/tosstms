@@ -19,9 +19,8 @@ export const kixieConfigured = () => !!(process.env.KIXIE_API_KEY?.trim() && pro
 
 function creds() {
   const key = process.env.KIXIE_API_KEY?.trim() || "";
-  const raw = process.env.KIXIE_BUSINESS_ID?.trim() || "";
-  // Kixie's examples send the business id as a number
-  const businessid = /^\d+$/.test(raw) ? Number(raw) : raw;
+  // Kixie's Make a Call / SMS articles send the business id as text ("12345")
+  const businessid = (process.env.KIXIE_BUSINESS_ID?.trim() || "").replace(/^["']|["']$/g, "");
   return { key, businessid };
 }
 
@@ -50,7 +49,7 @@ async function readResult(res: Response): Promise<string | null> {
     /* plain text */
   }
   const o = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
-  const msg = String(o.message || o.error || o.errorMessage || (typeof body === "string" ? body : "") || "").slice(0, 300);
+  const msg = String(o.msg || o.message || o.error || o.errorMessage || (typeof body === "string" ? body : "") || "").slice(0, 300);
   if (!res.ok) return msg || `Kixie said no (${res.status})`;
   if (o.success === false || o.status === "error" || o.error) return msg || "Kixie said no";
   return null;
@@ -72,14 +71,17 @@ async function automation(eventname: string, fields: Record<string, unknown>): P
   }
 }
 
+/** Kixie wants the number as digits only, with the country code: "17203197167". */
+const digitsOnly = (e164: string) => e164.replace(/\D/g, "");
+
 /** Kixie rings the agent's phone / app first; when they pick up it dials the customer. */
 export function makeCall(o: { agentEmail: string; target: string; displayName?: string }) {
-  return automation("call", { email: o.agentEmail, target: o.target, displayname: o.displayName || o.target });
+  return automation("call", { email: o.agentEmail.trim().toLowerCase(), target: digitsOnly(o.target), displayname: o.displayName || "TOSS Cloud" });
 }
 
 /** Sends a text from the agent's Kixie number. */
 export function sendSms(o: { agentEmail: string; target: string; message: string }) {
-  return automation("sms", { email: o.agentEmail, target: o.target, message: o.message });
+  return automation("sms", { email: o.agentEmail.trim().toLowerCase(), target: digitsOnly(o.target), message: o.message });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -88,6 +90,9 @@ export function sendSms(o: { agentEmail: string; target: string; message: string
 
 export interface KixieHook {
   webhookid?: string | number;
+  /** Kixie's list answers with `event` and `webhookLocation` */
+  event?: string;
+  webhookLocation?: string;
   id?: string | number;
   name?: string;
   eventname?: string;
@@ -111,6 +116,9 @@ async function hooksCall(path: string, call: string, fields: Record<string, unkn
     /* plain text */
   }
   if (!res.ok) throw new Error(typeof body === "string" && body ? body.slice(0, 300) : `Kixie said no (${res.status})`);
+  // Kixie answers 200 with { success: false, error } when it refuses
+  const o = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  if (o.success === false) throw new Error(String(o.msg || o.error || o.message || "Kixie said no"));
   return body;
 }
 
@@ -127,7 +135,8 @@ export const TOSS_EVENTS = ["endcall", "disposition", "SMS", "answeredcall", "vo
 export const hookName = (event: string) => `TOSS Cloud ${event}`;
 
 export async function createWebhook(event: string, location: string) {
-  return hooksCall("postwebhook", "postWebhook", {
+  // the path is case-sensitive: "postwebhook" answers "function does not exist"
+  return hooksCall("postWebhook", "postWebhook", {
     callresult: "all",
     direction: "all",
     disposition: "all",

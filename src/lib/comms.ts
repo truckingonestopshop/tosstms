@@ -44,12 +44,40 @@ async function post(url: string, body: unknown): Promise<string | null> {
   }
 }
 
-/** Kixie rings you first; pick up and it dials the customer. */
+/**
+ * Kixie rings you first; pick up and it dials the customer. When Kixie doesn't allow its
+ * automation API for the account, the number goes to the Kixie app / extension instead (tel:),
+ * so the call is still made through Kixie and comes back to the Inbox by webhook.
+ */
 export async function callNow(to: string, name?: string | null) {
-  const error = await post("/api/kixie/call", { to, name: name || undefined });
-  if (error) toast.error(error);
-  else toast.success(`Kixie is ringing you. Pick up to call ${name || to}.`);
-  return !error;
+  try {
+    const res = await fetch("/api/kixie/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, name: name || undefined }) });
+    const j = (await res.json().catch(() => ({}))) as { error?: string; fallback?: string; target?: string };
+    if (res.ok) {
+      toast.success(`Kixie is ringing you. Pick up to call ${name || to}.`);
+      return true;
+    }
+    if (j.fallback === "tel" && j.target) {
+      dialInKixie(j.target);
+      toast.info(`Opening Kixie to call ${name || to}. The call shows up here when it ends.`);
+      return true;
+    }
+    toast.error(j.error || `Failed (${res.status})`);
+    return false;
+  } catch {
+    toast.error("Can't reach the server. Check your connection.");
+    return false;
+  }
+}
+
+/** Hands a number to the phone app the computer uses for calls (the Kixie app / extension). */
+export function dialInKixie(e164: string) {
+  const a = document.createElement("a");
+  a.href = `tel:${e164}`;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 export interface Outgoing {
