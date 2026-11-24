@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       sign_request_id: b.signRequestId || null,
       read_at: new Date().toISOString(),
     });
-    if (error) return NextResponse.json({ error: `Kixie: ${error}` }, { status: 502 });
+    if (error) return NextResponse.json({ error: `Kixie: ${error} (Kixie user ${me.kixieEmail}. Change it in Inbox → Phone setup; the Kixie user must be on Professional or higher.)` }, { status: 502 });
     await timeline(companyId, "sms", `Text sent to ${b.name?.trim() || to}: "${text.slice(0, 280)}"`, me.fullName);
     return NextResponse.json({ ok: true });
   }
