@@ -210,9 +210,10 @@ export function Inbox({ companyId }: { companyId?: string | null }) {
   };
 
   return (
-    <div className="space-y-3">
+    // fills the screen: the page doesn't scroll, the list and the messages scroll inside
+    <div className={cn("flex min-h-[520px] flex-col gap-3", companyId ? "h-[calc(100dvh-260px)]" : "h-[calc(100dvh-200px)] lg:h-[calc(100dvh-205px)]")}>
       {live.length > 0 && (
-        <div className="space-y-2">
+        <div className="shrink-0 space-y-2">
           {live.map((c) => (
             <button
               key={c.id}
@@ -238,7 +239,7 @@ export function Inbox({ companyId }: { companyId?: string | null }) {
         </div>
       )}
 
-      <div className="grid min-h-[calc(100dvh-240px)] gap-4 lg:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)_300px]">
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4 lg:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)_300px]">
         {/* conversations */}
         <Card className={cn("flex min-h-0 flex-col overflow-hidden", current && "hidden lg:flex")}>
           <div className="space-y-2 border-b border-line p-3">
@@ -597,6 +598,11 @@ function ThreadView({
                 : "From TOSS · replies go to your email"}
           </span>
         </div>
+        {mode === "email" && !emailTo.trim() && (
+          <p className="mb-2 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-[12px] text-amber-700 dark:text-amber-300">
+            No email saved for {t.name}. Type the address to send to.
+          </p>
+        )}
         {mode === "email" && (
           <div className="mb-2 grid gap-2 sm:grid-cols-2">
             <Input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="To: name@company.com" type="email" />
@@ -719,6 +725,9 @@ function Item({ c, memberName, mine, put }: { c: Comm; memberName: (id: string |
   return (
     <div className={cn("flex", out ? "justify-end" : "justify-start")}>
       <div className={cn("max-w-[80%] rounded-2xl px-3.5 py-2 shadow-sm", out ? "rounded-br-md bg-brand text-brand-fg" : "rounded-bl-md border border-line bg-surface text-fg")}>
+        <div className={cn("mb-0.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider", out ? "text-brand-fg/70" : "text-fg-4")}>
+          <MessageSquare className="h-3 w-3" /> {out ? "Text sent" : "Text received"}
+        </div>
         <p className="whitespace-pre-wrap break-words text-[13px]">{c.body}</p>
         <Meta c={c} who={who} light={out} />
       </div>
