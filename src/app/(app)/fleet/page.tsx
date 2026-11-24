@@ -14,6 +14,7 @@ import { CompanyOverview, ServicesOverview } from "@/components/fleet/CompanyPro
 import { CompanyEquipment, isEquipmentTab } from "@/components/fleet/CompanyEquipment";
 import { CompanySales } from "@/components/sales/CompanySales";
 import { CompanyCases } from "@/components/cases/CompanyCases";
+import { Inbox } from "@/components/comms/Inbox";
 import { CompaniesCrm } from "@/components/fleet/CompaniesCrm";
 import { DocumentsPanel } from "@/components/docs/DocumentsPanel";
 import { FleetPaperwork } from "@/components/docs/FleetPaperwork";
@@ -116,6 +117,7 @@ function CompanyView({ company }: { company: Company }) {
       {tab === "mcpt" && <McptTab key={company.id} company={company} />}
       {tab === "sales" && <CompanySales company={company} />}
       {tab === "cases" && <CompanyCases companyId={company.id} />}
+      {tab === "inbox" && <Inbox companyId={company.id} />}
       {tab === "services" && <ServicesOverview company={company} onMore={setTab} />}
       {tab === "profile" && <ProfileTab company={company} onServices={() => setTab("services")} />}
     </>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, Copy, FileSignature, MessageSquare, Pencil, PenLine, Plus, Save, Upload, UserCheck, X } from "lucide-react";
+import { TextLinkButton } from "@/components/comms/TextLinkButton";
+import { ArrowLeft, Check, Copy, FileSignature, Pencil, PenLine, Plus, Save, Upload, UserCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -112,7 +113,7 @@ export function SendDialog({
   const [message, setMessage] = useState("");
   const [expires, setExpires] = useState(defaultExpires30);
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState<{ list: Sent[]; emailReady: boolean } | null>(null);
+  const [sent, setSent] = useState<{ list: Sent[]; emailReady: boolean; requestId?: string; companyId?: string | null } | null>(null);
   const [copied, setCopied] = useState("");
   const [was, setWas] = useState(false);
   const [show, setShow] = useState<TemplateCategory | "all">(category || "all");
@@ -513,7 +514,7 @@ export function SendDialog({
     const body = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) return toast.error(body.error || "Couldn't send"), onSent?.(req as SignRequest);
-    setSent({ list: body.sent, emailReady: body.emailReady });
+    setSent({ list: body.sent, emailReady: body.emailReady, requestId: req.id, companyId: companyId || null });
     setStep("done");
     onSent?.({ ...(req as SignRequest), status: "sent" });
   };
@@ -901,9 +902,14 @@ export function SendDialog({
                     </a>
                   )}
                   {s.phone && !s.inPerson && (
-                    <a href={`sms:${s.phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(`Hi ${s.name.split(" ")[0]}, please review and sign: ${s.link}`)}`} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-line px-2.5 text-xs font-medium text-fg hover:bg-surface-2">
-                      <MessageSquare className="h-3.5 w-3.5" /> Text it
-                    </a>
+                    <TextLinkButton
+                      phone={s.phone}
+                      name={s.name}
+                      message={`Hi ${s.name.split(" ")[0]}, please review and sign: ${s.link}`}
+                      companyId={sent.companyId}
+                      signRequestId={sent.requestId}
+                      title={`Text ${s.name} the signing link`}
+                    />
                   )}
                 </div>
               </li>

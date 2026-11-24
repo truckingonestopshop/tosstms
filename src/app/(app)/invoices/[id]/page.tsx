@@ -10,6 +10,7 @@ import {
   Download,
   FilePen,
   Mail,
+  MessageSquare,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -31,6 +32,7 @@ import { StatusPill } from "@/components/loads/StatusMenu";
 import { useLiveTable } from "@/lib/live";
 import { statusOf, type Case } from "@/lib/cases";
 import { InvoiceDoc } from "@/components/invoices/InvoiceDoc";
+import { MessageDialog, type Recipient } from "@/components/comms/MessageDialog";
 import { useBillable } from "@/components/invoices/InvoiceBuilder";
 import { useStore } from "@/lib/store";
 import { signatureOf } from "@/lib/profile";
@@ -74,6 +76,7 @@ function InvoiceView({ id }: { id: string }) {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
   const docRef = useRef<HTMLDivElement>(null);
 
   // Follow live changes (status, payments, other dispatchers) while not editing.
@@ -147,8 +150,41 @@ function InvoiceView({ id }: { id: string }) {
     if (inv.status === "draft") status("sent", "Marked sent");
   };
 
+  // Text / email the carrier a link to view and download the invoice (no login).
+  const invoiceLink = typeof window !== "undefined" && inv.public_token ? `${window.location.origin}/i/${inv.public_token}` : "";
+  const first = (company?.contact_name || "").split(" ")[0];
+  const amountLine = left > 0 && inv.status !== "draft" ? `${money(left, { currency: inv.currency })} open` : money(inv.total_due, { currency: inv.currency });
+  const recipients: Recipient[] = [
+    company?.contact_phone || company?.contact_email ? { name: company?.contact_name || company?.name, phone: company?.contact_phone, email: company?.contact_email, label: "Owner" } : null,
+    company?.secondary_phone || company?.secondary_email
+      ? { name: [company?.secondary_first_name, company?.secondary_last_name].filter(Boolean).join(" ") || null, phone: company?.secondary_phone, email: company?.secondary_email, label: company?.secondary_title || "Contact" }
+      : null,
+    company?.factoring_email ? { name: company.factoring_company || "Factoring", email: company.factoring_email, label: "Factoring" } : null,
+  ].filter(Boolean) as Recipient[];
+  const linkDefaults = {
+    title: `Send invoice ${inv.invoice_number}`,
+    recipients,
+    companyId: inv.company_id,
+    invoiceId: inv.id,
+    sms: `Hi${first ? ` ${first}` : ""}, here is invoice ${inv.invoice_number} from ${inv.issuer_name || "TOSS"} (${amountLine}${inv.due_date ? `, auto charge ${fmtDay(inv.due_date, true)}` : ""}). View and download: ${invoiceLink}`,
+    subject: `Invoice ${inv.invoice_number} from ${inv.issuer_name || "TOSS"}`,
+    email: [
+      `Hello${first ? ` ${first}` : ""},`,
+      `Here is invoice ${inv.invoice_number} for ${amountLine}${inv.due_date ? `, auto charge date ${fmtDay(inv.due_date, true)}` : ""}.`,
+      "Open it below to view or download the PDF.",
+      `Thank you,\n${signatureOf(memberById(me.id), inv.issuer_name || undefined) || inv.issuer_name || "TOSS"}`,
+    ].join("\n\n"),
+    button: { label: "View invoice", href: invoiceLink },
+  };
+
   return (
     <Page>
+      <MessageDialog
+        open={linkOpen}
+        onClose={() => setLinkOpen(false)}
+        defaults={linkDefaults}
+        beforeSend={async () => (inv.status === "draft" ? setInvoiceStatus(inv.id, "sent").then((ok) => !!ok) : true)}
+      />
       <div className="no-print mb-3">
         <Link href={backHref} className="group inline-flex items-center gap-1.5 text-[13px] text-fg-3 hover:text-fg">
           <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" /> {fromSales ? "Sales Invoices" : "Invoices"}
@@ -206,6 +242,11 @@ function InvoiceView({ id }: { id: string }) {
                     <Send className="h-3.5 w-3.5" /> Mark sent
                   </Button>
                 </>
+              )}
+              {inv.status !== "void" && inv.public_token && (
+                <Button variant="outline" size="sm" onClick={() => setLinkOpen(true)}>
+                  <MessageSquare className="h-3.5 w-3.5" /> Send link
+                </Button>
               )}
               {left > 0 && inv.status === "sent" && (
                 <>

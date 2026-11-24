@@ -354,7 +354,7 @@ export interface LoadEvent {
 export interface CompanyEvent {
   id: string;
   company_id: string;
-  kind: "created" | "note" | "document" | "service" | "status" | "update" | "case" | "sale";
+  kind: "created" | "note" | "document" | "service" | "status" | "update" | "case" | "sale" | "call" | "sms" | "email";
   message: string | null;
   attachments: { id: string; name: string; path: string; mime: string | null }[];
   actor_id: string | null;
@@ -504,6 +504,8 @@ export interface Invoice {
   issuer_email: string | null;
   issuer_phone: string | null;
   issuer_website?: string | null;
+  /** private link to view and download it (/i/<token>), sent by text and email */
+  public_token?: string | null;
   bill_to_name: string | null;
   bill_to_details: string | null;
   doc_overrides: InvoiceOverrides;

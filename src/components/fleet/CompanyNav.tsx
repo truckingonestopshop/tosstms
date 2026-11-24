@@ -17,6 +17,7 @@ import {
   Target,
   Truck as TruckIcon,
   Wallet,
+ MessagesSquare,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -31,7 +32,7 @@ import type { Company } from "@/lib/types";
 // Loads, Invoices, Analytics), so Dispatch sits among the carrier's sections like DOT Compliance
 // and MCPT. TOSS Cloud serves every service; dispatch is one of them.
 
-export type CompanyTab = "units" | "trucks" | "trailers" | "drivers" | "equipment_list" | "docs" | "vault" | "profile" | "services" | "sales" | "cases" | "dot" | "mcpt" | "dispatch" | "billing";
+export type CompanyTab = "units" | "trucks" | "trailers" | "drivers" | "equipment_list" | "docs" | "vault" | "profile" | "services" | "sales" | "cases" | "inbox" | "dot" | "mcpt" | "dispatch" | "billing";
 
 /** Where a carrier tab lives: Dispatch and Billing have their own pages, the rest are on Fleet & Company. */
 /** A company tab's address; the company rides along in ?company= (Dispatch and Billing show only it). */
@@ -91,14 +92,15 @@ export function CompanyTabs({ company, value, onChange }: { company: Company; va
     services: { value: "services", label: <><Layers className="h-4 w-4" /> Services</> },
     sales: { value: "sales", label: <><Target className="h-4 w-4" /> Sales</> },
     cases: { value: "cases", label: <><Briefcase className="h-4 w-4" /> Cases</> },
+    inbox: { value: "inbox", label: <><MessagesSquare className="h-4 w-4" /> Conversations</> },
     dispatch: { value: "dispatch", label: <><Route className="h-4 w-4" /> Dispatch</> },
     billing: { value: "billing", label: <><Wallet className="h-4 w-4" /> Billing</> },
     dot: { value: "dot", label: <><ShieldCheck className="h-4 w-4" /> DOT Compliance</> },
     mcpt: { value: "mcpt", label: <><Stamp className="h-4 w-4" /> MCPT</> },
   };
   const order: Shown[] = office
-    ? ["profile", "services", "sales", "cases", "billing", "dispatch", "dot", "mcpt", "equipment", "docs", "vault"]
-    : ["dispatch", "equipment", "docs", "vault", "services", "sales", "cases", "dot", "mcpt", "billing", "profile"];
+    ? ["profile", "inbox", "services", "sales", "cases", "billing", "dispatch", "dot", "mcpt", "equipment", "docs", "vault"]
+    : ["dispatch", "equipment", "docs", "vault", "services", "sales", "cases", "inbox", "dot", "mcpt", "billing", "profile"];
   const tabs = order
     .filter((k) =>
       k === "dispatch"
